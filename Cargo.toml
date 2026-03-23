@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/citare-core",
+    "crates/citare-wasm",
+    "crates/citare-data-build",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Polyform-Shield-1.0.0"
+repository = "https://github.com/starepub/citare"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+fancy-regex = "0.14"
+aho-corasick = "1"

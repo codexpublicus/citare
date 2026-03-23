@@ -1,0 +1,9 @@
+[submodule "upstream/eyecite"]
+	path = upstream/eyecite
+	url = https://github.com/freelawproject/eyecite.git
+[submodule "data/reporters-db"]
+	path = data/reporters-db
+	url = https://github.com/freelawproject/reporters-db.git
+[submodule "data/courts-db"]
+	path = data/courts-db
+	url = https://github.com/freelawproject/courts-db.git

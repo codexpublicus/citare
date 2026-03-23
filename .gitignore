@@ -1,0 +1,28 @@
+# Rust / Cargo
+/target/
+Cargo.lock
+
+# WASM build output
+/pkg/
+/wasm-pack.log
+
+# Node / npm
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
