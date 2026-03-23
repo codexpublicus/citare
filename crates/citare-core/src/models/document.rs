@@ -1,4 +1,6 @@
 use super::token::{Token, Tokens};
+use crate::clean::{clean_text, CleanStep};
+use crate::tokenizer::AhocorasickTokenizer;
 
 /// Represents a document being processed for citation extraction.
 ///
@@ -17,4 +19,37 @@ pub struct Document {
     pub emphasis_tags: Vec<(String, usize, usize)>,
     /// The original source text supplied to the pipeline.
     pub source_text: String,
+}
+
+impl Document {
+    /// Create a new Document, optionally applying cleaning steps and handling
+    /// markup text.
+    pub fn new(plain_text: &str, markup_text: &str, clean_steps: &[CleanStep]) -> Self {
+        let text = if clean_steps.is_empty() {
+            plain_text.to_string()
+        } else {
+            clean_text(plain_text, clean_steps).unwrap_or_else(|_| plain_text.to_string())
+        };
+
+        Document {
+            plain_text: text,
+            markup_text: if markup_text.is_empty() {
+                None
+            } else {
+                Some(markup_text.to_string())
+            },
+            words: Vec::new(),
+            citation_tokens: Vec::new(),
+            emphasis_tags: Vec::new(),
+            source_text: plain_text.to_string(),
+        }
+    }
+
+    /// Tokenize the document's plain text, populating `words` and
+    /// `citation_tokens`.
+    pub fn tokenize(&mut self, tokenizer: &AhocorasickTokenizer) {
+        let (words, citation_tokens) = tokenizer.tokenize(&self.plain_text);
+        self.words = words;
+        self.citation_tokens = citation_tokens;
+    }
 }

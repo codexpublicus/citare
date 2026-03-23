@@ -1,0 +1,1385 @@
+//! Helper functions for the citation finding pipeline.
+//!
+//! Ported from eyecite's `helpers.py`. Provides token scanning, metadata
+//! extraction, court lookup, overlap filtering, and case name extraction.
+
+use std::collections::HashMap;
+use std::sync::{LazyLock, OnceLock};
+
+use fancy_regex::Regex as FancyRegex;
+use log::warn;
+
+use crate::models::citation::{
+    Citation, FullCaseCitationData, FullJournalCitationData, FullLawCitationData,
+    ShortCaseCitationData,
+};
+use crate::models::token::{Token, TokenOrStr, Tokens};
+use crate::regexes::{
+    POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX,
+    POST_JOURNAL_CITATION_REGEX, POST_LAW_CITATION_REGEX, POST_SHORT_CITATION_REGEX,
+    PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX,
+    YEAR_REGEX,
+};
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/// Median case name length in the CL db.
+const BACKWARD_SEEK: usize = 28;
+
+/// Maximum characters to scan using `match_on_tokens`.
+const MAX_MATCH_CHARS: usize = 300;
+
+/// Highest valid year is current year + 1.
+const HIGHEST_VALID_YEAR: i32 = 2027;
+
+// ---------------------------------------------------------------------------
+// Regex singletons (avoid compiling in loops)
+// ---------------------------------------------------------------------------
+
+fn re_named_groups() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\(\?P<([^>]+)>").unwrap())
+}
+
+fn re_capitalized_word() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\b([A-Z][a-zA-Z0-9]*)\b.*").unwrap())
+}
+
+fn re_leading_articles() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^(of|the|an|and)\s+").unwrap())
+}
+
+fn re_leading_articles_ci() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(?i)^(of|the|an|and)\b").unwrap())
+}
+
+fn re_trailing_number() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\b\d+\b$").unwrap())
+}
+
+fn re_year_paren() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^\(\d{4}\)$").unwrap())
+}
+
+fn re_v_split() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\s+v\.?\s+").unwrap())
+}
+
+fn re_lowercase_word() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"\b[a-z]\w*\b").unwrap())
+}
+
+fn re_stop_words_ci() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(&format!("(?i){}", &*STOP_WORD_REGEX)).unwrap())
+}
+
+fn re_leading_in() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(?i)^In\s+").unwrap())
+}
+
+// ---------------------------------------------------------------------------
+// Courts data
+// ---------------------------------------------------------------------------
+
+/// Embedded courts.json.
+const COURTS_JSON: &str =
+    include_str!("../../../data/courts-db/courts_db/data/courts.json");
+
+/// Lazily-loaded courts list.
+static COURTS: LazyLock<Vec<citare_data_build::courts::Court>> = LazyLock::new(|| {
+    citare_data_build::courts::parse_courts(COURTS_JSON).expect("Failed to parse courts.json")
+});
+
+// ---------------------------------------------------------------------------
+// MatchResult
+// ---------------------------------------------------------------------------
+
+/// Result of a `match_on_tokens` call.
+///
+/// Provides access to named capture groups and the matched span within the
+/// built text buffer.
+pub struct MatchResult {
+    /// Named capture groups (logical name -> matched text).
+    pub groups: HashMap<String, Option<String>>,
+    /// Start offset within the built text.
+    pub start: usize,
+    /// End offset within the built text.
+    pub end: usize,
+}
+
+impl MatchResult {
+    /// Get a named group value, returning `None` if the group doesn't exist
+    /// or wasn't matched.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.groups.get(name).and_then(|v| v.as_deref())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// token_to_str
+// ---------------------------------------------------------------------------
+
+/// Convert a `TokenOrStr` to its string representation.
+fn token_to_str(token: &TokenOrStr) -> String {
+    match token {
+        TokenOrStr::Str(s) => s.clone(),
+        TokenOrStr::Token(t) => t.data().to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// match_on_tokens
+// ---------------------------------------------------------------------------
+
+/// Scan forward or backward from `start_index`, building a text buffer from
+/// consecutive tokens, then match `regex_str` against the buffer.
+///
+/// - If `forward` is true, anchors the regex at the start (`^`).
+/// - If `forward` is false, anchors at the end (`$`).
+/// - `prefix` is prepended (forward) or appended (backward) before scanning.
+/// - `strings_only`: stop at any non-string token (except paragraph tokens,
+///   which always stop scanning).
+pub fn match_on_tokens(
+    words: &Tokens,
+    start_index: i64,
+    regex_str: &str,
+    prefix: &str,
+    strings_only: bool,
+    forward: bool,
+) -> Option<MatchResult> {
+    let mut text = prefix.to_string();
+
+    // Anchor the regex
+    let anchored = if forward {
+        format!("^(?:{})", regex_str)
+    } else {
+        format!("(?:{})$", regex_str)
+    };
+
+    if forward {
+        let start = (start_index.max(0) as usize).min(words.len());
+        for token in &words[start..] {
+            // Stop at paragraph tokens
+            if let TokenOrStr::Token(Token::Paragraph(_)) = token {
+                break;
+            }
+            // Stop at non-string tokens if strings_only
+            if strings_only {
+                if let TokenOrStr::Token(_) = token {
+                    break;
+                }
+            }
+            text.push_str(&token_to_str(token));
+            if text.len() >= MAX_MATCH_CHARS {
+                text.truncate(MAX_MATCH_CHARS);
+                break;
+            }
+        }
+    } else {
+        let start = if start_index >= 0 {
+            (start_index as usize).min(words.len().saturating_sub(1))
+        } else {
+            return None;
+        };
+        for i in (0..=start).rev() {
+            let token = &words[i];
+            if let TokenOrStr::Token(Token::Paragraph(_)) = token {
+                break;
+            }
+            if strings_only {
+                if let TokenOrStr::Token(_) = token {
+                    break;
+                }
+            }
+            text = format!("{}{}", token_to_str(token), text);
+            if text.len() >= MAX_MATCH_CHARS {
+                let skip = text.len() - MAX_MATCH_CHARS;
+                text = text[skip..].to_string();
+                break;
+            }
+        }
+    }
+
+    // Match using fancy_regex (supports lookahead)
+    let re = FancyRegex::new(&anchored).ok()?;
+    let captures = re.captures(&text).ok()??;
+
+    // Extract all named groups
+    let mut groups = HashMap::new();
+
+    // Extract named groups by iterating through capture group names
+    // fancy_regex doesn't provide capture_names(), so we use a workaround:
+    // look for all (?P<name>...) patterns in the regex string
+    let name_re = re_named_groups();
+    for cap in name_re.captures_iter(regex_str) {
+        let name = cap.get(1).unwrap().as_str();
+        let value = captures.name(name).map(|m| m.as_str().to_string());
+        groups.insert(name.to_string(), value);
+    }
+
+    let overall = captures.get(0)?;
+
+    Some(MatchResult {
+        groups,
+        start: overall.start(),
+        end: overall.end(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// get_year
+// ---------------------------------------------------------------------------
+
+/// Parse a year string and return it if within a reasonable range.
+pub fn get_year(word: &str) -> Option<i32> {
+    let year: i32 = word.parse().ok()?;
+    if !(1600..=HIGHEST_VALID_YEAR).contains(&year) {
+        return None;
+    }
+    Some(year)
+}
+
+// ---------------------------------------------------------------------------
+// get_court_by_paren
+// ---------------------------------------------------------------------------
+
+/// Map a citation-parenthetical court string (e.g. "2d Cir") to a court id.
+///
+/// Does not handle SCOTUS (which lacks parentheticals).
+pub fn get_court_by_paren(paren_string: &str) -> Option<String> {
+    let court_str: String = paren_string
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase();
+
+    if court_str.is_empty() {
+        return None;
+    }
+
+    let mut fallback: Option<String> = None;
+    for court in COURTS.iter() {
+        let s: String = court
+            .citation_string
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase();
+
+        if s == court_str {
+            return Some(court.id.clone());
+        }
+        if s.starts_with(&court_str) {
+            fallback = Some(court.id.clone());
+        }
+    }
+    fallback
+}
+
+// ---------------------------------------------------------------------------
+// clean_pin_cite
+// ---------------------------------------------------------------------------
+
+/// Strip leading/trailing commas and spaces from a pin cite.
+pub fn clean_pin_cite(pin_cite: Option<&str>) -> Option<String> {
+    pin_cite.map(|s| s.trim_matches(&[',', ' '][..]).to_string())
+        .filter(|s| !s.is_empty())
+}
+
+// ---------------------------------------------------------------------------
+// process_parenthetical
+// ---------------------------------------------------------------------------
+
+/// Process a matched parenthetical, trimming nested unbalanced parens
+/// and filtering year-only parentheticals.
+pub fn process_parenthetical(paren: Option<&str>) -> Option<String> {
+    let paren = paren?;
+    if paren.is_empty() {
+        return None;
+    }
+
+    let mut balance: i32 = 0;
+    for (i, ch) in paren.char_indices() {
+        match ch {
+            '(' => balance += 1,
+            ')' => balance -= 1,
+            _ => {}
+        }
+        if balance < 0 {
+            let trimmed = &paren[..i];
+            if trimmed.is_empty() {
+                return None;
+            }
+            return Some(trimmed.to_string());
+        }
+    }
+
+    // Filter year-only parentheticals
+    let year_re = FancyRegex::new(&YEAR_REGEX).ok()?;
+    if year_re.is_match(paren).unwrap_or(false) {
+        // Check if the whole string is just a year
+        let full_match = format!("^(?:{})$", *YEAR_REGEX);
+        let full_re = FancyRegex::new(&full_match).ok()?;
+        if full_re.is_match(paren).unwrap_or(false) {
+            return None;
+        }
+    }
+
+    if paren.is_empty() {
+        None
+    } else {
+        Some(paren.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// extract_pin_cite
+// ---------------------------------------------------------------------------
+
+/// Extract a pin cite from the tokens following a citation token.
+///
+/// Returns `(pin_cite, span_end, parenthetical)`.
+pub fn extract_pin_cite(
+    words: &Tokens,
+    index: usize,
+    prefix: &str,
+) -> (Option<String>, Option<usize>, Option<String>) {
+    // Get the end position of the token at `index`
+    let from_token_end = match &words[index] {
+        TokenOrStr::Token(t) => t.end(),
+        TokenOrStr::Str(s) => {
+            // This shouldn't normally happen for citation tokens
+            // but handle it gracefully
+            warn!("extract_pin_cite called on string token");
+            s.len()
+        }
+    };
+
+    let m = match_on_tokens(
+        words,
+        (index + 1) as i64,
+        &POST_SHORT_CITATION_REGEX,
+        prefix,
+        true, // strings_only
+        true, // forward
+    );
+
+    if let Some(m) = m {
+        let pin_cite_raw = m.get("pin_cite");
+        let pin_cite = clean_pin_cite(pin_cite_raw);
+        let extra_chars = if let Some(pc) = pin_cite_raw {
+            pc.trim_end_matches(&[',', ' '][..]).len()
+        } else {
+            0
+        };
+        let parenthetical = process_parenthetical(m.get("parenthetical"));
+        let span_end = from_token_end + extra_chars - prefix.len();
+        (pin_cite, Some(span_end), parenthetical)
+    } else {
+        (None, None, None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// add_post_citation (for full case citations)
+// ---------------------------------------------------------------------------
+
+/// Add metadata to a full case citation from the text following it.
+///
+/// Parses court, year, pin_cite, parenthetical, etc.
+pub fn add_post_citation(citation: &mut FullCaseCitationData, words: &Tokens) {
+    let index = citation.resource.common.index;
+    let span_end = citation.resource.common.span_end.unwrap_or_else(|| {
+        citation.resource.common.token.end()
+    });
+
+    let m = match_on_tokens(
+        words,
+        (index + 1) as i64,
+        &POST_FULL_CITATION_REGEX,
+        "",
+        false, // not strings_only
+        true,  // forward
+    );
+
+    let m = match m {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Merge branch groups for pin_cite, month, year
+    // We need to re-run the regex with fancy_regex captures to get branch groups
+    // Since match_on_tokens already extracted groups, but we need the branch-merged version
+    // We'll reparse the captured groups through POST_FULL_CITATION_GROUPS
+    let mut merged = HashMap::new();
+    for &(logical_name, branch_names) in POST_FULL_CITATION_GROUPS {
+        let value = branch_names
+            .iter()
+            .filter_map(|name| {
+                m.groups
+                    .get(*name)
+                    .and_then(|v| v.as_deref())
+                    .map(|s| s.to_string())
+            })
+            .next();
+        merged.insert(logical_name.to_string(), value);
+    }
+
+    // Also include non-branched groups
+    for (k, v) in &m.groups {
+        if !merged.contains_key(k) {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+
+    citation.resource.common.full_span_end = Some(span_end + m.end);
+
+    let pin_cite_raw = merged.get("pin_cite").and_then(|v| v.as_deref());
+    citation.metadata.case.pin_cite = clean_pin_cite(pin_cite_raw);
+    if let Some(pc) = pin_cite_raw {
+        citation.metadata.case.pin_cite_span_end = Some(span_end + pc.len());
+    }
+
+    let extra = merged.get("extra").and_then(|v| v.as_deref())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    citation.metadata.extra = extra;
+
+    let raw_paren = merged.get("parenthetical").and_then(|v| v.as_deref());
+    let processed_paren = process_parenthetical(raw_paren);
+
+    // Adjust full_span_end if parenthetical was trimmed
+    if let (Some(fse), Some(raw), Some(ref proc)) = (
+        citation.resource.common.full_span_end,
+        raw_paren,
+        &processed_paren,
+    ) {
+        if raw.len() > proc.len() {
+            let offset = raw.len() - proc.len();
+            citation.resource.common.full_span_end = Some(fse - offset);
+        }
+    }
+    citation.metadata.case.parenthetical = processed_paren;
+
+    citation.metadata.case.year = merged.get("year").and_then(|v| v.clone());
+    citation.metadata.case.month = merged.get("month").and_then(|v| v.clone());
+    citation.metadata.case.day = merged.get("day").and_then(|v| v.clone());
+
+    if let Some(year_str) = merged.get("year").and_then(|v| v.as_deref()) {
+        citation.resource.year = get_year(year_str);
+    }
+
+    if let Some(court_str) = merged.get("court").and_then(|v| v.as_deref()) {
+        if !court_str.is_empty() {
+            citation.metadata.case.court = get_court_by_paren(court_str);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// add_law_metadata
+// ---------------------------------------------------------------------------
+
+/// Add metadata to a full law citation.
+pub fn add_law_metadata(citation: &mut FullLawCitationData, words: &Tokens) {
+    let index = citation.resource.common.index;
+    let span_end = citation.resource.common.span_end.unwrap_or_else(|| {
+        citation.resource.common.token.end()
+    });
+
+    let m = match_on_tokens(
+        words,
+        (index + 1) as i64,
+        &POST_LAW_CITATION_REGEX,
+        "",
+        true, // strings_only
+        true, // forward
+    );
+
+    let m = match m {
+        Some(m) => m,
+        None => return,
+    };
+
+    citation.resource.common.full_span_end = Some(span_end + m.end);
+    citation.metadata.pin_cite = clean_pin_cite(m.get("pin_cite"));
+    citation.metadata.publisher = m.get("publisher").map(|s| s.to_string());
+    citation.metadata.day = m.get("day").map(|s| s.to_string());
+    citation.metadata.month = m.get("month").map(|s| s.to_string());
+    citation.metadata.parenthetical = process_parenthetical(m.get("parenthetical"));
+    citation.metadata.year = m.get("year").map(|s| s.to_string());
+
+    if let Some(year_str) = m.get("year") {
+        citation.resource.year = get_year(year_str);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// add_journal_metadata
+// ---------------------------------------------------------------------------
+
+/// Add metadata to a full journal citation.
+pub fn add_journal_metadata(citation: &mut FullJournalCitationData, words: &Tokens) {
+    let index = citation.resource.common.index;
+    let span_end = citation.resource.common.span_end.unwrap_or_else(|| {
+        citation.resource.common.token.end()
+    });
+
+    let m = match_on_tokens(
+        words,
+        (index + 1) as i64,
+        &POST_JOURNAL_CITATION_REGEX,
+        "",
+        true, // strings_only
+        true, // forward
+    );
+
+    let m = match m {
+        Some(m) => m,
+        None => return,
+    };
+
+    citation.resource.common.full_span_end = Some(span_end + m.end);
+    citation.metadata.pin_cite = clean_pin_cite(m.get("pin_cite"));
+    citation.metadata.parenthetical = process_parenthetical(m.get("parenthetical"));
+    citation.metadata.year = m.get("year").map(|s| s.to_string());
+
+    if let Some(year_str) = m.get("year") {
+        citation.resource.year = get_year(year_str);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// add_pre_citation
+// ---------------------------------------------------------------------------
+
+/// Scan backwards to find a (PartyName - Pincite) component before a full case
+/// citation. Only runs if plaintiff/defendant haven't already been found.
+pub fn add_pre_citation(citation: &mut FullCaseCitationData, words: &Tokens) {
+    if citation.metadata.plaintiff.is_some() || citation.metadata.defendant.is_some() {
+        return;
+    }
+
+    let index = citation.resource.common.index;
+    let span_start = citation.resource.common.span_start.unwrap_or_else(|| {
+        citation.resource.common.token.start()
+    });
+
+    let m = match_on_tokens(
+        words,
+        index as i64 - 1,
+        &PRE_FULL_CITATION_REGEX,
+        "",
+        true,  // strings_only
+        false, // backward
+    );
+
+    let m = match m {
+        Some(m) => m,
+        None => return,
+    };
+
+    if m.get("pin_cite").is_some() {
+        let match_len = m.end - m.start;
+        citation.metadata.case.pin_cite_span_start = Some(span_start.saturating_sub(match_len));
+    }
+
+    citation.metadata.case.pin_cite = clean_pin_cite(m.get("pin_cite"));
+    citation.metadata.antecedent_guess = m.get("antecedent").map(|s| s.to_string());
+
+    let match_length = m.end - m.start;
+    citation.resource.common.full_span_start = Some(span_start.saturating_sub(match_length));
+}
+
+// ---------------------------------------------------------------------------
+// find_case_name (backward scan for plaintiff/defendant)
+// ---------------------------------------------------------------------------
+
+/// Find the case name by scanning backward from the citation token.
+///
+/// Updates `citation.metadata.plaintiff`, `citation.metadata.defendant`,
+/// and `citation.full_span_start`.
+pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short: bool) {
+    let mut state = initialize_search_state(citation);
+    scan_for_case_boundaries(words, citation, &mut state);
+
+    if state.candidate_case_name.is_some() {
+        process_case_name(citation, words, &state, short);
+    }
+}
+
+/// Find case name for a short case citation.
+pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens) {
+    let index = citation.resource.common.index;
+    let span_start = citation.resource.common.span_start.unwrap_or_else(|| {
+        citation.resource.common.token.start()
+    });
+    let back_seek = index.saturating_sub(BACKWARD_SEEK);
+
+    let mut state = SearchState {
+        offset: 0,
+        v_token_found: false,
+        start_index: None,
+        candidate_case_name: None,
+        pre_cite_year: None,
+        title_starting_index: if index > 0 { index - 1 } else { 0 },
+        case_name_length: 0,
+        plaintiff_length: 0,
+    };
+
+    // Scan backward
+    if index > 0 {
+        let scan_start = index - 1;
+        for i in (back_seek..=scan_start).rev() {
+            let word = &words[i];
+            let word_str = token_to_str(word);
+            state.offset += word_str.len();
+
+            if word_str == "," {
+                continue;
+            }
+            state.case_name_length += 1;
+
+            if state.v_token_found && !word_str.trim().is_empty() {
+                state.plaintiff_length += 1;
+            }
+
+            // Handle citation tokens
+            if let TokenOrStr::Token(Token::Citation(_)) = word {
+                if i > 0 {
+                    state.title_starting_index = i - 1;
+                }
+                continue;
+            }
+
+            // Terminal punctuation
+            if word_str.ends_with(';') || word_str.ends_with('\u{201D}') || word_str.ends_with('"') {
+                state.start_index = Some(i + 2);
+                state.candidate_case_name = Some(extract_text(words, i + 2, state.title_starting_index));
+                break;
+            }
+
+            // "v" stop word
+            if is_v_token(word) {
+                state.v_token_found = true;
+                if i >= 2 {
+                    state.start_index = Some(i - 2);
+                } else {
+                    state.start_index = Some(0);
+                }
+                state.candidate_case_name = Some(extract_text(
+                    words,
+                    state.start_index.unwrap(),
+                    state.title_starting_index,
+                ));
+                continue;
+            }
+
+            // Stop word (non-v)
+            if let TokenOrStr::Token(Token::StopWord(_)) = word {
+                state.start_index = Some(i + 2);
+                state.candidate_case_name = Some(extract_text(words, i + 2, state.title_starting_index));
+                break;
+            }
+
+            // Lowercase without v token
+            if !state.v_token_found
+                && !word_str.is_empty()
+                && word_str.chars().next().is_some_and(|c| c.is_lowercase() && c.is_alphabetic())
+                && !["of", "the", "an", "and"].contains(&word_str.as_str())
+            {
+                if let TokenOrStr::Token(Token::Supra(_)) = word {
+                    if i > 0 {
+                        state.title_starting_index = i - 1;
+                    }
+                    continue;
+                }
+                state.start_index = Some(i + 2);
+                let text = extract_text(words, i + 2, state.title_starting_index);
+                // Try to find a capitalized word
+                let cap_re = re_capitalized_word();
+                if let Some(m) = cap_re.find(&text) {
+                    state.candidate_case_name = Some(text[m.start()..].to_string());
+                } else {
+                    state.candidate_case_name = None;
+                }
+                break;
+            }
+
+            // Lowercase after v token
+            if state.v_token_found
+                && !word_str.is_empty()
+                && word_str.chars().next().is_some_and(|c| !c.is_uppercase())
+                && !word_str.trim().is_empty()
+                && !["of", "the", "an", "and"].contains(&word_str.as_str())
+            {
+                state.start_index = Some(i + 2);
+                let mut text = extract_text(words, i + 2, state.title_starting_index);
+                let prefix_re = re_leading_articles();
+                text = prefix_re.replace(&text, "").to_string();
+                state.candidate_case_name = Some(text);
+                break;
+            }
+
+            if i == 0 {
+                state.candidate_case_name = Some(extract_text(words, 0, state.title_starting_index));
+                state.start_index = Some(0);
+            }
+        }
+    }
+
+    // Process antecedent_guess
+    if let Some(ref candidate) = state.candidate_case_name {
+        let clean = strip_stop_words(candidate);
+        if !clean.is_empty() {
+            citation.metadata.antecedent_guess = Some(clean);
+            if let Some(start_idx) = state.start_index {
+                let offset = text_len_between(words, start_idx, index.saturating_sub(1)) + 1;
+                let span_start_val = span_start.saturating_sub(offset);
+                citation.resource.common.full_span_start = Some(span_start_val);
+            }
+        }
+    }
+
+    if let Some(ref year) = state.pre_cite_year {
+        citation.metadata.case.year = Some(year.clone());
+        if let Ok(y) = year.parse::<i32>() {
+            citation.resource.year = Some(y);
+        }
+    }
+}
+
+struct SearchState {
+    offset: usize,
+    v_token_found: bool,
+    start_index: Option<usize>,
+    candidate_case_name: Option<String>,
+    pre_cite_year: Option<String>,
+    title_starting_index: usize,
+    case_name_length: usize,
+    plaintiff_length: usize,
+}
+
+fn initialize_search_state(citation: &FullCaseCitationData) -> SearchState {
+    let index = citation.resource.common.index;
+    SearchState {
+        offset: 0,
+        v_token_found: false,
+        start_index: None,
+        candidate_case_name: None,
+        pre_cite_year: None,
+        title_starting_index: if index > 0 { index - 1 } else { 0 },
+        case_name_length: 0,
+        plaintiff_length: 0,
+    }
+}
+
+fn scan_for_case_boundaries(
+    words: &Tokens,
+    citation: &FullCaseCitationData,
+    state: &mut SearchState,
+) {
+    let index = citation.resource.common.index;
+    if index == 0 {
+        return;
+    }
+    let back_seek = index.saturating_sub(BACKWARD_SEEK);
+    let year_paren_re = re_year_paren();
+
+    for i in (back_seek..index).rev() {
+        let word = &words[i];
+        let word_str = token_to_str(word);
+        state.offset += word_str.len();
+
+        if word_str == "," {
+            continue;
+        }
+        state.case_name_length += 1;
+
+        if state.v_token_found && !word_str.trim().is_empty() {
+            state.plaintiff_length += 1;
+        }
+
+        // Handle citation tokens
+        if let TokenOrStr::Token(Token::Citation(_)) = word {
+            if i > 0 {
+                state.title_starting_index = i - 1;
+            }
+            continue;
+        }
+
+        // Terminal punctuation
+        if word_str.ends_with(';') || word_str.ends_with('\u{201D}') || word_str.ends_with('"') {
+            state.start_index = Some(i + 2);
+            state.candidate_case_name = Some(extract_text(words, i + 2, state.title_starting_index));
+            return;
+        }
+
+        // Year before citation e.g. (2004)
+        if year_paren_re.is_match(&word_str) {
+            if i > 0 {
+                state.title_starting_index = i - 1;
+            }
+            state.pre_cite_year = Some(word_str[1..5].to_string());
+            continue;
+        }
+
+        // Opening paren after sufficient words
+        if word_str.starts_with('(') && state.case_name_length > 3 {
+            let start = if word_str == "("
+                || (word_str.len() > 1
+                    && word_str.as_bytes()[1].is_ascii_alphabetic()
+                    && word_str.as_bytes()[1].is_ascii_lowercase())
+            {
+                i + 2
+            } else {
+                i
+            };
+            state.start_index = Some(start);
+            state.candidate_case_name = Some(extract_text(words, start, state.title_starting_index));
+            return;
+        }
+
+        // Lowercase after v token
+        if state.v_token_found
+            && !word_str.is_empty()
+            && word_str.chars().next().is_some_and(|c| !c.is_uppercase())
+            && !word_str.trim().is_empty()
+            && !["of", "the", "an", "and"].contains(&word_str.as_str())
+        {
+            state.start_index = Some(i + 2);
+            let text = extract_text(words, i + 2, state.title_starting_index);
+            state.candidate_case_name = Some(re_leading_articles().replace(&text, "").to_string());
+            return;
+        }
+
+        // Placeholder citations
+        if let TokenOrStr::Token(Token::Citation(_) | Token::Placeholder(_)) = word {
+            if i > 0 {
+                state.title_starting_index = i - 1;
+            }
+            continue;
+        }
+
+        // "v" stop word
+        if is_v_token(word) {
+            state.v_token_found = true;
+            state.start_index = Some(i.saturating_sub(2));
+            state.candidate_case_name = Some(extract_text(
+                words,
+                i.saturating_sub(2),
+                state.title_starting_index,
+            ));
+            continue;
+        }
+
+        // Capitalized abbreviation after v token or other stop word
+        if (is_capitalized_abbreviation(&word_str, state.v_token_found, state.plaintiff_length))
+            || matches!(word, TokenOrStr::Token(Token::StopWord(_)))
+        {
+            state.start_index = Some(i + 2);
+            state.candidate_case_name = Some(extract_text(words, i + 2, state.title_starting_index));
+            return;
+        }
+
+        // Lowercase without v token
+        if !state.v_token_found
+            && !word_str.is_empty()
+            && word_str.chars().next().is_some_and(|c| !c.is_uppercase() && c.is_alphabetic())
+            && !word_str.trim().is_empty()
+            && !["of", "the", "an", "and", "ex", "rel."].contains(&word_str.as_str())
+        {
+            if let TokenOrStr::Token(Token::Supra(_)) = word {
+                if i > 0 {
+                    state.title_starting_index = i - 1;
+                }
+                continue;
+            }
+            state.start_index = Some(i + 2);
+            let text = extract_text(words, i + 2, state.title_starting_index);
+            if let Some(m) = re_capitalized_word().find(&text) {
+                state.candidate_case_name = Some(text[m.start()..].to_string());
+            } else {
+                state.candidate_case_name = None;
+            }
+            return;
+        }
+
+        // Start of text
+        if i == 0 {
+            let mut text = extract_text(words, 0, state.title_starting_index);
+            let prefix_re = re_leading_articles_ci();
+            text = prefix_re.replace(&text, "").to_string();
+
+            // Drop if ends in numbers
+            let trailing_num_re = re_trailing_number();
+            if trailing_num_re.is_match(&text) {
+                state.candidate_case_name = None;
+            } else {
+                state.candidate_case_name = Some(text);
+            }
+            state.start_index = Some(0);
+        }
+    }
+}
+
+fn process_case_name(
+    citation: &mut FullCaseCitationData,
+    words: &Tokens,
+    state: &SearchState,
+    short: bool,
+) {
+    let candidate = match &state.candidate_case_name {
+        Some(c) => c.clone(),
+        None => return,
+    };
+
+    let index = citation.resource.common.index;
+    let span_start = citation.resource.common.span_start.unwrap_or_else(|| {
+        citation.resource.common.token.start()
+    });
+
+    if state.v_token_found {
+        let v_re = re_v_split();
+        let splits: Vec<&str> = v_re.splitn(&candidate, 2).collect();
+        let (plaintiff, defendant) = if splits.len() == 2 {
+            (splits[0].to_string(), splits[1].to_string())
+        } else {
+            (String::new(), splits[0].to_string())
+        };
+
+        let plaintiff = plaintiff.trim_matches(&[' ', ',', '('][..]).to_string();
+        // Remove lowercase words from plaintiff
+        let lc_re = re_lowercase_word();
+        let clean_plaintiff = lc_re.replace_all(&plaintiff, "").to_string();
+        let plaintiff = strip_stop_words(&clean_plaintiff);
+        if !short {
+            citation.metadata.plaintiff = Some(plaintiff).filter(|s| !s.is_empty());
+        }
+
+        let defendant = strip_stop_words(&defendant);
+        if !short {
+            citation.metadata.defendant = Some(defendant.clone()).filter(|s| !s.is_empty());
+        } else {
+            citation.metadata.antecedent_guess = Some(strip_stop_words(&candidate)).filter(|s| !s.is_empty());
+        }
+    } else {
+        let defendant = strip_stop_words(&candidate);
+        if !short {
+            citation.metadata.defendant = Some(defendant.clone()).filter(|s| !s.is_empty());
+        } else {
+            citation.metadata.antecedent_guess = Some(defendant.clone()).filter(|s| !s.is_empty());
+        }
+    }
+
+    // Calculate full_span_start
+    if let Some(start_idx) = state.start_index {
+        let clean = if state.v_token_found || !short {
+            state.candidate_case_name.as_deref().unwrap_or("")
+        } else {
+            ""
+        };
+        if !clean.is_empty() || state.start_index.is_some() {
+            let offset = text_len_between(words, start_idx, index.saturating_sub(1)) + 1;
+            citation.resource.common.full_span_start = Some(span_start.saturating_sub(offset));
+        }
+    }
+
+    if let Some(ref year) = state.pre_cite_year {
+        citation.metadata.case.year = Some(year.clone());
+        if let Ok(y) = year.parse::<i32>() {
+            citation.resource.year = Some(y);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Small helper functions
+// ---------------------------------------------------------------------------
+
+fn extract_text(words: &Tokens, start: usize, end: usize) -> String {
+    let start = start.min(words.len());
+    let end = end.min(words.len());
+    if start > end {
+        return String::new();
+    }
+    words[start..end]
+        .iter()
+        .map(token_to_str)
+        .collect::<String>()
+}
+
+fn text_len_between(words: &Tokens, start: usize, end: usize) -> usize {
+    let start = start.min(words.len());
+    let end = end.min(words.len());
+    if start > end {
+        return 0;
+    }
+    words[start..end]
+        .iter()
+        .map(|w| token_to_str(w).len())
+        .sum()
+}
+
+fn is_v_token(word: &TokenOrStr) -> bool {
+    if let TokenOrStr::Token(Token::StopWord(td)) = word {
+        td.groups.get("stop_word").and_then(|v| v.as_deref()) == Some("v")
+    } else {
+        false
+    }
+}
+
+fn is_capitalized_abbreviation(word_str: &str, v_token_found: bool, plaintiff_length: usize) -> bool {
+    v_token_found
+        && !word_str.is_empty()
+        && word_str.chars().next().is_some_and(|c| c.is_uppercase())
+        && word_str.len() > 4
+        && word_str.ends_with('.')
+        && plaintiff_length > 1
+}
+
+/// Strip legal stop words from text.
+fn strip_stop_words(text: &str) -> String {
+    let stop_re = re_stop_words_ci();
+    let cleaned = stop_re.replace_all(text, " ").to_string();
+    let in_re = re_leading_in();
+    let mut text = in_re.replace(&cleaned, "").to_string().trim().to_string();
+    text = text.trim_start_matches('(').trim_end_matches(')').to_string();
+    if text.contains(';') {
+        if let Some(part) = text.split(';').nth(1) {
+            text = part.to_string();
+        }
+    }
+    let text = text.trim_matches(&[',', ' '][..]).to_string();
+    let cleaned = stop_re.replace_all(&text, "").to_string();
+    cleaned.trim_matches(&[',', ' '][..]).trim().to_string()
+}
+
+// ---------------------------------------------------------------------------
+// guess_edition
+// ---------------------------------------------------------------------------
+
+/// Set `edition_guess` on a resource citation by narrowing down editions
+/// using the year if available.
+pub fn guess_edition(
+    exact_editions: &[crate::models::edition::Edition],
+    variation_editions: &[crate::models::edition::Edition],
+    year: Option<i32>,
+) -> Option<crate::models::edition::Edition> {
+    let editions = if !exact_editions.is_empty() {
+        exact_editions
+    } else if !variation_editions.is_empty() {
+        variation_editions
+    } else {
+        return None;
+    };
+
+    let mut candidates: Vec<&crate::models::edition::Edition> = editions.iter().collect();
+
+    // Narrow by year
+    if let Some(y) = year {
+        if candidates.len() > 1 {
+            let narrowed: Vec<&crate::models::edition::Edition> =
+                candidates.iter().filter(|e| e.includes_year(y)).copied().collect();
+            if !narrowed.is_empty() {
+                candidates = narrowed;
+            }
+        }
+    }
+
+    if candidates.len() == 1 {
+        Some(candidates[0].clone())
+    } else {
+        None
+    }
+}
+
+/// Set court to "scotus" if the reporter is a SCOTUS reporter and no court
+/// has been set yet.
+pub fn guess_court(
+    court: &Option<String>,
+    all_editions: &[crate::models::edition::Edition],
+) -> Option<String> {
+    if court.is_some() {
+        return court.clone();
+    }
+    if all_editions.iter().any(|e| e.reporter.is_scotus) {
+        Some("scotus".to_string())
+    } else {
+        court.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// filter_citations
+// ---------------------------------------------------------------------------
+
+/// Check if two spans overlap.
+fn overlapping_spans(span1: (usize, usize), span2: (usize, usize)) -> bool {
+    let (s1, e1) = span1;
+    let (s2, e2) = span2;
+    s1.max(s2) < e1.min(e2)
+}
+
+/// Filter and order citations, removing overlaps.
+///
+/// Deduplicates by span, sorts by full_span, and resolves overlaps
+/// (preferring non-reference citations over reference citations,
+/// and short-case over supra when overlapping).
+pub fn filter_citations(citations: Vec<Citation>) -> Vec<Citation> {
+    if citations.is_empty() {
+        return citations;
+    }
+
+    // Dedup by span
+    let mut seen: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut deduped = Vec::new();
+    for c in citations {
+        let span = c.span();
+        if let std::collections::hash_map::Entry::Vacant(e) = seen.entry(span) {
+            e.insert(deduped.len());
+            deduped.push(c);
+        }
+    }
+
+    // Sort by full_span
+    deduped.sort_by_key(|c| c.full_span());
+
+    let mut filtered: Vec<Citation> = Vec::new();
+    filtered.push(deduped.remove(0));
+
+    for citation in deduped {
+        let last = filtered.last().unwrap();
+        let is_overlapping = overlapping_spans(citation.full_span(), last.full_span());
+
+        if is_overlapping {
+            // Prefer non-reference over reference
+            if matches!(last, Citation::Reference(_)) {
+                filtered.pop();
+                filtered.push(citation);
+                continue;
+            }
+            if matches!(citation, Citation::Reference(_)) {
+                continue;
+            }
+
+            // Skip supra when overlapping with short case
+            if matches!(citation, Citation::Supra(_)) && matches!(last, Citation::ShortCase(_)) {
+                continue;
+            }
+
+            // Keep citation if it appears in the parenthetical
+            let paren = match last {
+                Citation::FullCase(d) => d.metadata.case.parenthetical.as_deref(),
+                Citation::ShortCase(d) => d.metadata.case.parenthetical.as_deref(),
+                Citation::FullLaw(d) => d.metadata.parenthetical.as_deref(),
+                Citation::FullJournal(d) => d.metadata.parenthetical.as_deref(),
+                Citation::Supra(d) => d.metadata.parenthetical.as_deref(),
+                Citation::Id(d) => d.metadata.parenthetical.as_deref(),
+                Citation::Reference(d) => d.metadata.parenthetical.as_deref(),
+                Citation::Unknown(_) => None,
+            };
+            if let Some(p) = paren {
+                if p.contains(citation.matched_text()) {
+                    filtered.push(citation);
+                    continue;
+                }
+            }
+
+            // Known overlap case: parallel full citations
+            if !matches!((&citation, last), (Citation::FullCase(_), Citation::FullCase(_))) {
+                warn!(
+                    "Unknown overlap case. Last: {:?}, Current: {:?}",
+                    last.type_name(),
+                    citation.type_name()
+                );
+            }
+        }
+
+        filtered.push(citation);
+    }
+
+    filtered
+}
+
+// ---------------------------------------------------------------------------
+// disambiguate_reporters
+// ---------------------------------------------------------------------------
+
+/// Remove citations where there are multiple possible reporters and none
+/// could be narrowed down.
+pub fn disambiguate_reporters(citations: Vec<Citation>) -> Vec<Citation> {
+    citations
+        .into_iter()
+        .filter(|c| {
+            if let Some(rc) = c.resource_common() {
+                rc.edition_guess.is_some()
+            } else {
+                true
+            }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_year_valid() {
+        assert_eq!(get_year("1999"), Some(1999));
+        assert_eq!(get_year("2024"), Some(2024));
+    }
+
+    #[test]
+    fn test_get_year_invalid() {
+        assert_eq!(get_year("1500"), None);
+        assert_eq!(get_year("3000"), None);
+        assert_eq!(get_year("abc"), None);
+    }
+
+    #[test]
+    fn test_get_court_by_paren_exact() {
+        // "D. Pa." should match "pennsylvaniad"
+        let result = get_court_by_paren("D. Pa.");
+        assert!(result.is_some(), "Expected to find a court for 'D. Pa.'");
+    }
+
+    #[test]
+    fn test_get_court_by_paren_empty() {
+        assert_eq!(get_court_by_paren(""), None);
+    }
+
+    #[test]
+    fn test_clean_pin_cite() {
+        assert_eq!(clean_pin_cite(Some(", at 240,")), Some("at 240".to_string()));
+        assert_eq!(clean_pin_cite(Some("  ")), None);
+        assert_eq!(clean_pin_cite(None), None);
+    }
+
+    #[test]
+    fn test_process_parenthetical_basic() {
+        assert_eq!(
+            process_parenthetical(Some("overruling Foo")),
+            Some("overruling Foo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_process_parenthetical_unbalanced() {
+        // "something) (other)" should trim at the first unbalanced )
+        assert_eq!(
+            process_parenthetical(Some("something) (other)")),
+            Some("something".to_string())
+        );
+    }
+
+    #[test]
+    fn test_process_parenthetical_year_only() {
+        assert_eq!(process_parenthetical(Some("2012")), None);
+    }
+
+    #[test]
+    fn test_process_parenthetical_none() {
+        assert_eq!(process_parenthetical(None), None);
+    }
+
+    #[test]
+    fn test_process_parenthetical_empty() {
+        assert_eq!(process_parenthetical(Some("")), None);
+    }
+
+    #[test]
+    fn test_strip_stop_words() {
+        let result = strip_stop_words("See Adarand");
+        assert!(result.contains("Adarand"), "Expected 'Adarand' in '{}'", result);
+    }
+
+    #[test]
+    fn test_guess_edition_single() {
+        use crate::models::edition::{Edition, Reporter, ReporterSource};
+        let reporter = Reporter::new(
+            "U.S.".to_string(),
+            "United States Reports".to_string(),
+            "federal".to_string(),
+            ReporterSource::Reporters,
+        );
+        let edition = Edition {
+            reporter,
+            short_name: "U.S.".to_string(),
+            start: None,
+            end: None,
+        };
+        let result = guess_edition(&[edition.clone()], &[], None);
+        assert_eq!(result, Some(edition));
+    }
+
+    #[test]
+    fn test_guess_edition_multiple_no_year() {
+        use crate::models::edition::{Edition, Reporter, ReporterSource};
+        let reporter = Reporter::new(
+            "S.W.".to_string(),
+            "Southwest Reporter".to_string(),
+            "state".to_string(),
+            ReporterSource::Reporters,
+        );
+        let e1 = Edition {
+            reporter: reporter.clone(),
+            short_name: "S.W.".to_string(),
+            start: Some("1886-01-01".to_string()),
+            end: Some("1999-12-31".to_string()),
+        };
+        let e2 = Edition {
+            reporter,
+            short_name: "S.W.2d".to_string(),
+            start: Some("2000-01-01".to_string()),
+            end: None,
+        };
+        // Without year, can't narrow down
+        assert_eq!(guess_edition(&[e1, e2], &[], None), None);
+    }
+
+    #[test]
+    fn test_overlapping_spans() {
+        assert!(overlapping_spans((0, 10), (5, 15)));
+        assert!(!overlapping_spans((0, 5), (5, 10)));
+        assert!(!overlapping_spans((0, 5), (10, 15)));
+    }
+
+    #[test]
+    fn test_match_on_tokens_forward() {
+        let words: Tokens = vec![
+            TokenOrStr::Str("hello".to_string()),
+            TokenOrStr::Str(" ".to_string()),
+            TokenOrStr::Str("world".to_string()),
+        ];
+        let m = match_on_tokens(&words, 0, r"hello\s+world", "", false, true);
+        assert!(m.is_some());
+    }
+
+    #[test]
+    fn test_match_on_tokens_backward() {
+        let words: Tokens = vec![
+            TokenOrStr::Str("hello".to_string()),
+            TokenOrStr::Str(" ".to_string()),
+            TokenOrStr::Str("world".to_string()),
+        ];
+        let m = match_on_tokens(&words, 2, r"hello\s+world", "", false, false);
+        assert!(m.is_some());
+    }
+}

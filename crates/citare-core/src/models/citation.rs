@@ -205,6 +205,20 @@ impl Citation {
         }
     }
 
+    /// Return a mutable reference to the common fields.
+    pub fn common_mut(&mut self) -> &mut CitationCommon {
+        match self {
+            Citation::FullCase(d) => &mut d.resource.common,
+            Citation::ShortCase(d) => &mut d.resource.common,
+            Citation::FullLaw(d) => &mut d.resource.common,
+            Citation::FullJournal(d) => &mut d.resource.common,
+            Citation::Supra(d) => &mut d.common,
+            Citation::Id(d) => &mut d.common,
+            Citation::Reference(d) => &mut d.common,
+            Citation::Unknown(d) => &mut d.common,
+        }
+    }
+
     /// The raw matched text of the citation token.
     pub fn matched_text(&self) -> &str {
         self.common().token.data()
