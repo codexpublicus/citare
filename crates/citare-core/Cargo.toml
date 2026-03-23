@@ -19,6 +19,7 @@ thiserror = "2"
 
 [build-dependencies]
 citare-data-build = { path = "../citare-data-build" }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 rstest = "0.25"
