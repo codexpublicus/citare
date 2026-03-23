@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 regex = { workspace = true }
 fancy-regex = { workspace = true }
 aho-corasick = { workspace = true }
+citare-data-build = { path = "../citare-data-build" }
 log = "0.4"
 dmp = "0.2"
 scraper = "0.22"
