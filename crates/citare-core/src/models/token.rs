@@ -185,6 +185,7 @@ mod tests {
             short_name: short_name.to_string(),
             start: None,
             end: None,
+            harvard_slug: None,
         }
     }
 

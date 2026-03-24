@@ -110,3 +110,59 @@ fn test_pipeline_no_citations() {
     let citations = get_citations(text, false, "", &[]);
     assert!(citations.is_empty());
 }
+
+#[test]
+fn test_harvard_slug_us_via_pipeline() {
+    // "1 U.S. 1" should yield a FullCaseCitation whose edition_guess (or
+    // all_editions) carries harvard_slug = Some("us").
+    let citations = get_citations("1 U.S. 1", false, "", &[]);
+    let full: Vec<_> = citations
+        .iter()
+        .filter(|c| matches!(c, citare_core::Citation::FullCase(_)))
+        .collect();
+    assert!(!full.is_empty(), "Expected at least one FullCaseCitation");
+
+    let slug = full[0]
+        .resource_common()
+        .and_then(|r| r.edition_guess.as_ref())
+        .and_then(|e| e.harvard_slug.as_deref())
+        .or_else(|| {
+            full[0]
+                .resource_common()
+                .and_then(|r| r.all_editions.first())
+                .and_then(|e| e.harvard_slug.as_deref())
+        });
+
+    assert_eq!(
+        slug,
+        Some("us"),
+        "U.S. citation should have harvard_slug = Some(\"us\")"
+    );
+}
+
+#[test]
+fn test_harvard_slug_a2d_via_pipeline() {
+    let citations = get_citations("1 A.2d 1", false, "", &[]);
+    let full: Vec<_> = citations
+        .iter()
+        .filter(|c| matches!(c, citare_core::Citation::FullCase(_)))
+        .collect();
+    assert!(!full.is_empty(), "Expected at least one FullCaseCitation for A.2d");
+
+    let slug = full[0]
+        .resource_common()
+        .and_then(|r| r.edition_guess.as_ref())
+        .and_then(|e| e.harvard_slug.as_deref())
+        .or_else(|| {
+            full[0]
+                .resource_common()
+                .and_then(|r| r.all_editions.first())
+                .and_then(|e| e.harvard_slug.as_deref())
+        });
+
+    assert_eq!(
+        slug,
+        Some("a2d"),
+        "A.2d citation should have harvard_slug = Some(\"a2d\")"
+    );
+}

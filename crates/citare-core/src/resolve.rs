@@ -392,7 +392,7 @@ mod tests {
         let citations = crate::find::get_citations(text, false, "", &[]);
         let resolutions = resolve_citations(&citations);
         // All resolved items are full citations.
-        for (resource, _) in &resolutions {
+        for resource in resolutions.keys() {
             assert!(resource.citation.is_full());
         }
     }

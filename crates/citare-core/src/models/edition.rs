@@ -47,6 +47,8 @@ pub struct Edition {
     pub start: Option<String>,
     /// ISO-8601 date string (YYYY-...) or None if open-ended.
     pub end: Option<String>,
+    /// Harvard Caselaw Access Project reporter slug (e.g. "us", "a2d"), if known.
+    pub harvard_slug: Option<String>,
 }
 
 impl Edition {
@@ -103,6 +105,7 @@ mod tests {
             short_name: "S.W.".to_string(),
             start: start.map(String::from),
             end: end.map(String::from),
+            harvard_slug: None,
         }
     }
 
@@ -174,5 +177,18 @@ mod tests {
     fn test_edition_display() {
         let e = make_edition(None, None);
         assert_eq!(e.to_string(), "S.W.");
+    }
+
+    #[test]
+    fn test_edition_harvard_slug_none_by_default() {
+        let e = make_edition(None, None);
+        assert_eq!(e.harvard_slug, None);
+    }
+
+    #[test]
+    fn test_edition_harvard_slug_some() {
+        let mut e = make_edition(None, None);
+        e.harvard_slug = Some("sw".to_string());
+        assert_eq!(e.harvard_slug, Some("sw".to_string()));
     }
 }

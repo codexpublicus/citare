@@ -582,6 +582,7 @@ mod tests {
             short_name: "U.S.".to_string(),
             start: None,
             end: None,
+            harvard_slug: None,
         };
         let mut resource = make_resource(make_token("1 U.S. 1", 0, 8));
         resource.edition_guess = Some(edition);

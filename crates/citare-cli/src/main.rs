@@ -74,6 +74,7 @@ struct CitationJson {
     span: [usize; 2],
     groups: HashMap<String, Option<String>>,
     year: Option<i32>,
+    harvard_slug: Option<String>,
     metadata: HashMap<String, Option<String>>,
 }
 
@@ -175,6 +176,16 @@ fn print_json<T: Serialize>(value: &T) {
 fn citation_to_json(citation: &citare_core::Citation) -> CitationJson {
     let (start, end) = citation.span();
     let year = citation.resource_common().and_then(|r| r.year);
+    let harvard_slug = citation
+        .resource_common()
+        .and_then(|r| r.edition_guess.as_ref())
+        .and_then(|e| e.harvard_slug.clone())
+        .or_else(|| {
+            citation
+                .resource_common()
+                .and_then(|r| r.all_editions.first())
+                .and_then(|e| e.harvard_slug.clone())
+        });
     let metadata = extract_metadata(citation);
 
     CitationJson {
@@ -183,6 +194,7 @@ fn citation_to_json(citation: &citare_core::Citation) -> CitationJson {
         span: [start, end],
         groups: citation.common().groups.clone(),
         year,
+        harvard_slug,
         metadata,
     }
 }

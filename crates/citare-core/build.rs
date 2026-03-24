@@ -25,6 +25,7 @@ struct BuildEdition {
     short_name: String,
     start: Option<String>,
     end: Option<String>,
+    harvard_slug: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,7 @@ struct GenExtractor {
 
 fn main() {
     println!("cargo::rerun-if-changed=../../data/");
+    println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = Path::new(&out_dir).join("generated_extractors.rs");
@@ -135,6 +137,23 @@ fn main() {
     let courts_json = include_str!("../../data/courts-db/courts_db/data/courts.json");
     let courts = parse_courts(courts_json).expect("Failed to parse courts.json");
     println!("cargo::warning=Loaded {} courts", courts.len());
+
+    // Load Harvard CAP reporter slug map: short_name -> slug
+    let harvard_json = include_str!("../../data/harvard_reporters.json");
+    let harvard_entries: Vec<serde_json::Value> =
+        serde_json::from_str(harvard_json).expect("Failed to parse harvard_reporters.json");
+    let harvard_slug_map: HashMap<String, String> = harvard_entries
+        .into_iter()
+        .filter_map(|entry| {
+            let short_name = entry.get("short_name")?.as_str()?.to_string();
+            let slug = entry.get("slug")?.as_str()?.to_string();
+            Some((short_name, slug))
+        })
+        .collect();
+    println!(
+        "cargo::warning=Loaded {} Harvard CAP slug mappings",
+        harvard_slug_map.len()
+    );
 
     // -----------------------------------------------------------------------
     // 3. Build editions_by_regex (same logic as tokenizer.rs build_extractors)
@@ -276,6 +295,7 @@ fn main() {
                     short_name: edition_name.clone(),
                     start: edition_data.start.clone(),
                     end: edition_data.end.clone(),
+                    harvard_slug: harvard_slug_map.get(edition_name).cloned(),
                 };
 
                 let regex_templates: Vec<String> = edition_data
@@ -316,6 +336,7 @@ fn main() {
                 short_name: source_key.clone(),
                 start: source.start.clone(),
                 end: source.end.clone(),
+                harvard_slug: harvard_slug_map.get(source_key).cloned(),
             };
 
             let regex_templates: Vec<String> = if source.regexes.is_empty() {
@@ -353,6 +374,7 @@ fn main() {
                 short_name: source_key.clone(),
                 start: source.start.clone(),
                 end: source.end.clone(),
+                harvard_slug: harvard_slug_map.get(source_key).cloned(),
             };
 
             let regex_templates: Vec<String> = if source.regexes.is_empty() {
@@ -551,6 +573,7 @@ fn main() {
     writeln!(output, "    pub short_name: &'static str,").unwrap();
     writeln!(output, "    pub start: Option<&'static str>,").unwrap();
     writeln!(output, "    pub end: Option<&'static str>,").unwrap();
+    writeln!(output, "    pub harvard_slug: Option<&'static str>,").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -596,6 +619,12 @@ fn main() {
             output,
             "        end: {},",
             rust_option_str(&ed.end)
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "        harvard_slug: {},",
+            rust_option_str(&ed.harvard_slug)
         )
         .unwrap();
         writeln!(output, "    }},").unwrap();

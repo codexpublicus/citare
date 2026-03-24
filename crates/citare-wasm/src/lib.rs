@@ -20,6 +20,7 @@ pub struct JsCitation {
     pub span: (usize, usize),
     pub groups: HashMap<String, Option<String>>,
     pub year: Option<i32>,
+    pub harvard_slug: Option<String>,
     pub metadata: HashMap<String, Option<String>>,
 }
 
@@ -117,6 +118,17 @@ fn citation_to_js(citation: &citare_core::Citation) -> JsCitation {
 
     let year = citation.resource_common().and_then(|r| r.year);
 
+    let harvard_slug = citation
+        .resource_common()
+        .and_then(|r| r.edition_guess.as_ref())
+        .and_then(|e| e.harvard_slug.clone())
+        .or_else(|| {
+            citation
+                .resource_common()
+                .and_then(|r| r.all_editions.first())
+                .and_then(|e| e.harvard_slug.clone())
+        });
+
     let metadata = extract_metadata(citation);
 
     JsCitation {
@@ -125,6 +137,7 @@ fn citation_to_js(citation: &citare_core::Citation) -> JsCitation {
         span: (start, end),
         groups: citation.common().groups.clone(),
         year,
+        harvard_slug,
         metadata,
     }
 }

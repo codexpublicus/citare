@@ -216,6 +216,7 @@ fn edition_from_generated(gen: &GeneratedEdition) -> Edition {
         short_name: gen.short_name.to_string(),
         start: gen.start.map(|s| s.to_string()),
         end: gen.end.map(|s| s.to_string()),
+        harvard_slug: gen.harvard_slug.map(|s| s.to_string()),
     }
 }
 
@@ -723,6 +724,7 @@ mod tests {
             short_name: "Holmes".to_string(),
             start: None,
             end: None,
+            harvard_slug: None,
         };
         let token = Token::Citation(CitationTokenData {
             token_data: td,
@@ -752,6 +754,7 @@ mod tests {
             short_name: "U.S.".to_string(),
             start: None,
             end: None,
+            harvard_slug: None,
         };
         let token = Token::Citation(CitationTokenData {
             token_data: td,
@@ -908,6 +911,75 @@ mod tests {
         assert!(
             !lookup["U.S."].is_empty(),
             "U.S. should have at least one edition"
+        );
+    }
+
+    #[test]
+    fn test_harvard_slug_us() {
+        let lookup = &*EDITIONS_LOOKUP;
+        let editions = lookup.get("U.S.").expect("U.S. should be in EDITIONS_LOOKUP");
+        let slug = editions
+            .iter()
+            .find_map(|e| e.harvard_slug.as_deref());
+        assert_eq!(
+            slug,
+            Some("us"),
+            "U.S. editions should have harvard_slug = Some(\"us\")"
+        );
+    }
+
+    #[test]
+    fn test_harvard_slug_a2d() {
+        let lookup = &*EDITIONS_LOOKUP;
+        let editions = lookup.get("A.2d").expect("A.2d should be in EDITIONS_LOOKUP");
+        let slug = editions
+            .iter()
+            .find_map(|e| e.harvard_slug.as_deref());
+        assert_eq!(
+            slug,
+            Some("a2d"),
+            "A.2d editions should have harvard_slug = Some(\"a2d\")"
+        );
+    }
+
+    #[test]
+    fn test_harvard_slug_none_for_unmatched() {
+        // "A." (Atlantic Reporter 1st series abbreviated) is not in the
+        // Harvard CAP data, so its editions should have harvard_slug = None.
+        let lookup = &*EDITIONS_LOOKUP;
+        if let Some(editions) = lookup.get("A.") {
+            for e in editions {
+                assert!(
+                    e.harvard_slug.is_none(),
+                    "A. should not have a harvard_slug, got {:?}",
+                    e.harvard_slug
+                );
+            }
+        }
+        // Also verify at the raw generated data level
+        let unmatched = GENERATED_EDITIONS
+            .iter()
+            .filter(|e| e.short_name == "A." && e.harvard_slug.is_some())
+            .count();
+        assert_eq!(unmatched, 0, "A. should have no Harvard slug in generated data");
+    }
+
+    #[test]
+    fn test_harvard_slug_in_generated_editions() {
+        // Verify the generated data array contains expected slugs
+        let us_edition = GENERATED_EDITIONS
+            .iter()
+            .find(|e| e.short_name == "U.S." && e.harvard_slug == Some("us"));
+        assert!(
+            us_edition.is_some(),
+            "GENERATED_EDITIONS should contain U.S. with harvard_slug = Some(\"us\")"
+        );
+        let a2d_edition = GENERATED_EDITIONS
+            .iter()
+            .find(|e| e.short_name == "A.2d" && e.harvard_slug == Some("a2d"));
+        assert!(
+            a2d_edition.is_some(),
+            "GENERATED_EDITIONS should contain A.2d with harvard_slug = Some(\"a2d\")"
         );
     }
 }

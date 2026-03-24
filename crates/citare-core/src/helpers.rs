@@ -1324,8 +1324,9 @@ mod tests {
             short_name: "U.S.".to_string(),
             start: None,
             end: None,
+            harvard_slug: None,
         };
-        let result = guess_edition(&[edition.clone()], &[], None);
+        let result = guess_edition(std::slice::from_ref(&edition), &[], None);
         assert_eq!(result, Some(edition));
     }
 
@@ -1343,12 +1344,14 @@ mod tests {
             short_name: "S.W.".to_string(),
             start: Some("1886-01-01".to_string()),
             end: Some("1999-12-31".to_string()),
+            harvard_slug: None,
         };
         let e2 = Edition {
             reporter,
             short_name: "S.W.2d".to_string(),
             start: Some("2000-01-01".to_string()),
             end: None,
+            harvard_slug: None,
         };
         // Without year, can't narrow down
         assert_eq!(guess_edition(&[e1, e2], &[], None), None);
