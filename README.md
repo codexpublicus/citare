@@ -9,6 +9,7 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Extract legal citations from text (case law, statutes, journals)
 - Resolve short-form citations (Id., supra, short case) to their full citations
 - Annotate source text with citation markers
+- Harvard CAP slug mapping — resolve citations to [Caselaw Access Project](https://case.law) data
 - Runs natively or as WASM in browsers/Node.js
 
 ## Citation Types
@@ -29,8 +30,9 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Citation resolution (linking short forms to full citations)
 - Text annotation with citation markers
 - Text cleaning (HTML extraction, whitespace normalization)
+- Harvard CAP slug mapping (366/399 reporters matched)
 - CLI, native Rust library, and WASM bindings
-- 193 tests, 44/44 cross-validation with eyecite
+- 201 tests, 44/44 cross-validation with eyecite
 
 **Deferred:**
 - HTML-aware case name extraction (markup_text mode)
@@ -93,11 +95,23 @@ console.log(resolutions);
 // [{resource_text: "1 U.S. 1", citations: [...]}]
 ```
 
+## Harvard CAP Integration
+
+Citations are automatically mapped to [Harvard Caselaw Access Project](https://case.law) reporter slugs, enabling direct resolution to case text:
+
+```
+"31 A.2d 647" → reporter=A.2d, slug=a2d, volume=31, page=647
+                 → https://static.case.law/a2d/31.zip
+```
+
+366 of 399 Harvard reporters are matched. The `harvard_slug` field appears in CLI, WASM, and Rust API output.
+
 ## Data Sources
 
 Citation patterns are sourced from:
 - [reporters-db](https://github.com/freelawproject/reporters-db) — 1,235 reporters, 1,367 editions
 - [courts-db](https://github.com/freelawproject/courts-db) — 2,800+ courts
+- [Harvard CAP](https://case.law) — 399 reporter slug mappings
 
 ## Building
 
