@@ -279,6 +279,21 @@ impl Citation {
         matches!(self, Citation::FullCase(_) | Citation::ShortCase(_))
     }
 
+    /// Returns `true` if this is a resource citation with multiple possible
+    /// editions that could not be narrowed down to a single guess.
+    ///
+    /// This happens when the reporter string matches multiple editions
+    /// (e.g., different series) and the year (if any) doesn't disambiguate.
+    /// eyecite silently drops these when `remove_ambiguous=true`.
+    /// citare preserves them with this flag so consumers can decide.
+    pub fn is_ambiguous(&self) -> bool {
+        if let Some(rc) = self.resource_common() {
+            rc.edition_guess.is_none() && rc.all_editions.len() > 1
+        } else {
+            false
+        }
+    }
+
     /// Returns the `ResourceCitationCommon` if this is a resource citation.
     pub fn resource_common(&self) -> Option<&ResourceCitationCommon> {
         match self {

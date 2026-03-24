@@ -75,6 +75,7 @@ struct CitationJson {
     groups: HashMap<String, Option<String>>,
     year: Option<i32>,
     harvard_slug: Option<String>,
+    ambiguous: bool,
     metadata: HashMap<String, Option<String>>,
 }
 
@@ -195,6 +196,7 @@ fn citation_to_json(citation: &citare_core::Citation) -> CitationJson {
         groups: citation.common().groups.clone(),
         year,
         harvard_slug,
+        ambiguous: citation.is_ambiguous(),
         metadata,
     }
 }

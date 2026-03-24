@@ -21,6 +21,7 @@ pub struct JsCitation {
     pub groups: HashMap<String, Option<String>>,
     pub year: Option<i32>,
     pub harvard_slug: Option<String>,
+    pub ambiguous: bool,
     pub metadata: HashMap<String, Option<String>>,
 }
 
@@ -138,6 +139,7 @@ fn citation_to_js(citation: &citare_core::Citation) -> JsCitation {
         groups: citation.common().groups.clone(),
         year,
         harvard_slug,
+        ambiguous: citation.is_ambiguous(),
         metadata,
     }
 }
