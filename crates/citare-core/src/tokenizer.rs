@@ -301,7 +301,13 @@ fn build_extractors_and_lookup() -> (Vec<TokenExtractor>, HashMap<String, Vec<Ed
         }
     };
 
-    // Helper: expand regex templates for an edition
+    // Helper: expand regex templates for an edition.
+    //
+    // Mirrors Python's `substitute_editions()` which returns a SEPARATE regex
+    // for each edition string (the canonical name + each variation that maps
+    // to this edition). This is critical: each variation gets its own compiled
+    // regex and its own TokenExtractor so the AC automaton can pre-filter by
+    // the variation string.
     let add_regexes = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
                        editions_lookup: &mut HashMap<String, Vec<Edition>>,
                        regex_templates: &[String],
@@ -320,6 +326,20 @@ fn build_extractors_and_lookup() -> (Vec<TokenExtractor>, HashMap<String, Vec<Ed
                 template.clone()
             });
 
+            // If the template doesn't contain $edition, there's only one regex
+            if !resolved.contains("$edition") && !resolved.contains("${edition}") {
+                add_regex(
+                    editions_by_regex,
+                    editions_lookup,
+                    "editions",
+                    &[edition_name],
+                    edition,
+                    &resolved,
+                );
+                continue;
+            }
+
+            // Generate separate regex for the canonical edition name
             let regex = substitute_edition(&resolved, &[edition_name]);
             add_regex(
                 editions_by_regex,
@@ -330,15 +350,14 @@ fn build_extractors_and_lookup() -> (Vec<TokenExtractor>, HashMap<String, Vec<Ed
                 &regex,
             );
 
-            if !variation_names.is_empty() {
-                let var_refs: Vec<&str> =
-                    variation_names.iter().map(|s| s.as_str()).collect();
-                let var_regex = substitute_edition(&resolved, &var_refs);
+            // Generate a SEPARATE regex for EACH variation (not combined)
+            for var_name in variation_names {
+                let var_regex = substitute_edition(&resolved, &[var_name.as_str()]);
                 add_regex(
                     editions_by_regex,
                     editions_lookup,
                     "variations",
-                    &var_refs,
+                    &[var_name.as_str()],
                     edition,
                     &var_regex,
                 );
@@ -683,7 +702,9 @@ impl AhocorasickTokenizer {
                 .iter()
                 .map(|p| cs_grouped[p].clone())
                 .collect();
-            let ac = AhoCorasick::new(&patterns)
+            let ac = aho_corasick::AhoCorasick::builder()
+                .match_kind(aho_corasick::MatchKind::Standard)
+                .build(&patterns)
                 .expect("Failed to build case-sensitive AhoCorasick");
             (Some(ac), map)
         };
@@ -697,7 +718,9 @@ impl AhocorasickTokenizer {
                 .iter()
                 .map(|p| ci_grouped[p].clone())
                 .collect();
-            let ac = AhoCorasick::new(&patterns)
+            let ac = aho_corasick::AhoCorasick::builder()
+                .match_kind(aho_corasick::MatchKind::Standard)
+                .build(&patterns)
                 .expect("Failed to build case-insensitive AhoCorasick");
             (Some(ac), map)
         };
@@ -719,12 +742,21 @@ impl AhocorasickTokenizer {
     }
 
     /// Get the set of extractors that could match `text`.
+    ///
+    /// Uses overlapping iteration to find all patterns, even when shorter
+    /// patterns (e.g., "A.") overlap with longer ones (e.g., "A.2d").
     fn get_extractors(&self, text: &str) -> Vec<&TokenExtractor> {
         let mut result: HashSet<usize> =
             self.unfiltered_indices.iter().copied().collect();
 
         if let Some(ref ac) = self.case_sensitive_ac {
-            for mat in ac.find_iter(text) {
+            let mut state = aho_corasick::automaton::OverlappingState::start();
+            loop {
+                ac.find_overlapping(text, &mut state);
+                let mat = match state.get_match() {
+                    Some(m) => m,
+                    None => break,
+                };
                 for &idx in &self.case_sensitive_map[mat.pattern().as_usize()] {
                     result.insert(idx);
                 }
@@ -733,7 +765,13 @@ impl AhocorasickTokenizer {
 
         if let Some(ref ac) = self.case_insensitive_ac {
             let lower = text.to_lowercase();
-            for mat in ac.find_iter(&lower) {
+            let mut state = aho_corasick::automaton::OverlappingState::start();
+            loop {
+                ac.find_overlapping(&lower, &mut state);
+                let mat = match state.get_match() {
+                    Some(m) => m,
+                    None => break,
+                };
                 for &idx in &self.case_insensitive_map[mat.pattern().as_usize()] {
                     result.insert(idx);
                 }
@@ -753,6 +791,11 @@ impl AhocorasickTokenizer {
             }
         }
         tokens
+    }
+
+    /// Debug: return the number of extractors selected for text.
+    pub fn extractor_count_for_text(&self, text: &str) -> usize {
+        self.get_extractors(text).len()
     }
 }
 
