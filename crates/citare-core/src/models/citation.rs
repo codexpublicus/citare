@@ -174,15 +174,36 @@ pub struct UnknownCitationData {
 // ---------------------------------------------------------------------------
 
 /// A legal citation extracted from text.
+///
+/// Each variant corresponds to a distinct citation form:
+///
+/// | Variant | Example |
+/// |---------|---------|
+/// | `FullCase` | `Foo v. Bar, 1 U.S. 1 (1999)` |
+/// | `ShortCase` | `Foo, 1 U.S., at 2` |
+/// | `FullLaw` | `Mass. Gen. Laws ch. 1, § 2` |
+/// | `FullJournal` | `1 Minn. L. Rev. 1` |
+/// | `Supra` | `Foo, supra, at 2` |
+/// | `Id` | `Id. at 2` |
+/// | `Reference` | A bare party-name reference resolved back to a full case |
+/// | `Unknown` | A section marker (`§`) whose citation context could not be determined |
 #[derive(Debug, Clone)]
 pub enum Citation {
+    /// A full case citation with reporter, volume, and page (e.g. `1 U.S. 1 (1999)`).
     FullCase(FullCaseCitationData),
+    /// A short-form case citation referencing a previously-cited case (e.g. `Foo, 1 U.S., at 2`).
     ShortCase(ShortCaseCitationData),
+    /// A full statutory citation (e.g. `Mass. Gen. Laws ch. 1, § 2`).
     FullLaw(FullLawCitationData),
+    /// A full law-review journal citation (e.g. `1 Minn. L. Rev. 1`).
     FullJournal(FullJournalCitationData),
+    /// A *supra* short-form citation (e.g. `Foo, supra, at 2`).
     Supra(SupraCitationData),
+    /// An *id.* or *ibid.* citation referring to the immediately preceding citation.
     Id(IdCitationData),
+    /// A bare party-name reference resolved back to a full case citation.
     Reference(ReferenceCitationData),
+    /// A section marker (`§`) whose surrounding context could not be resolved.
     Unknown(UnknownCitationData),
 }
 

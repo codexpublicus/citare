@@ -24,16 +24,30 @@ pub struct CitationTokenData {
     pub short: bool,
 }
 
-/// A token produced by the tokenizer.
+/// A token produced by the tokenizer during the citation-finding pipeline.
+///
+/// The tokenizer scans text with Aho-Corasick and produces a mixed list of
+/// `Token` values (for recognized patterns) and raw string spans.  The
+/// citation finder then inspects each `Token` to build [`Citation`] values.
+///
+/// [`Citation`]: crate::models::Citation
 #[derive(Debug, Clone)]
 pub enum Token {
+    /// A reporter, law, or journal token — the heart of a citation.
     Citation(CitationTokenData),
+    /// An *id.* / *ibid.* token.
     Id(TokenData),
+    /// A *supra* token.
     Supra(TokenData),
+    /// A stop-word that delimits citation boundaries.
     StopWord(TokenData),
+    /// A section symbol (`§`) that may introduce a statutory citation.
     Section(TokenData),
+    /// A paragraph break marker.
     Paragraph(TokenData),
+    /// A placeholder inserted during HTML cleaning to preserve offsets.
     Placeholder(TokenData),
+    /// A bare party-name reference found after a full case citation.
     CaseReference(TokenData),
 }
 

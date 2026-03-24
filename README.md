@@ -22,6 +22,36 @@ Part of the [stare.pub](https://stare.pub) project family.
 | Law | `Mass. Gen. Laws ch. 1, § 2` |
 | Journal | `1 Minn. L. Rev. 1` |
 
+## Status
+
+**Implemented:**
+- Full citation finding pipeline (case, law, journal, short, supra, id, reference)
+- Citation resolution (linking short forms to full citations)
+- Text annotation with citation markers
+- Text cleaning (HTML extraction, whitespace normalization)
+- CLI, native Rust library, and WASM bindings
+- 193 tests, 44/44 cross-validation with eyecite
+
+**Deferred:**
+- HTML-aware case name extraction (markup_text mode)
+- npm package publishing
+
+## CLI
+
+```bash
+# Extract citations as JSON
+echo "Foo v. Bar, 1 U.S. 1 (1999). Id. at 2." | citare find
+
+# Resolve citations to resources
+echo "Foo v. Bar, 1 U.S. 1 (1999). Id. at 2." | citare resolve
+
+# Annotate text with <cite> markers
+echo "Foo v. Bar, 1 U.S. 1 (1999). Id. at 2." | citare annotate
+
+# Inline text
+citare find --text "1 U.S. 1"
+```
+
 ## Quick Start (Rust)
 
 ```rust
@@ -49,7 +79,8 @@ let annotated = annotate_citations(text, &mut annotations, "", UnbalancedTags::U
 ## Quick Start (WASM/JavaScript)
 
 ```javascript
-import init, { getCitations, resolveCitations, annotateCitations } from '@starepub/citare';
+// Note: npm package not yet published. Build from source with wasm-pack.
+import init, { getCitations, resolveCitations, annotateCitations } from '@lokkju/citare';
 
 await init();
 

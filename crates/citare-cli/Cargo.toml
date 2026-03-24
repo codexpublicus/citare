@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "CLI for citare legal citation extraction"
+repository.workspace = true
+homepage = "https://github.com/lokkju/citare"
+keywords = ["legal", "citation", "cli", "law", "parser"]
+categories = ["text-processing", "command-line-utilities"]
 
 [[bin]]
 name = "citare"

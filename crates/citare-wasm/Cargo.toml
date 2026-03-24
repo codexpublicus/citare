@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "WASM bindings for citare legal citation extraction"
+repository.workspace = true
+homepage = "https://github.com/lokkju/citare"
+keywords = ["legal", "citation", "wasm", "law", "parser"]
+categories = ["text-processing", "wasm"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
