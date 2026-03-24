@@ -12,11 +12,6 @@ use regex::Regex;
 
 use crate::models::edition::{Edition, Reporter, ReporterSource};
 use crate::models::token::{CitationTokenData, Token, TokenData, TokenOrStr, Tokens};
-use crate::regexes::{
-    nonalphanum_boundaries_re, short_cite_re, ID_REGEX, PAGE_NUMBER_REGEX, PARAGRAPH_REGEX,
-    PLACEHOLDER_CITATIONS, SECTION_REGEX, STOP_WORD_REGEX, STOP_WORDS,
-    SUPRA_REGEX,
-};
 
 // ---------------------------------------------------------------------------
 // Token type and extractor extra data
@@ -158,440 +153,112 @@ pub fn token_is_from_nominative_reporter(token: &Token) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Extractor builder
+// Build-time generated extractor data
 // ---------------------------------------------------------------------------
 
-/// Embedded JSON data files.
-const REPORTERS_JSON: &str =
-    include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
-const LAWS_JSON: &str =
-    include_str!("../../../data/reporters-db/reporters_db/data/laws.json");
-const JOURNALS_JSON: &str =
-    include_str!("../../../data/reporters-db/reporters_db/data/journals.json");
-const REGEXES_JSON: &str =
-    include_str!("../../../data/reporters-db/reporters_db/data/regexes.json");
+include!(concat!(env!("OUT_DIR"), "/generated_extractors.rs"));
+
+// ---------------------------------------------------------------------------
+// Extractor builder (uses build-time generated data)
+// ---------------------------------------------------------------------------
 
 /// Global lazily-initialised extractors.
 pub static EXTRACTORS: LazyLock<Vec<TokenExtractor>> = LazyLock::new(build_extractors);
 
 /// Global lazily-initialised editions lookup (reporter string -> editions).
 pub static EDITIONS_LOOKUP: LazyLock<HashMap<String, Vec<Edition>>> =
-    LazyLock::new(|| build_extractors_and_lookup().1);
+    LazyLock::new(build_editions_lookup);
 
-/// Internal data structure for accumulating editions by regex.
-#[derive(Debug, Clone, Default)]
-struct EditionsByRegexEntry {
-    editions: Vec<Edition>,
-    variations: Vec<Edition>,
-    strings: HashSet<String>,
-    short: bool,
-}
-
-/// Build all extractors. This is the main entry point called once by `LazyLock`.
-pub fn build_extractors() -> Vec<TokenExtractor> {
-    build_extractors_and_lookup().0
-}
-
-/// Build extractors and the editions lookup table together.
-fn build_extractors_and_lookup() -> (Vec<TokenExtractor>, HashMap<String, Vec<Edition>>) {
-    // 1. Load and process regex variables with overrides
-    let mut raw: serde_json::Value =
-        serde_json::from_str(REGEXES_JSON).expect("Failed to parse regexes.json");
-
-    // Apply the Python overrides before processing:
-    //   raw_regex_variables["full_cite"][""] = "$volume $reporter,? $page"
-    //   raw_regex_variables["page"][""] = rf"(?P<page>{PAGE_NUMBER_REGEX})"
-    if let Some(obj) = raw.as_object_mut() {
-        if let Some(full_cite) = obj.get_mut("full_cite") {
-            if let Some(fc_obj) = full_cite.as_object_mut() {
-                fc_obj.insert(
-                    String::new(),
-                    serde_json::Value::String("$volume $reporter,? $page".to_string()),
-                );
-            }
-        }
-        if let Some(page) = obj.get_mut("page") {
-            if let Some(page_obj) = page.as_object_mut() {
-                page_obj.insert(
-                    String::new(),
-                    serde_json::Value::String(format!(
-                        "(?P<page>{})",
-                        &*PAGE_NUMBER_REGEX
-                    )),
-                );
-            }
-        }
-    }
-
-    let regex_variables = citare_data_build::template::process_variables(&raw);
-
-    // 2. Parse data files
-    let reporters =
-        citare_data_build::reporters::parse_reporters(REPORTERS_JSON)
-            .expect("Failed to parse reporters.json");
-    let laws = citare_data_build::reporters::parse_laws(LAWS_JSON)
-        .expect("Failed to parse laws.json");
-    let journals =
-        citare_data_build::reporters::parse_journals(JOURNALS_JSON)
-            .expect("Failed to parse journals.json");
-
-    // 3. Build editions_by_regex and editions_lookup
-    let mut editions_by_regex: HashMap<String, EditionsByRegexEntry> = HashMap::new();
-    let mut editions_lookup: HashMap<String, Vec<Edition>> = HashMap::new();
-
-    // Helper: substitute $edition in a template with escaped edition names
-    fn substitute_edition(template: &str, edition_names: &[&str]) -> String {
-        let edition = edition_names
-            .iter()
-            .map(|e| regex::escape(e))
-            .collect::<Vec<_>>()
-            .join("|");
-        citare_data_build::template::safe_substitute(
-            template,
-            &HashMap::from([("edition".to_string(), edition)]),
-        )
-    }
-
-    // Helper: add a regex for an edition
-    let add_regex = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                     editions_lookup: &mut HashMap<String, Vec<Edition>>,
-                     kind: &str,
-                     reporter_strings: &[&str],
-                     edition: &Edition,
-                     regex: &str| {
-        for &reporter in reporter_strings {
-            editions_lookup
-                .entry(reporter.to_string())
-                .or_default()
-                .push(edition.clone());
-        }
-
-        let entry = editions_by_regex.entry(regex.to_string()).or_default();
-        match kind {
-            "editions" => entry.editions.push(edition.clone()),
-            "variations" => entry.variations.push(edition.clone()),
-            _ => {}
-        }
-
-        // Check if the escaped first reporter string appears in the regex
-        let have_strings = regex.contains(&regex::escape(reporter_strings[0]));
-        if have_strings {
-            for &s in reporter_strings {
-                entry.strings.insert(s.to_string());
-            }
-        }
-
-        // Add short cite variant
-        let short_regex = short_cite_re(regex);
-        if short_regex != *regex {
-            let short_entry = editions_by_regex
-                .entry(short_regex.clone())
-                .or_default();
-            match kind {
-                "editions" => short_entry.editions.push(edition.clone()),
-                "variations" => short_entry.variations.push(edition.clone()),
-                _ => {}
-            }
-            short_entry.short = true;
-            if have_strings {
-                for &s in reporter_strings {
-                    short_entry.strings.insert(s.to_string());
-                }
-            }
-        }
+/// Convert a generated edition to a runtime Edition.
+fn edition_from_generated(gen: &GeneratedEdition) -> Edition {
+    let source = match gen.reporter_source {
+        0 => ReporterSource::Reporters,
+        1 => ReporterSource::Laws,
+        2 => ReporterSource::Journals,
+        _ => ReporterSource::Reporters,
     };
+    Edition {
+        reporter: Reporter::new(
+            gen.reporter_short_name.to_string(),
+            gen.reporter_name.to_string(),
+            gen.reporter_cite_type.to_string(),
+            source,
+        ),
+        short_name: gen.short_name.to_string(),
+        start: gen.start.map(|s| s.to_string()),
+        end: gen.end.map(|s| s.to_string()),
+    }
+}
 
-    // Helper: expand regex templates for an edition.
-    //
-    // Mirrors Python's `substitute_editions()` which returns a SEPARATE regex
-    // for each edition string (the canonical name + each variation that maps
-    // to this edition). This is critical: each variation gets its own compiled
-    // regex and its own TokenExtractor so the AC automaton can pre-filter by
-    // the variation string.
-    let add_regexes = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                       editions_lookup: &mut HashMap<String, Vec<Edition>>,
-                       regex_templates: &[String],
-                       edition_name: &str,
-                       edition: &Edition,
-                       variation_names: &[String],
-                       regex_variables: &HashMap<String, String>| {
-        for template in regex_templates {
-            let resolved = citare_data_build::template::recursive_substitute(
-                template,
-                regex_variables,
-                100,
-            )
-            .unwrap_or_else(|e| {
-                log::warn!("Failed to resolve template '{}': {}", template, e);
-                template.clone()
-            });
+/// Convert a token type byte to a TokenType enum.
+fn token_type_from_u8(v: u8) -> TokenType {
+    match v {
+        0 => TokenType::Citation,
+        1 => TokenType::Id,
+        2 => TokenType::Supra,
+        3 => TokenType::StopWord,
+        4 => TokenType::Section,
+        5 => TokenType::Paragraph,
+        6 => TokenType::Placeholder,
+        _ => TokenType::Citation,
+    }
+}
 
-            // Fix Python-ism: {,N} → {0,N} (Rust regex requires explicit lower bound)
-            let resolved = resolved.replace("{,", "{0,");
+/// Build all extractors from the build-time generated data.
+/// This is the main entry point called once by `LazyLock`.
+pub fn build_extractors() -> Vec<TokenExtractor> {
+    let mut extractors = Vec::with_capacity(GENERATED_EXTRACTORS.len());
 
-            // If the template doesn't contain $edition, there's only one regex
-            if !resolved.contains("$edition") && !resolved.contains("${edition}") {
-                add_regex(
-                    editions_by_regex,
-                    editions_lookup,
-                    "editions",
-                    &[edition_name],
-                    edition,
-                    &resolved,
-                );
+    for gen in GENERATED_EXTRACTORS {
+        let compiled = match Regex::new(gen.regex) {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("Skipping invalid regex: {}", e);
                 continue;
             }
-
-            // Generate separate regex for the canonical edition name
-            let regex = substitute_edition(&resolved, &[edition_name]);
-            add_regex(
-                editions_by_regex,
-                editions_lookup,
-                "editions",
-                &[edition_name],
-                edition,
-                &regex,
-            );
-
-            // Generate a SEPARATE regex for EACH variation (not combined)
-            for var_name in variation_names {
-                let var_regex = substitute_edition(&resolved, &[var_name.as_str()]);
-                add_regex(
-                    editions_by_regex,
-                    editions_lookup,
-                    "variations",
-                    &[var_name.as_str()],
-                    edition,
-                    &var_regex,
-                );
-            }
-        }
-    };
-
-    // --- Add reporters.json ---
-    for (source_key, source_cluster) in &reporters {
-        for source in source_cluster {
-            let reporter_obj = Reporter::new(
-                source_key.clone(),
-                source.name.clone(),
-                source.cite_type.clone(),
-                ReporterSource::Reporters,
-            );
-
-            for (edition_name, edition_data) in &source.editions {
-                let edition = Edition {
-                    reporter: reporter_obj.clone(),
-                    short_name: edition_name.clone(),
-                    start: edition_data.start.clone(),
-                    end: edition_data.end.clone(),
-                };
-
-                let regex_templates: Vec<String> = edition_data
-                    .regexes
-                    .as_ref()
-                    .filter(|v| !v.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| vec!["$full_cite".to_string()]);
-
-                // Find variations that map to this edition
-                let edition_variations: Vec<String> = source
-                    .variations
-                    .iter()
-                    .filter(|(_, v)| v.as_str() == edition_name)
-                    .map(|(k, _)| k.clone())
-                    .collect();
-
-                add_regexes(
-                    &mut editions_by_regex,
-                    &mut editions_lookup,
-                    &regex_templates,
-                    edition_name,
-                    &edition,
-                    &edition_variations,
-                    &regex_variables,
-                );
-            }
-        }
-    }
-
-    // --- Add laws.json ---
-    for (source_key, source_cluster) in &laws {
-        for source in source_cluster {
-            let reporter_obj = Reporter::new(
-                source_key.clone(),
-                source.name.clone(),
-                source.cite_type.clone(),
-                ReporterSource::Laws,
-            );
-
-            let edition = Edition {
-                reporter: reporter_obj,
-                short_name: source_key.clone(),
-                start: source.start.clone(),
-                end: source.end.clone(),
-            };
-
-            let regex_templates: Vec<String> = if source.regexes.is_empty() {
-                vec!["$full_cite".to_string()]
-            } else {
-                // Replace "§ " with "§§? ?" to handle citations to multiple sections
-                source
-                    .regexes
-                    .iter()
-                    .map(|r| r.replace("§ ", "§§? ?"))
-                    .collect()
-            };
-
-            let variation_names: Vec<String> = source.variations.clone();
-
-            add_regexes(
-                &mut editions_by_regex,
-                &mut editions_lookup,
-                &regex_templates,
-                source_key,
-                &edition,
-                &variation_names,
-                &regex_variables,
-            );
-        }
-    }
-
-    // --- Add journals.json ---
-    for (source_key, source_cluster) in &journals {
-        for source in source_cluster {
-            let reporter_obj = Reporter::new(
-                source_key.clone(),
-                source.name.clone(),
-                source.cite_type.clone(),
-                ReporterSource::Journals,
-            );
-
-            let edition = Edition {
-                reporter: reporter_obj,
-                short_name: source_key.clone(),
-                start: source.start.clone(),
-                end: source.end.clone(),
-            };
-
-            let regex_templates: Vec<String> = if source.regexes.is_empty() {
-                vec!["$full_cite".to_string()]
-            } else {
-                source.regexes.clone()
-            };
-
-            let variation_names: Vec<String> = source.variations.clone();
-
-            add_regexes(
-                &mut editions_by_regex,
-                &mut editions_lookup,
-                &regex_templates,
-                source_key,
-                &edition,
-                &variation_names,
-                &regex_variables,
-            );
-        }
-    }
-
-    // 4. Convert editions_by_regex into TokenExtractors
-    let mut extractors: Vec<TokenExtractor> = Vec::new();
-
-    for (regex, cluster) in &editions_by_regex {
-        let wrapped = nonalphanum_boundaries_re(regex);
-        match Regex::new(&wrapped) {
-            Ok(compiled) => {
-                extractors.push(TokenExtractor {
-                    regex: wrapped,
-                    compiled_regex: compiled,
-                    token_type: TokenType::Citation,
-                    extra: ExtractorExtra {
-                        exact_editions: cluster.editions.clone(),
-                        variation_editions: cluster.variations.clone(),
-                        short: cluster.short,
-                    },
-                    strings: cluster.strings.iter().cloned().collect(),
-                    case_insensitive: false,
-                });
-            }
-            Err(e) => {
-                log::warn!(
-                    "Skipping invalid citation regex: {} (error: {})",
-                    &wrapped[..wrapped.len().min(80)],
-                    e
-                );
-            }
-        }
-    }
-
-    // 5. Add one-off extractors
-    let oneoff_specs: Vec<(String, TokenType, bool, Vec<String>)> = vec![
-        // Id
-        (
-            ID_REGEX.clone(),
-            TokenType::Id,
-            true,
-            vec!["id.".to_string(), "ibid.".to_string()],
-        ),
-        // Supra
-        (
-            SUPRA_REGEX.clone(),
-            TokenType::Supra,
-            true,
-            vec!["supra".to_string()],
-        ),
-        // Paragraph
-        (PARAGRAPH_REGEX.to_string(), TokenType::Paragraph, false, vec![]),
-        // Stop words
-        (
-            STOP_WORD_REGEX.clone(),
-            TokenType::StopWord,
-            true,
-            STOP_WORDS.iter().map(|s| s.to_string()).collect(),
-        ),
-        // Placeholder citations
-        (
-            PLACEHOLDER_CITATIONS.clone(),
-            TokenType::Placeholder,
-            true,
-            vec![],
-        ),
-        // Section symbols
-        (
-            SECTION_REGEX.to_string(),
-            TokenType::Section,
-            false,
-            vec!["\u{00A7}".to_string()],
-        ),
-    ];
-
-    for (regex_str, token_type, case_insensitive, strings) in oneoff_specs {
-        let regex_with_flags = if case_insensitive {
-            format!("(?i){}", regex_str)
-        } else {
-            regex_str
         };
-        match Regex::new(&regex_with_flags) {
-            Ok(compiled) => {
-                extractors.push(TokenExtractor {
-                    regex: regex_with_flags,
-                    compiled_regex: compiled,
-                    token_type,
-                    extra: ExtractorExtra::default(),
-                    strings,
-                    case_insensitive,
-                });
-            }
-            Err(e) => {
-                log::warn!(
-                    "Skipping invalid one-off regex for {:?}: {}",
-                    token_type,
-                    e
-                );
-            }
-        }
+
+        let token_type = token_type_from_u8(gen.token_type);
+
+        let editions: Vec<Edition> = gen
+            .edition_indices
+            .iter()
+            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .collect();
+        let variations: Vec<Edition> = gen
+            .variation_indices
+            .iter()
+            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .collect();
+
+        extractors.push(TokenExtractor {
+            regex: gen.regex.to_string(),
+            compiled_regex: compiled,
+            token_type,
+            extra: ExtractorExtra {
+                exact_editions: editions,
+                variation_editions: variations,
+                short: gen.short,
+            },
+            strings: gen.strings.iter().map(|s| s.to_string()).collect(),
+            case_insensitive: gen.case_insensitive,
+        });
     }
 
-    (extractors, editions_lookup)
+    extractors
+}
+
+/// Build the editions lookup table from the build-time generated data.
+fn build_editions_lookup() -> HashMap<String, Vec<Edition>> {
+    let mut lookup = HashMap::with_capacity(GENERATED_EDITIONS_LOOKUP.len());
+    for &(key, indices) in GENERATED_EDITIONS_LOOKUP {
+        let editions: Vec<Edition> = indices
+            .iter()
+            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .collect();
+        lookup.insert(key.to_string(), editions);
+    }
+    lookup
 }
 
 // ---------------------------------------------------------------------------

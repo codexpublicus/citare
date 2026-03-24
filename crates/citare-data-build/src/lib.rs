@@ -4,5 +4,6 @@
 //! substitution, and generates Rust source for compiled extractors.
 
 pub mod courts;
+pub mod regexes;
 pub mod reporters;
 pub mod template;
