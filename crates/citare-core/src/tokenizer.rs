@@ -326,6 +326,9 @@ fn build_extractors_and_lookup() -> (Vec<TokenExtractor>, HashMap<String, Vec<Ed
                 template.clone()
             });
 
+            // Fix Python-ism: {,N} → {0,N} (Rust regex requires explicit lower bound)
+            let resolved = resolved.replace("{,", "{0,");
+
             // If the template doesn't contain $edition, there's only one regex
             if !resolved.contains("$edition") && !resolved.contains("${edition}") {
                 add_regex(
