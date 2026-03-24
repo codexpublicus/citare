@@ -236,35 +236,57 @@ fn token_type_from_u8(v: u8) -> TokenType {
 
 /// Build all extractors from the build-time generated data.
 ///
-/// This is fast (~10ms) because regex compilation is deferred — each
-/// extractor compiles its regex lazily on first use. Only extractors
-/// actually selected by the Aho-Corasick pre-filter pay the cost.
+/// Reconstructs the full set of extractors by substituting reporter strings
+/// into deduplicated regex templates.  This produces the same extractors as
+/// the old flat `GENERATED_EXTRACTORS` array, but the generated source file
+/// is ~60% smaller because each template is stored only once.
+///
+/// Regex compilation is still deferred — each extractor compiles its regex
+/// lazily on first use.
 pub fn build_extractors() -> Vec<TokenExtractor> {
-    let mut extractors = Vec::with_capacity(GENERATED_EXTRACTORS.len());
+    let mut extractors =
+        Vec::with_capacity(GENERATED_REPORTER_MAP.len() + GENERATED_ONEOFF_EXTRACTORS.len());
 
-    for gen in GENERATED_EXTRACTORS {
-        let token_type = token_type_from_u8(gen.token_type);
+    // Citation extractors: combine templates with reporter strings
+    for entry in GENERATED_REPORTER_MAP {
+        let template = GENERATED_TEMPLATES[entry.template_idx];
+        // Substitute the reporter placeholder with the actual reporter string
+        let regex = template.replace(REPORTER_PLACEHOLDER, entry.reporter_string);
 
-        let editions: Vec<Edition> = gen
+        let editions: Vec<Edition> = entry
             .edition_indices
             .iter()
             .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
             .collect();
-        let variations: Vec<Edition> = gen
+        let variations: Vec<Edition> = entry
             .variation_indices
             .iter()
             .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
             .collect();
 
         extractors.push(TokenExtractor {
-            regex: gen.regex.to_string(),
+            regex,
             compiled_regex: OnceLock::new(),
-            token_type,
+            token_type: TokenType::Citation,
             extra: ExtractorExtra {
                 exact_editions: editions,
                 variation_editions: variations,
-                short: gen.short,
+                short: entry.short,
             },
+            strings: entry.strings.iter().map(|s| s.to_string()).collect(),
+            case_insensitive: false,
+        });
+    }
+
+    // One-off extractors (Id, Supra, StopWord, etc.)
+    for gen in GENERATED_ONEOFF_EXTRACTORS {
+        let token_type = token_type_from_u8(gen.token_type);
+
+        extractors.push(TokenExtractor {
+            regex: gen.regex.to_string(),
+            compiled_regex: OnceLock::new(),
+            token_type,
+            extra: ExtractorExtra::default(),
             strings: gen.strings.iter().map(|s| s.to_string()).collect(),
             case_insensitive: gen.case_insensitive,
         });

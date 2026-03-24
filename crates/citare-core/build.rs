@@ -43,7 +43,8 @@ struct EditionsByRegexEntry {
 // ---------------------------------------------------------------------------
 // Token type constants (must match TokenType enum in tokenizer.rs)
 // ---------------------------------------------------------------------------
-const TOKEN_TYPE_CITATION: u8 = 0;
+// TOKEN_TYPE_CITATION (0) is implicit — citation extractors use templates,
+// not one-off extractors, so the constant is not needed here.
 const TOKEN_TYPE_ID: u8 = 1;
 const TOKEN_TYPE_SUPRA: u8 = 2;
 const TOKEN_TYPE_STOPWORD: u8 = 3;
@@ -51,19 +52,7 @@ const TOKEN_TYPE_SECTION: u8 = 4;
 const TOKEN_TYPE_PARAGRAPH: u8 = 5;
 const TOKEN_TYPE_PLACEHOLDER: u8 = 6;
 
-// ---------------------------------------------------------------------------
-// Generated extractor representation
-// ---------------------------------------------------------------------------
-
-struct GenExtractor {
-    regex: String,
-    token_type: u8,
-    case_insensitive: bool,
-    strings: Vec<String>,
-    short: bool,
-    edition_indices: Vec<usize>,
-    variation_indices: Vec<usize>,
-}
+// (GenExtractor struct removed — replaced by template + reporter map approach)
 
 fn main() {
     println!("cargo::rerun-if-changed=../../data/");
@@ -419,52 +408,127 @@ fn main() {
     }
 
     // -----------------------------------------------------------------------
-    // 5. Build GenExtractor list from citation extractors
+    // 5. Deduplicate citation extractors into templates + reporter map
     // -----------------------------------------------------------------------
-    let mut gen_extractors: Vec<GenExtractor> = Vec::new();
+    //
+    // Instead of emitting 10K+ full regex strings (one per extractor), we
+    // extract the reporter-specific content from each regex, replace it with
+    // a placeholder to get a *template*, and deduplicate templates.  The
+    // generated output contains ~300 template strings plus a reporter map
+    // that records, for each (template_id, reporter_string) pair, the
+    // edition and variation indices.  At runtime `build_extractors()`
+    // reconstructs the same 10K extractors by substituting reporter strings
+    // back into templates.
+    //
+    // The `(?P<reporter>ESCAPED_NAME)` group is present in every citation
+    // regex produced by the data pipeline.  We use a regex to locate it,
+    // replace the inner content with a fixed placeholder, and use the
+    // resulting string as the template key.
+
+    let reporter_group_re =
+        regex::Regex::new(r"\(\?P<reporter>([^)]+)\)").expect("reporter group regex");
+
+    const REPORTER_PLACEHOLDER: &str = "__REPORTER__";
+
+    /// A reporter map entry: one (template, reporter) combination.
+    struct ReporterMapEntry {
+        template_idx: usize,
+        reporter_string: String,
+        strings: Vec<String>,
+        short: bool,
+        edition_indices: Vec<usize>,
+        variation_indices: Vec<usize>,
+    }
+
+    let mut templates: Vec<String> = Vec::new();
+    let mut template_index_map: HashMap<String, usize> = HashMap::new();
+    let mut reporter_map_entries: Vec<ReporterMapEntry> = Vec::new();
     let mut skipped = 0usize;
 
     for (regex, cluster) in &editions_by_regex {
         let wrapped = nonalphanum_boundaries_re(regex);
 
         // Validate the regex compiles
-        match regex::Regex::new(&wrapped) {
-            Ok(_) => {
-                let edition_indices: Vec<usize> = cluster
-                    .editions
-                    .iter()
-                    .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-                    .collect();
-                let variation_indices: Vec<usize> = cluster
-                    .variations
-                    .iter()
-                    .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-                    .collect();
+        if let Err(e) = regex::Regex::new(&wrapped) {
+            skipped += 1;
+            eprintln!(
+                "cargo::warning=Skipping invalid citation regex: {} (error: {})",
+                &wrapped[..wrapped.len().min(80)],
+                e
+            );
+            continue;
+        }
 
-                gen_extractors.push(GenExtractor {
-                    regex: wrapped,
-                    token_type: TOKEN_TYPE_CITATION,
-                    case_insensitive: false,
-                    strings: cluster.strings.iter().cloned().collect(),
-                    short: cluster.short,
-                    edition_indices,
-                    variation_indices,
-                });
-            }
-            Err(e) => {
-                skipped += 1;
-                eprintln!(
-                    "cargo::warning=Skipping invalid citation regex: {} (error: {})",
-                    &wrapped[..wrapped.len().min(80)],
-                    e
-                );
-            }
+        let edition_indices: Vec<usize> = cluster
+            .editions
+            .iter()
+            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
+            .collect();
+        let variation_indices: Vec<usize> = cluster
+            .variations
+            .iter()
+            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
+            .collect();
+
+        // Try to extract the reporter group and create a template
+        if let Some(caps) = reporter_group_re.captures(&wrapped) {
+            let reporter_content = caps.get(1).unwrap().as_str().to_string();
+            let template_str = reporter_group_re
+                .replace(&wrapped, &format!("(?P<reporter>{REPORTER_PLACEHOLDER})"))
+                .to_string();
+
+            let template_idx = if let Some(&idx) = template_index_map.get(&template_str) {
+                idx
+            } else {
+                let idx = templates.len();
+                templates.push(template_str.clone());
+                template_index_map.insert(template_str, idx);
+                idx
+            };
+
+            reporter_map_entries.push(ReporterMapEntry {
+                template_idx,
+                reporter_string: reporter_content,
+                strings: cluster.strings.iter().cloned().collect(),
+                short: cluster.short,
+                edition_indices,
+                variation_indices,
+            });
+        } else {
+            // No reporter group — treat as a template with no reporter placeholder.
+            // This shouldn't happen for citation extractors, but handle gracefully.
+            let template_idx = if let Some(&idx) = template_index_map.get(&wrapped) {
+                idx
+            } else {
+                let idx = templates.len();
+                templates.push(wrapped.clone());
+                template_index_map.insert(wrapped, idx);
+                idx
+            };
+
+            reporter_map_entries.push(ReporterMapEntry {
+                template_idx,
+                reporter_string: String::new(),
+                strings: cluster.strings.iter().cloned().collect(),
+                short: cluster.short,
+                edition_indices,
+                variation_indices,
+            });
         }
     }
 
     // -----------------------------------------------------------------------
-    // 6. Add one-off extractors
+    // 6. Add one-off extractors (Id, Supra, etc.)
     // -----------------------------------------------------------------------
+    struct GenOneoffExtractor {
+        regex: String,
+        token_type: u8,
+        case_insensitive: bool,
+        strings: Vec<String>,
+    }
+
+    let mut oneoff_extractors: Vec<GenOneoffExtractor> = Vec::new();
+
     let oneoff_specs: Vec<(String, u8, bool, Vec<String>)> = vec![
         (
             id_regex(),
@@ -512,14 +576,11 @@ fn main() {
         };
         match regex::Regex::new(&regex_with_flags) {
             Ok(_) => {
-                gen_extractors.push(GenExtractor {
+                oneoff_extractors.push(GenOneoffExtractor {
                     regex: regex_with_flags,
                     token_type,
                     case_insensitive,
                     strings,
-                    short: false,
-                    edition_indices: vec![],
-                    variation_indices: vec![],
                 });
             }
             Err(e) => {
@@ -533,8 +594,10 @@ fn main() {
     }
 
     println!(
-        "cargo::warning=Generated {} extractors ({} skipped), {} unique editions",
-        gen_extractors.len(),
+        "cargo::warning=Generated {} templates + {} reporter map entries + {} one-off extractors ({} skipped), {} unique editions",
+        templates.len(),
+        reporter_map_entries.len(),
+        oneoff_extractors.len(),
         skipped,
         all_editions.len()
     );
@@ -548,6 +611,13 @@ fn main() {
             skipped
         );
     }
+
+    // Sort reporter map entries for deterministic output
+    reporter_map_entries.sort_by(|a, b| {
+        a.template_idx
+            .cmp(&b.template_idx)
+            .then_with(|| a.reporter_string.cmp(&b.reporter_string))
+    });
 
     // -----------------------------------------------------------------------
     // 7. Also generate the editions_lookup data
@@ -642,12 +712,38 @@ fn main() {
     writeln!(output, "];").unwrap();
     writeln!(output).unwrap();
 
-    // -- Extractor struct and array --
+    // -- Template array --
+    writeln!(
+        output,
+        "/// A regex template with `{}` where the reporter name goes.",
+        REPORTER_PLACEHOLDER
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "pub static GENERATED_TEMPLATES: &[&str] = &["
+    )
+    .unwrap();
+    for tmpl in &templates {
+        writeln!(output, "    {},", rust_str_literal(tmpl)).unwrap();
+    }
+    writeln!(output, "];").unwrap();
+    writeln!(output).unwrap();
+
+    // -- Reporter placeholder constant --
+    writeln!(
+        output,
+        "pub const REPORTER_PLACEHOLDER: &str = {:?};",
+        REPORTER_PLACEHOLDER
+    )
+    .unwrap();
+    writeln!(output).unwrap();
+
+    // -- Reporter map entry struct and array --
     writeln!(output, "#[derive(Debug, Clone)]").unwrap();
-    writeln!(output, "pub struct GeneratedExtractor {{").unwrap();
-    writeln!(output, "    pub regex: &'static str,").unwrap();
-    writeln!(output, "    pub token_type: u8,").unwrap();
-    writeln!(output, "    pub case_insensitive: bool,").unwrap();
+    writeln!(output, "pub struct GeneratedReporterMapEntry {{").unwrap();
+    writeln!(output, "    pub template_idx: usize,").unwrap();
+    writeln!(output, "    pub reporter_string: &'static str,").unwrap();
     writeln!(output, "    pub strings: &'static [&'static str],").unwrap();
     writeln!(output, "    pub short: bool,").unwrap();
     writeln!(output, "    pub edition_indices: &'static [usize],").unwrap();
@@ -657,10 +753,73 @@ fn main() {
 
     writeln!(
         output,
-        "pub static GENERATED_EXTRACTORS: &[GeneratedExtractor] = &["
+        "pub static GENERATED_REPORTER_MAP: &[GeneratedReporterMapEntry] = &["
     )
     .unwrap();
-    for ext in &gen_extractors {
+    for entry in &reporter_map_entries {
+        writeln!(output, "    GeneratedReporterMapEntry {{").unwrap();
+        writeln!(output, "        template_idx: {},", entry.template_idx).unwrap();
+        writeln!(
+            output,
+            "        reporter_string: {},",
+            rust_str_literal(&entry.reporter_string)
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "        strings: &[{}],",
+            entry
+                .strings
+                .iter()
+                .map(|s| rust_str_literal(s))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .unwrap();
+        writeln!(output, "        short: {},", entry.short).unwrap();
+        writeln!(
+            output,
+            "        edition_indices: &[{}],",
+            entry
+                .edition_indices
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "        variation_indices: &[{}],",
+            entry
+                .variation_indices
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .unwrap();
+        writeln!(output, "    }},").unwrap();
+    }
+    writeln!(output, "];").unwrap();
+    writeln!(output).unwrap();
+
+    // -- One-off extractor struct and array --
+    writeln!(output, "#[derive(Debug, Clone)]").unwrap();
+    writeln!(output, "pub struct GeneratedExtractor {{").unwrap();
+    writeln!(output, "    pub regex: &'static str,").unwrap();
+    writeln!(output, "    pub token_type: u8,").unwrap();
+    writeln!(output, "    pub case_insensitive: bool,").unwrap();
+    writeln!(output, "    pub strings: &'static [&'static str],").unwrap();
+    writeln!(output, "}}").unwrap();
+    writeln!(output).unwrap();
+
+    writeln!(
+        output,
+        "pub static GENERATED_ONEOFF_EXTRACTORS: &[GeneratedExtractor] = &["
+    )
+    .unwrap();
+    for ext in &oneoff_extractors {
         writeln!(output, "    GeneratedExtractor {{").unwrap();
         writeln!(
             output,
@@ -681,27 +840,6 @@ fn main() {
             ext.strings
                 .iter()
                 .map(|s| rust_str_literal(s))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(output, "        short: {},", ext.short).unwrap();
-        writeln!(
-            output,
-            "        edition_indices: &[{}],",
-            ext.edition_indices
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        variation_indices: &[{}],",
-            ext.variation_indices
-                .iter()
-                .map(|i| i.to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         )
