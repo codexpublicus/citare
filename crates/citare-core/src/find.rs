@@ -718,4 +718,212 @@ mod tests {
             assert!(end <= text.len(), "span end should be <= text length");
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Id. citation pin cite tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_id_pin_cite_at_page() {
+        let cites = get_citations("1 U.S. 1 (1999). Id. at 5.", false, "", &[]);
+        let id = cites.iter().find(|c| matches!(c, Citation::Id(_))).unwrap();
+        if let Citation::Id(d) = id {
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 5"));
+        }
+    }
+
+    #[test]
+    fn test_id_pin_cite_at_range() {
+        let cites = get_citations("1 U.S. 1 (1999). Id., at 123-24.", false, "", &[]);
+        let id = cites.iter().find(|c| matches!(c, Citation::Id(_))).unwrap();
+        if let Citation::Id(d) = id {
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 123-24"));
+        }
+    }
+
+    #[test]
+    fn test_id_pin_cite_star_pagination() {
+        let cites = get_citations("1 U.S. 1 (1999). Id. at *5.", false, "", &[]);
+        let id = cites.iter().find(|c| matches!(c, Citation::Id(_))).unwrap();
+        if let Citation::Id(d) = id {
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at *5"));
+        }
+    }
+
+    #[test]
+    fn test_id_no_pin_cite() {
+        let cites = get_citations("1 U.S. 1 (1999). Id.", false, "", &[]);
+        let id = cites.iter().find(|c| matches!(c, Citation::Id(_))).unwrap();
+        if let Citation::Id(d) = id {
+            assert_eq!(d.metadata.pin_cite, None);
+        }
+    }
+
+    #[test]
+    fn test_id_pin_cite_multiple_pages() {
+        let cites = get_citations("1 U.S. 1 (1999). Id. at 5, 7.", false, "", &[]);
+        let id = cites.iter().find(|c| matches!(c, Citation::Id(_))).unwrap();
+        if let Citation::Id(d) = id {
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 5, 7"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Supra citation pin cite tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_supra_pin_cite() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Foo, supra, at 240.", false, "", &[]);
+        let supra = cites.iter().find(|c| matches!(c, Citation::Supra(_))).unwrap();
+        if let Citation::Supra(d) = supra {
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 240"));
+            assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Foo"));
+        }
+    }
+
+    #[test]
+    fn test_supra_with_volume() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Foo, 515 supra, at 240.", false, "", &[]);
+        let supra = cites.iter().find(|c| matches!(c, Citation::Supra(_))).unwrap();
+        if let Citation::Supra(d) = supra {
+            assert_eq!(d.metadata.volume.as_deref(), Some("515"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Short case citation pin cite tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_short_case_pin_cite() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Bar, 1 U.S., at 2.", false, "", &[]);
+        let short = cites.iter().find(|c| matches!(c, Citation::ShortCase(_))).unwrap();
+        if let Citation::ShortCase(d) = short {
+            assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("2"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Full case citation metadata tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_full_case_court_parsing() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 12, 347-348 (4th Cir. 1982)", false, "", &[]);
+        if let Citation::FullCase(d) = &cites[0] {
+            assert_eq!(d.metadata.case.court.as_deref(), Some("ca4"));
+            assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("347-348"));
+            assert_eq!(d.metadata.case.year.as_deref(), Some("1982"));
+        }
+    }
+
+    #[test]
+    fn test_full_case_with_month_day() {
+        let cites = get_citations("Foo v. Bar, 164 A.3d 1189 (Pa. Feb. 9, 2017)", false, "", &[]);
+        if let Citation::FullCase(d) = &cites[0] {
+            assert_eq!(d.metadata.case.month.as_deref(), Some("Feb."));
+            assert_eq!(d.metadata.case.day.as_deref(), Some("9"));
+        }
+    }
+
+    #[test]
+    fn test_full_case_parenthetical() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999) (overruling something)", false, "", &[]);
+        if let Citation::FullCase(d) = &cites[0] {
+            assert_eq!(d.metadata.case.parenthetical.as_deref(), Some("overruling something"));
+        }
+    }
+
+    #[test]
+    fn test_plaintiff_defendant() {
+        let cites = get_citations("Lissner v. Test, 1 U.S. 1 (1982)", false, "", &[]);
+        if let Citation::FullCase(d) = &cites[0] {
+            assert_eq!(d.metadata.plaintiff.as_deref(), Some("Lissner"));
+            assert_eq!(d.metadata.defendant.as_deref(), Some("Test"));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Law citation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_law_citation_basic() {
+        let cites = get_citations("Mass. Gen. Laws ch. 1, § 2", false, "", &[]);
+        assert!(cites.iter().any(|c| matches!(c, Citation::FullLaw(_))));
+    }
+
+    #[test]
+    fn test_usc_citation() {
+        let cites = get_citations("42 U.S.C. § 1983", false, "", &[]);
+        assert!(cites.iter().any(|c| matches!(c, Citation::FullLaw(_))));
+    }
+
+    // -----------------------------------------------------------------------
+    // Journal citation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_journal_citation() {
+        let cites = get_citations("1 Minn. L. Rev. 1", false, "", &[]);
+        assert!(cites.iter().any(|c| matches!(c, Citation::FullJournal(_))));
+    }
+
+    #[test]
+    fn test_journal_with_year() {
+        let cites = get_citations("1 Minn. L. Rev. 1 (2012)", false, "", &[]);
+        let j = cites.iter().find(|c| matches!(c, Citation::FullJournal(_))).unwrap();
+        if let Citation::FullJournal(d) = j {
+            assert_eq!(d.resource.year, Some(2012));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_no_false_positive_on_address() {
+        // "111 S.W. 12th St." should NOT be a citation.
+        // eyecite behavior: finds no citation here because "12th" is not a
+        // valid page number (ordinal suffix prevents matching).
+        let cites = get_citations("111 S.W. 12th St. is an address", false, "", &[]);
+        assert!(cites.is_empty() || !cites.iter().any(|c| c.matched_text().contains("S.W.")));
+    }
+
+    #[test]
+    fn test_placeholder_citation() {
+        // "585 U.S. ___" uses the placeholder page token; it should still
+        // produce a FullCase citation — the page group is "___" not None.
+        let cites = get_citations("585 U.S. ___ (2018)", false, "", &[]);
+        assert!(!cites.is_empty(), "Expected a citation for placeholder page");
+        if let Citation::FullCase(d) = &cites[0] {
+            // Placeholder page is captured as "___", not absent
+            let page = d.resource.common.groups.get("page").and_then(|v| v.as_deref());
+            assert_eq!(page, Some("___"), "Placeholder page should be '___'");
+        }
+    }
+
+    #[test]
+    fn test_parallel_citations() {
+        let cites = get_citations("Foo v. Bar, 1 U.S. 12, 1 S. Ct. 2 (1982)", false, "", &[]);
+        let full_cases: Vec<_> = cites.iter().filter(|c| matches!(c, Citation::FullCase(_))).collect();
+        assert_eq!(full_cases.len(), 2, "Should find 2 parallel citations");
+    }
+
+    #[test]
+    fn test_harvard_slug_in_citation() {
+        let cites = get_citations("1 U.S. 1", false, "", &[]);
+        if let Some(rc) = cites[0].resource_common() {
+            let slug = rc.all_editions.iter().find_map(|e| e.harvard_slug.as_deref());
+            assert_eq!(slug, Some("us"));
+        }
+    }
+
+    #[test]
+    fn test_ambiguous_flag() {
+        let cites = get_citations("1 U.S. 1", false, "", &[]);
+        assert!(!cites[0].is_ambiguous(), "U.S. should not be ambiguous");
+    }
 }
