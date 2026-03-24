@@ -539,6 +539,16 @@ fn main() {
         all_editions.len()
     );
 
+    if skipped > 0 {
+        panic!(
+            "Build failed: {} regex patterns failed to compile. \
+             This likely means reporters-db contains Python-specific regex syntax \
+             that needs normalization (e.g., {{,N}} → {{0,N}}). \
+             See build warnings above for details.",
+            skipped
+        );
+    }
+
     // -----------------------------------------------------------------------
     // 7. Also generate the editions_lookup data
     // -----------------------------------------------------------------------
