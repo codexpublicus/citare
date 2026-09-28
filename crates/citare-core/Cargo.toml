@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "Legal citation extraction library — Rust port of eyecite"
 repository.workspace = true
-homepage = "https://github.com/lokkju/citare"
+homepage = "https://github.com/codexpublicus/citare"
 keywords = ["legal", "citation", "nlp", "law", "parser"]
 categories = ["text-processing", "parsing"]
 
