@@ -194,6 +194,14 @@ include!(concat!(env!("OUT_DIR"), "/generated_extractors.rs"));
 /// Global lazily-initialised extractors.
 pub static EXTRACTORS: LazyLock<Vec<TokenExtractor>> = LazyLock::new(build_extractors);
 
+/// Global lazily-initialised tokenizer shared by every `get_citations` call.
+///
+/// Building the extractors and Aho-Corasick automata is far more expensive
+/// than tokenizing a typical document, and each extractor compiles its regex
+/// on first use, so sharing one instance keeps both costs to once per process.
+pub static DEFAULT_TOKENIZER: LazyLock<AhocorasickTokenizer> =
+    LazyLock::new(AhocorasickTokenizer::new);
+
 /// Global lazily-initialised editions lookup (reporter string -> editions).
 pub static EDITIONS_LOOKUP: LazyLock<HashMap<String, Vec<Edition>>> =
     LazyLock::new(build_editions_lookup);
