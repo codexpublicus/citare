@@ -40,7 +40,9 @@ use crate::tokenizer::DEFAULT_TOKENIZER;
 /// * `remove_ambiguous` - Whether to remove citations that might refer to
 ///   more than one reporter and can't be narrowed down by date.
 /// * `markup_text` - If the source text has markup (XML or HTML), pass it
-///   here to enable markup-aware case name extraction (Phase 8).
+///   here instead of `plain_text`. The clean steps (which must include
+///   `Html`; it is added if missing) turn it into the plain text that
+///   citations are found in, and their spans index that plain text.
 /// * `clean_steps` - Cleanup steps to apply before tokenization.
 pub fn get_citations(
     plain_text: &str,
@@ -1183,6 +1185,61 @@ mod tests {
                 .find_map(|e| e.harvard_slug.as_deref());
             assert_eq!(slug, Some("us"));
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Markup input (eyecite test_find_citations html cases)
+    // -----------------------------------------------------------------------
+
+    fn markup_cites(markup: &str) -> Vec<Citation> {
+        get_citations(
+            "",
+            false,
+            markup,
+            &[CleanStep::Html, CleanStep::InlineWhitespace],
+        )
+    }
+
+    #[test]
+    fn test_markup_only_finds_full_citation() {
+        let cites = markup_cites("<p>See 254 <i>U.S.</i> 189.</p>");
+        assert_eq!(cites.len(), 1);
+        assert!(matches!(cites[0], Citation::FullCase(_)));
+        // Without the `html` step, it is added rather than failing
+        // (eyecite#328).
+        let cites = get_citations("", false, "<p>See 254 U.S. 189.</p>", &[]);
+        assert_eq!(cites.len(), 1);
+    }
+
+    #[test]
+    fn test_markup_ibid() {
+        let cites = markup_cites("<p>before asdf. <i>Ibid.</i></p> <p>foo bar lorem</p>");
+        assert_eq!(cites.len(), 1);
+        assert!(matches!(cites[0], Citation::Id(_)));
+    }
+
+    #[test]
+    fn test_markup_id_pin_cite() {
+        for markup in [
+            "<p>before asdf. <i>Id.,</i> at 123.</p> <p>foo bar</p>",
+            "<p>before asdf. <i>Id.,</i> at <b>123.</b></p> <p>foo bar</p>",
+        ] {
+            let cites = markup_cites(markup);
+            assert_eq!(cites.len(), 1, "{markup}");
+            let Citation::Id(d) = &cites[0] else {
+                panic!("expected Id for {markup}");
+            };
+            assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 123"), "{markup}");
+        }
+    }
+
+    #[test]
+    fn test_markup_plain_case_name() {
+        let cites = markup_cites(
+            "<p>State v. Luna-Benitez (S53965). Alternative writ issued, dismissed, 342 Or 255</p>",
+        );
+        assert_eq!(cites.len(), 1);
+        assert!(matches!(cites[0], Citation::FullCase(_)));
     }
 
     #[test]
