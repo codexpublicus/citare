@@ -366,6 +366,12 @@ impl Tokenizer {
 // AhocorasickTokenizer
 // ---------------------------------------------------------------------------
 
+/// Remove all whitespace from `text` (eyecite's `_strip_ws`), so the
+/// prefilter stays a superset of the whitespace-relaxed reporter regexes.
+fn strip_ws(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 /// A performance-optimised tokenizer that uses Aho-Corasick pre-filtering
 /// to only run extractors whose required strings appear in the text.
 pub struct AhocorasickTokenizer {
@@ -406,11 +412,14 @@ impl AhocorasickTokenizer {
                 unfiltered_indices.push(idx);
             } else if ext.case_insensitive {
                 for s in &ext.strings {
-                    ci_grouped.entry(s.to_lowercase()).or_default().push(idx);
+                    ci_grouped
+                        .entry(strip_ws(s).to_lowercase())
+                        .or_default()
+                        .push(idx);
                 }
             } else {
                 for s in &ext.strings {
-                    cs_grouped.entry(s.clone()).or_default().push(idx);
+                    cs_grouped.entry(strip_ws(s)).or_default().push(idx);
                 }
             }
         }
@@ -461,8 +470,16 @@ impl AhocorasickTokenizer {
     ///
     /// Uses overlapping iteration to find all patterns, even when shorter
     /// patterns (e.g., "A.") overlap with longer ones (e.g., "A.2d").
+    ///
+    /// Reporter regexes allow flexible whitespace between abbreviation tokens
+    /// (eyecite #305), so the prefilter strings and the text are both matched
+    /// with whitespace removed: `N. Y. S. 2d` must still select the
+    /// `N.Y.S.2d` extractor. Match spans still come from running the selected
+    /// extractors over the original text.
     fn get_extractors(&self, text: &str) -> Vec<&TokenExtractor> {
         let mut result: HashSet<usize> = self.unfiltered_indices.iter().copied().collect();
+        let stripped = strip_ws(text);
+        let text = stripped.as_str();
 
         if let Some(ref ac) = self.case_sensitive_ac {
             let mut state = aho_corasick::automaton::OverlappingState::start();
@@ -540,9 +557,12 @@ fn tokenize_impl(raw_tokens: &[Token], text: &str) -> (Tokens, Vec<(usize, Token
         if let Some(ref mut lt) = last_token {
             // Attempt to merge identical matches from different extractors
             if lt.merge(token) {
-                // Also update the citation_tokens entry if it was a citation
-                if let Some((_, ref mut ct)) = citation_tokens.last_mut() {
+                // Keep the emitted token in sync with the merged one: both
+                // `citation_tokens` and `all_tokens` hold clones, and
+                // citation extraction reads editions from `all_tokens`.
+                if let Some((idx, ct)) = citation_tokens.last_mut() {
                     ct.merge(token);
+                    all_tokens[*idx] = TokenOrStr::Token(ct.clone());
                 }
                 continue;
             }
@@ -680,6 +700,110 @@ mod tests {
             })
             .collect();
         assert_eq!(strs, vec!["hello"]);
+    }
+
+    /// Port of eyecite's updated `test_extractor_filter` (eyecite #305): the
+    /// prefilter matches whitespace-insensitively, so the compact `U.S.` in
+    /// the text also selects the extractors for spaced variations like
+    /// `U. S.`, and spaced text selects the compact reporter's extractor.
+    /// citare emits one extractor per variation, so variations are checked
+    /// individually rather than as one combined string set.
+    #[test]
+    fn test_extractor_filter() {
+        let tokenizer = AhocorasickTokenizer::new();
+        let strings_for = |text: &str| -> HashSet<Vec<String>> {
+            tokenizer
+                .get_extractors(text)
+                .into_iter()
+                .filter(|e| !e.strings.is_empty())
+                .map(|e| {
+                    let mut s = e.strings.clone();
+                    s.sort();
+                    s
+                })
+                .collect()
+        };
+
+        let selected = strings_for("See foo, 123 U.S. 456. Id.");
+        let mut stop_words: Vec<String> = crate::regexes::STOP_WORDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        stop_words.sort();
+        assert!(selected.contains(&stop_words));
+        assert!(selected.contains(&vec!["U.S.".to_string()]));
+        assert!(selected.contains(&vec!["U. S.".to_string()]));
+        assert!(selected.contains(&vec!["ibid.".to_string(), "id.".to_string()]));
+
+        let selected = strings_for("123 N. Y. S. 2d 456");
+        assert!(selected.contains(&vec!["N.Y.S.2d".to_string()]));
+    }
+
+    /// Two extractors matching the same span merge into one token, and the
+    /// merged editions must reach `all_tokens` (which citation extraction
+    /// reads), not just the `citation_tokens` list.
+    #[test]
+    fn test_merged_token_reaches_all_tokens() {
+        let make = |short_name: &str| {
+            let edition = Edition {
+                reporter: Reporter::new(
+                    short_name.to_string(),
+                    short_name.to_string(),
+                    "state".to_string(),
+                    ReporterSource::Reporters,
+                ),
+                short_name: short_name.to_string(),
+                start: None,
+                end: None,
+                harvard_slug: None,
+            };
+            Token::Citation(CitationTokenData {
+                token_data: TokenData {
+                    data: "1 P.R. 1".to_string(),
+                    start: 0,
+                    end: 8,
+                    groups: HashMap::new(),
+                },
+                exact_editions: vec![],
+                variation_editions: vec![edition],
+                short: false,
+            })
+        };
+        let raw = vec![make("P."), make("Pen. & W.")];
+        let (all_tokens, citation_tokens) = tokenize_impl(&raw, "1 P.R. 1");
+        assert_eq!(citation_tokens.len(), 1);
+        let idx = citation_tokens[0].0;
+        match &all_tokens[idx] {
+            TokenOrStr::Token(Token::Citation(ct)) => {
+                assert_eq!(ct.variation_editions.len(), 2);
+            }
+            other => panic!("expected citation token, got {other:?}"),
+        }
+    }
+
+    /// Port of eyecite's updated `test_tokenize`: "U. S." is both a
+    /// registered variation and, with relaxed whitespace, an exact match for
+    /// "U.S.". The overlapping matches merge into one token that keeps the
+    /// edition as an exact match only (eyecite #317).
+    #[test]
+    fn test_spaced_variation_is_exact_once() {
+        let tokenizer = AhocorasickTokenizer::new();
+        let (_tokens, citation_tokens) =
+            tokenizer.tokenize("See Roe v. Wade, 410 U. S. 113 (1973)");
+        let ct = citation_tokens
+            .iter()
+            .find_map(|(_, t)| match t {
+                Token::Citation(ct) => Some(ct),
+                _ => None,
+            })
+            .expect("citation token");
+        let exact: Vec<_> = ct
+            .exact_editions
+            .iter()
+            .map(|e| e.short_name.as_str())
+            .collect();
+        assert_eq!(exact, vec!["U.S."]);
+        assert!(ct.variation_editions.is_empty());
     }
 
     #[test]

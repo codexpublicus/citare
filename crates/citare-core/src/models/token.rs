@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::edition::Edition;
+use super::edition::{dedupe_editions, Edition};
 
 /// Shared data for all token types.
 ///
@@ -134,13 +134,13 @@ impl Token {
             sc.exact_editions.extend(oc.exact_editions.iter().cloned());
             sc.exact_editions
                 .sort_by(|a, b| a.short_name.cmp(&b.short_name));
-            sc.exact_editions.dedup();
-
             sc.variation_editions
                 .extend(oc.variation_editions.iter().cloned());
             sc.variation_editions
                 .sort_by(|a, b| a.short_name.cmp(&b.short_name));
-            sc.variation_editions.dedup();
+            // Drop repeats, including variations that are also exact
+            // matches (eyecite #317).
+            dedupe_editions(&mut sc.exact_editions, &mut sc.variation_editions);
             return true;
         }
 
