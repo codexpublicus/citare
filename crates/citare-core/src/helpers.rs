@@ -214,6 +214,31 @@ fn token_to_str(token: &TokenOrStr) -> String {
 // match_on_tokens
 // ---------------------------------------------------------------------------
 
+/// Where to cut text scanned by [`match_on_tokens`] once it reaches
+/// `MAX_MATCH_CHARS`, or `None` while it is shorter.
+///
+/// eyecite caps the text at that many code points (`len(text)`,
+/// `text[:MAX_MATCH_CHARS]` forward, `text[-MAX_MATCH_CHARS:]` backward), so
+/// the cut is the byte offset of a character boundary: the end of the text
+/// to keep when scanning forward, the start of it when scanning backward.
+fn match_cap(text: &str, forward: bool) -> Option<usize> {
+    // A string has at least as many bytes as characters.
+    if text.len() < MAX_MATCH_CHARS {
+        return None;
+    }
+    if forward {
+        match text.char_indices().nth(MAX_MATCH_CHARS) {
+            Some((cut, _)) => Some(cut),
+            None => (text.chars().count() == MAX_MATCH_CHARS).then_some(text.len()),
+        }
+    } else {
+        text.char_indices()
+            .rev()
+            .nth(MAX_MATCH_CHARS - 1)
+            .map(|(cut, _)| cut)
+    }
+}
+
 /// Scan forward or backward from `start_index`, building a text buffer from
 /// consecutive tokens, then match `regex_str` against the buffer.
 ///
@@ -246,8 +271,8 @@ pub fn match_on_tokens(
                 }
             }
             text.push_str(&token_to_str(token));
-            if text.len() >= MAX_MATCH_CHARS {
-                text.truncate(MAX_MATCH_CHARS);
+            if let Some(cut) = match_cap(&text, true) {
+                text.truncate(cut);
                 break;
             }
         }
@@ -268,9 +293,8 @@ pub fn match_on_tokens(
                 }
             }
             text = format!("{}{}", token_to_str(token), text);
-            if text.len() >= MAX_MATCH_CHARS {
-                let skip = text.len() - MAX_MATCH_CHARS;
-                text = text[skip..].to_string();
+            if let Some(cut) = match_cap(&text, false) {
+                text.replace_range(..cut, "");
                 break;
             }
         }
@@ -811,7 +835,7 @@ pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens
         if !clean.is_empty() {
             citation.metadata.antecedent_guess = Some(clean);
             if let Some(start_idx) = state.start_index {
-                let offset = text_len_between(words, start_idx, index.saturating_sub(1)) + 1;
+                let offset = case_name_offset(words, start_idx, index);
                 let span_start_val = span_start.saturating_sub(offset);
                 citation.resource.common.full_span_start = Some(span_start_val);
             }
@@ -905,9 +929,10 @@ fn scan_for_case_boundaries(
         // Opening paren after sufficient words
         if word_str.starts_with('(') && state.case_name_length > 3 {
             let start = if word_str == "("
-                || (word_str.len() > 1
-                    && word_str.as_bytes()[1].is_ascii_alphabetic()
-                    && word_str.as_bytes()[1].is_ascii_lowercase())
+                || word_str
+                    .chars()
+                    .nth(1)
+                    .is_some_and(|c| c.is_alphabetic() && c.is_lowercase())
             {
                 i + 2
             } else {
@@ -1064,7 +1089,7 @@ fn process_case_name(
             ""
         };
         if !clean.is_empty() || state.start_index.is_some() {
-            let offset = text_len_between(words, start_idx, index.saturating_sub(1)) + 1;
+            let offset = case_name_offset(words, start_idx, index);
             citation.resource.common.full_span_start = Some(span_start.saturating_sub(offset));
         }
     }
@@ -1105,6 +1130,39 @@ fn extract_text(words: &Tokens, start: usize, end: usize) -> String {
         .iter()
         .map(token_to_str)
         .collect::<String>()
+}
+
+/// How far, in bytes, a case name starting at word `start` begins before
+/// the citation at word `index`.
+///
+/// eyecite steps back `len("".join(words[start:index - 1])) + 1` code points
+/// from the citation: the words before the separator, plus one for the
+/// separator, assuming it is a single character. Counted in bytes, that
+/// "+ 1" lands inside a no-break space or an em dash glued to the
+/// citation, so step back the same number of characters over the text
+/// before the citation (`words[..index]`) instead.
+fn case_name_offset(words: &Tokens, start: usize, index: usize) -> usize {
+    let index = index.min(words.len());
+    let end = index.saturating_sub(1);
+    let chars: usize = words[start.min(end)..end]
+        .iter()
+        .map(|w| token_to_str(w).chars().count())
+        .sum::<usize>()
+        + 1;
+    let mut remaining = chars;
+    let mut bytes = 0;
+    for word in words[..index].iter().rev() {
+        let word = token_to_str(word);
+        for ch in word.chars().rev() {
+            if remaining == 0 {
+                return bytes;
+            }
+            remaining -= 1;
+            bytes += ch.len_utf8();
+        }
+    }
+    // Ran past the start of the text; the caller saturates at 0.
+    bytes + remaining
 }
 
 fn text_len_between(words: &Tokens, start: usize, end: usize) -> usize {
@@ -1265,8 +1323,16 @@ fn set_parties_from_html(
     citation.metadata.plaintiff = Some(clean_party(&clean_plaintiff, true));
     citation.metadata.defendant = Some(clean_party(&strip_stop_words(&defendant), false));
 
-    if clean_plaintiff.len() != plaintiff.len() {
-        start += plaintiff.len().saturating_sub(clean_plaintiff.len());
+    // eyecite shifts the start by the number of characters stripping removed
+    // (`len(plaintiff) - len(clean_plaintiff)`); shift by as many
+    // characters, not bytes, or a trimmed no-break space moves it into the
+    // middle of a character.
+    let removed = plaintiff
+        .chars()
+        .count()
+        .saturating_sub(clean_plaintiff.chars().count());
+    if removed > 0 && start <= document.plain_text.len() {
+        start = crate::utils::advance_chars(&document.plain_text, start, removed);
     }
     citation.resource.common.full_span_start = Some(start);
 }
