@@ -21,7 +21,7 @@ use crate::models::document::Document;
 use crate::models::edition::ReporterSource;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{SUPRA_ANTECEDENT_GROUPS, SUPRA_ANTECEDENT_REGEX};
-use crate::tokenizer::AhocorasickTokenizer;
+use crate::tokenizer::DEFAULT_TOKENIZER;
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -52,8 +52,7 @@ pub fn get_citations(
     let mut document = Document::new(plain_text, markup_text, clean_steps);
 
     // 2. Tokenize
-    let tokenizer = AhocorasickTokenizer::new();
-    document.tokenize(&tokenizer);
+    document.tokenize(&DEFAULT_TOKENIZER);
 
     // 3. For each citation token, extract citation
     let mut citations: Vec<Citation> = Vec::new();
