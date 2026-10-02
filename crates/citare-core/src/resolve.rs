@@ -407,4 +407,17 @@ mod tests {
         let resolutions = resolve_citations(&citations);
         assert_eq!(resolutions.len(), 2);
     }
+
+    // A reference citation that carries only the matched party name still
+    // resolves to its full citation.
+    #[test]
+    fn test_resolve_reference_with_single_party() {
+        let text = "Foo v. Bar 1 U.S. 12, 347-348. something something, In Foo at 62, we see that";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert!(matches!(citations[1], Citation::Reference(_)));
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 1);
+        let (_, cites) = resolutions.iter().next().unwrap();
+        assert_eq!(cites.len(), 2);
+    }
 }
