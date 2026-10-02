@@ -52,6 +52,10 @@ echo "Foo v. Bar, 1 U.S. 1 (1999). Id. at 2." | citare annotate
 
 # Inline text
 citare find --text "1 U.S. 1"
+
+# Span offsets as UTF-16 units (JavaScript) or code points (eyecite/Python)
+citare find --offsets utf16 --text "“Roe” 410 U.S. 113"
+citare find --offsets chars --text "“Roe” 410 U.S. 113"
 ```
 
 ## Quick Start (Rust)
@@ -94,6 +98,33 @@ const resolutions = resolveCitations("1 U.S. 1 (1999). Id. at 2.", false);
 console.log(resolutions);
 // [{resource_text: "1 U.S. 1", citations: [...]}]
 ```
+
+## Span offsets
+
+citare's spans are UTF-8 byte offsets, so `&text[start..end]` is free in
+Rust. Other languages index strings differently, and the numbers diverge as
+soon as the text contains a curly quote, `§` or an accented name:
+
+| Unit | Who counts this way | Where citare emits it |
+|------|---------------------|-----------------------|
+| UTF-8 bytes | Rust | `span()`, `full_span()`, `pin_cite_span()`; WASM `span`/`full_span`; CLI default |
+| Code points | Python, eyecite, citation-bench | `OffsetMap::to_chars`; WASM `chars`; CLI `--offsets chars` |
+| UTF-16 units | JavaScript `String.prototype.slice` | `OffsetMap::to_utf16`; WASM `utf16`; CLI `--offsets utf16` |
+
+```rust
+use citare_core::{get_citations, OffsetMap, OffsetUnit};
+
+let text = "“Roe” v. Wade, 410 U.S. 113 (1973)";
+let map = OffsetMap::new(text); // one pass; reuse for every span
+for c in get_citations(text, false, "", &[]) {
+    let spans = map.citation_spans(&c, OffsetUnit::Chars).unwrap();
+    println!("{:?} {:?}", spans.span, spans.full_span);
+}
+```
+
+In JavaScript, `text.slice(...c.utf16.span)` returns the citation; store
+`c.chars.span` when offsets must match a code point protocol. Pass the byte
+`span` back to `annotateCitations`.
 
 ## Harvard CAP Integration
 
