@@ -4,7 +4,7 @@
 //! extraction, court lookup, overlap filtering, and case name extraction.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 
 use fancy_regex::Regex as FancyRegex;
 use log::warn;
@@ -82,6 +82,16 @@ fn re_stop_words_ci() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(&format!("(?i){}", *STOP_WORD_REGEX)).unwrap())
 }
 
+fn re_year() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
+    RE.get_or_init(|| FancyRegex::new(&YEAR_REGEX).unwrap())
+}
+
+fn re_year_only() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
+    RE.get_or_init(|| FancyRegex::new(&format!("^(?:{})$", *YEAR_REGEX)).unwrap())
+}
+
 fn re_leading_in() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| regex::Regex::new(r"(?i)^In\s+").unwrap())
@@ -91,13 +101,76 @@ fn re_leading_in() -> &'static regex::Regex {
 // Courts data
 // ---------------------------------------------------------------------------
 
-/// Embedded courts.json.
-const COURTS_JSON: &str = include_str!("../../../data/courts-db/courts_db/data/courts.json");
+/// Generated at build time from courts-db by `build.rs`.
+mod generated_courts {
+    include!(concat!(env!("OUT_DIR"), "/generated_courts.rs"));
+}
+use generated_courts::GENERATED_COURT_KEYS;
 
-/// Lazily-loaded courts list.
-static COURTS: LazyLock<Vec<citare_data_build::courts::Court>> = LazyLock::new(|| {
-    citare_data_build::courts::parse_courts(COURTS_JSON).expect("Failed to parse courts.json")
-});
+/// Lowercase alphanumeric form of a court citation string, used to match
+/// citation parentheticals against courts-db. `build.rs` applies the same
+/// reduction to every court's `citation_string`.
+fn normalize_court_string(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+// ---------------------------------------------------------------------------
+// Anchored pattern cache
+// ---------------------------------------------------------------------------
+
+/// A `match_on_tokens` pattern compiled once: the anchored regex plus the
+/// named groups found in the unanchored source.
+struct AnchoredPattern {
+    re: FancyRegex,
+    names: Vec<String>,
+}
+
+/// Cache of compiled anchored patterns, keyed by `(pattern, forward)`.
+///
+/// Compiling the metadata regexes dominated per-call cost, and every
+/// in-crate caller passes one of a handful of static patterns.
+type PatternCache = HashMap<(String, bool), Option<Arc<AnchoredPattern>>>;
+static ANCHORED_PATTERNS: LazyLock<RwLock<PatternCache>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Upper bound on cached patterns, so callers passing many distinct
+/// patterns can't grow the cache without limit.
+const MAX_CACHED_PATTERNS: usize = 64;
+
+fn anchored_pattern(regex_str: &str, forward: bool) -> Option<Arc<AnchoredPattern>> {
+    let key = (regex_str.to_string(), forward);
+    if let Some(hit) = ANCHORED_PATTERNS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+    {
+        return hit.clone();
+    }
+
+    let anchored = if forward {
+        format!("^(?:{})", regex_str)
+    } else {
+        format!("(?:{})$", regex_str)
+    };
+    // fancy_regex doesn't expose group names in source order, so collect
+    // every (?P<name>...) in the regex string instead.
+    let compiled = FancyRegex::new(&anchored).ok().map(|re| {
+        let names = re_named_groups()
+            .captures_iter(regex_str)
+            .map(|cap| cap[1].to_string())
+            .collect();
+        Arc::new(AnchoredPattern { re, names })
+    });
+
+    let mut cache = ANCHORED_PATTERNS.write().unwrap_or_else(|e| e.into_inner());
+    if cache.len() < MAX_CACHED_PATTERNS {
+        cache.insert(key, compiled.clone());
+    }
+    compiled
+}
 
 // ---------------------------------------------------------------------------
 // MatchResult
@@ -158,13 +231,6 @@ pub fn match_on_tokens(
 ) -> Option<MatchResult> {
     let mut text = prefix.to_string();
 
-    // Anchor the regex
-    let anchored = if forward {
-        format!("^(?:{})", regex_str)
-    } else {
-        format!("(?:{})$", regex_str)
-    };
-
     if forward {
         let start = (start_index.max(0) as usize).min(words.len());
         for token in &words[start..] {
@@ -210,20 +276,14 @@ pub fn match_on_tokens(
     }
 
     // Match using fancy_regex (supports lookahead)
-    let re = FancyRegex::new(&anchored).ok()?;
-    let captures = re.captures(&text).ok()??;
+    let pattern = anchored_pattern(regex_str, forward)?;
+    let captures = pattern.re.captures(&text).ok()??;
 
     // Extract all named groups
     let mut groups = HashMap::new();
-
-    // Extract named groups by iterating through capture group names
-    // fancy_regex doesn't provide capture_names(), so we use a workaround:
-    // look for all (?P<name>...) patterns in the regex string
-    let name_re = re_named_groups();
-    for cap in name_re.captures_iter(regex_str) {
-        let name = cap.get(1).unwrap().as_str();
+    for name in &pattern.names {
         let value = captures.name(name).map(|m| m.as_str().to_string());
-        groups.insert(name.to_string(), value);
+        groups.insert(name.clone(), value);
     }
 
     let overall = captures.get(0)?;
@@ -256,33 +316,22 @@ pub fn get_year(word: &str) -> Option<i32> {
 ///
 /// Does not handle SCOTUS (which lacks parentheticals).
 pub fn get_court_by_paren(paren_string: &str) -> Option<String> {
-    let court_str: String = paren_string
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>()
-        .to_lowercase();
+    let court_str = normalize_court_string(paren_string);
 
     if court_str.is_empty() {
         return None;
     }
 
-    let mut fallback: Option<String> = None;
-    for court in COURTS.iter() {
-        let s: String = court
-            .citation_string
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect::<String>()
-            .to_lowercase();
-
+    let mut fallback: Option<&str> = None;
+    for &(s, id) in GENERATED_COURT_KEYS {
         if s == court_str {
-            return Some(court.id.clone());
+            return Some(id.to_string());
         }
         if s.starts_with(&court_str) {
-            fallback = Some(court.id.clone());
+            fallback = Some(id);
         }
     }
-    fallback
+    fallback.map(str::to_string)
 }
 
 // ---------------------------------------------------------------------------
@@ -325,12 +374,9 @@ pub fn process_parenthetical(paren: Option<&str>) -> Option<String> {
     }
 
     // Filter year-only parentheticals
-    let year_re = FancyRegex::new(&YEAR_REGEX).ok()?;
-    if year_re.is_match(paren).unwrap_or(false) {
+    if re_year().is_match(paren).unwrap_or(false) {
         // Check if the whole string is just a year
-        let full_match = format!("^(?:{})$", *YEAR_REGEX);
-        let full_re = FancyRegex::new(&full_match).ok()?;
-        if full_re.is_match(paren).unwrap_or(false) {
+        if re_year_only().is_match(paren).unwrap_or(false) {
             return None;
         }
     }
@@ -623,7 +669,12 @@ pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short
     let mut state = initialize_search_state(citation);
     scan_for_case_boundaries(words, citation, &mut state);
 
-    if state.candidate_case_name.is_some() {
+    // eyecite only processes a truthy (non-empty) candidate.
+    if state
+        .candidate_case_name
+        .as_deref()
+        .is_some_and(|c| !c.is_empty())
+    {
         process_case_name(citation, words, &state, short);
     }
 }
@@ -686,11 +737,7 @@ pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens
             // "v" stop word
             if is_v_token(word) {
                 state.v_token_found = true;
-                if i >= 2 {
-                    state.start_index = Some(i - 2);
-                } else {
-                    state.start_index = Some(0);
-                }
+                state.start_index = Some(v_token_start_index(words, i));
                 state.candidate_case_name = Some(extract_text(
                     words,
                     state.start_index.unwrap(),
@@ -895,12 +942,10 @@ fn scan_for_case_boundaries(
         // "v" stop word
         if is_v_token(word) {
             state.v_token_found = true;
-            state.start_index = Some(i.saturating_sub(2));
-            state.candidate_case_name = Some(extract_text(
-                words,
-                i.saturating_sub(2),
-                state.title_starting_index,
-            ));
+            let start = v_token_start_index(words, i);
+            state.start_index = Some(start);
+            state.candidate_case_name =
+                Some(extract_text(words, start, state.title_starting_index));
             continue;
         }
 
@@ -1034,6 +1079,20 @@ fn process_case_name(
 // ---------------------------------------------------------------------------
 // Small helper functions
 // ---------------------------------------------------------------------------
+
+/// Start index of the case name when a "v" token sits at word `i`.
+///
+/// eyecite uses `i - 2` as a Python slice start, so a "v" at the first or
+/// second word wraps around to the end of the word list and yields an empty
+/// candidate (e.g. `v. Bar, 1 U.S. 1` gets no case name, and `Bar` falls
+/// through to `antecedent_guess`). Mirror that wrap-around.
+fn v_token_start_index(words: &Tokens, i: usize) -> usize {
+    if i >= 2 {
+        i - 2
+    } else {
+        (words.len() + i).saturating_sub(2)
+    }
+}
 
 fn extract_text(words: &Tokens, start: usize, end: usize) -> String {
     let start = start.min(words.len());
@@ -1303,6 +1362,21 @@ mod tests {
     #[test]
     fn test_get_court_by_paren_empty() {
         assert_eq!(get_court_by_paren(""), None);
+    }
+
+    #[test]
+    fn test_generated_court_keys_match_courts_db() {
+        let json = include_str!("../../../data/courts-db/courts_db/data/courts.json");
+        let courts = citare_data_build::courts::parse_courts(json).unwrap();
+        let expected: Vec<(String, String)> = courts
+            .iter()
+            .map(|c| (normalize_court_string(&c.citation_string), c.id.clone()))
+            .collect();
+        let generated: Vec<(String, String)> = GENERATED_COURT_KEYS
+            .iter()
+            .map(|&(k, id)| (k.to_string(), id.to_string()))
+            .collect();
+        assert_eq!(generated, expected);
     }
 
     #[test]

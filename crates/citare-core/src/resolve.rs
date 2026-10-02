@@ -7,6 +7,7 @@
 //! Ported from eyecite's `resolve.py`.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use crate::models::{
     Citation, IdCitationData, ReferenceCitationData, Resource, ShortCaseCitationData,
@@ -278,8 +279,9 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
     let page: i32 = page_str.parse().unwrap_or(0);
 
     // Extract the numeric portion of the pin cite (e.g. "at 5" → 5).
-    let re = regex::Regex::new(r"(?:at )?(\d+)").unwrap();
-    let pin: i32 = match re.captures(pin_cite) {
+    static PIN_NUMBER_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?:at )?(\d+)").unwrap());
+    let pin: i32 = match PIN_NUMBER_RE.captures(pin_cite) {
         Some(caps) => caps[1].parse().unwrap_or(0),
         // Non-numeric pin cite is assumed invalid.
         None => return true,
@@ -406,5 +408,66 @@ mod tests {
         let citations = crate::find::get_citations(text, false, "", &[]);
         let resolutions = resolve_citations(&citations);
         assert_eq!(resolutions.len(), 2);
+    }
+
+    // A reference citation that carries only the matched party name still
+    // resolves to its full citation.
+    #[test]
+    fn test_resolve_reference_with_single_party() {
+        let text = "Foo v. Bar 1 U.S. 12, 347-348. something something, In Foo at 62, we see that";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert!(matches!(citations[1], Citation::Reference(_)));
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 1);
+        let (_, cites) = resolutions.iter().next().unwrap();
+        assert_eq!(cites.len(), 2);
+    }
+
+    // Ported from eyecite tests/test_ResolveTest.py: two otherwise identical
+    // full citations with missing pages must not resolve to the same
+    // resource.
+    #[test]
+    fn test_blank_page_full_citations_are_distinct() {
+        let text = "Foo v. Bar, 1 U.S. ____. Foo v. Bar, 1 U.S. ____.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert_eq!(citations.len(), 2);
+        assert_ne!(citations[0], citations[1]);
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 2);
+        for cites in resolutions.values() {
+            assert_eq!(cites.len(), 1);
+        }
+    }
+
+    // A blank-page citation is still equal to a clone of itself, so it can
+    // serve as a stable resource key.
+    #[test]
+    fn test_blank_page_citation_equals_its_clone() {
+        let citations = crate::find::get_citations("1 U.S. ___", false, "", &[]);
+        let resource = resolve_full_citation(&citations[0]);
+        assert_eq!(resource.citation, citations[0]);
+        assert_eq!(resource, resolve_full_citation(&citations[0]));
+    }
+
+    // Ported from eyecite: an Id. pin cite after a full citation that only
+    // has a placeholder page can't be resolved.
+    #[test]
+    fn test_id_after_blank_page_not_resolved() {
+        let text = "Foo v. Bar, 1 U.S. ___. Id. at 100.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert_eq!(citations.len(), 2);
+        let resolutions = resolve_citations(&citations);
+        let total_resolved: usize = resolutions.values().map(|v| v.len()).sum();
+        assert_eq!(total_resolved, 1);
+    }
+
+    #[test]
+    fn test_short_cite_resolves_to_blank_page_full_cite() {
+        let text = "Foo v. Bar, 1 U.S. ___ (2019). Foo, 1 U.S., at 5.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 1);
+        let (_, cites) = resolutions.iter().next().unwrap();
+        assert_eq!(cites.len(), 2);
     }
 }
