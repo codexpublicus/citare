@@ -26,6 +26,7 @@ pub mod clean;
 pub mod find;
 pub mod helpers;
 pub mod models;
+pub mod offsets;
 pub mod regexes;
 pub mod resolve;
 pub mod tokenizer;
@@ -63,6 +64,11 @@ pub use annotate::UnbalancedTags;
 
 /// Maps character offsets between two versions of a text (e.g. plain vs. HTML).
 pub use annotate::SpanUpdater;
+
+/// Convert byte spans to Unicode code point or UTF-16 offsets.
+///
+/// See [`offsets`] for details.
+pub use offsets::{CitationSpans, OffsetMap, OffsetUnit};
 
 /// Apply a sequence of cleaning steps to text.
 ///

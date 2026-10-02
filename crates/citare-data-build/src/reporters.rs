@@ -111,14 +111,14 @@ mod tests {
     fn test_parse_reporters() {
         let data = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
         let reporters = parse_reporters(data).unwrap();
-        assert_eq!(reporters.len(), 1235);
+        assert_eq!(reporters.len(), 1236);
         // Count total editions
         let total_editions: usize = reporters
             .values()
             .flat_map(|clusters| clusters.iter())
             .map(|c| c.editions.len())
             .sum();
-        assert_eq!(total_editions, 1367);
+        assert_eq!(total_editions, 1368);
     }
 
     #[test]

@@ -86,7 +86,7 @@ mod tests {
             .iter()
             .filter(|c| !c.citation_string.is_empty())
             .count();
-        assert_eq!(with_citation_string, 1956);
+        assert_eq!(with_citation_string, 1959);
     }
 
     #[test]

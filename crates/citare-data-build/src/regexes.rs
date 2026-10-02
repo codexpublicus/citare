@@ -43,6 +43,31 @@ pub fn short_cite_re(regex: &str) -> String {
     regex.replace(r"(?P<page>", r"at\s?(p(\.|age)?)? (?P<page>")
 }
 
+/// Relax inter-token whitespace in an escaped reporter abbreviation.
+///
+/// Mirrors eyecite's `_relax_ws` (eyecite #305). An escaped reporter string
+/// is an exact-match pattern, so the spaced-out print style common in older
+/// official reporters (`N. Y. S. 2d` for `N.Y.S.2d`) would not match. This
+/// lets whitespace follow every period and makes each run of spaces optional,
+/// while keeping the periods themselves mandatory.
+pub fn relax_ws(escaped: &str) -> String {
+    let with_periods = escaped.replace(r"\.", r"\.\s*");
+    let mut out = String::with_capacity(with_periods.len() + 8);
+    let mut in_space_run = false;
+    for ch in with_periods.chars() {
+        if ch == ' ' {
+            if !in_space_run {
+                out.push_str(r"\s*");
+                in_space_run = true;
+            }
+        } else {
+            out.push(ch);
+            in_space_run = false;
+        }
+    }
+    out
+}
+
 /// Ordered list of stop words recognised during tokenisation.
 pub const STOP_WORDS: &[&str] = &[
     "v",
@@ -130,6 +155,25 @@ pub fn placeholder_citations_regex() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_relax_ws() {
+        assert_eq!(relax_ws(&regex::escape("U.S.")), r"U\.\s*S\.\s*");
+        assert_eq!(relax_ws(&regex::escape("F. 3d")), r"F\.\s*\s*3d");
+        assert_eq!(
+            relax_ws(&regex::escape("Ohio  C.C.")),
+            r"Ohio\s*C\.\s*C\.\s*"
+        );
+
+        let re =
+            regex::Regex::new(&format!("^(?:{})$", relax_ws(&regex::escape("N.Y.S.2d")))).unwrap();
+        for s in ["N.Y.S.2d", "N. Y. S. 2d", "N.Y.S. 2d", "N.  Y.S.2d"] {
+            assert!(re.is_match(s), "{s:?} should match");
+        }
+        // Periods stay mandatory.
+        assert!(!re.is_match("N Y S 2d"));
+        assert!(!re.is_match("NYS2d"));
+    }
 
     #[test]
     fn test_page_number_regex() {

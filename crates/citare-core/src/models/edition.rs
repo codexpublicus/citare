@@ -86,9 +86,54 @@ impl fmt::Display for Edition {
     }
 }
 
+/// De-duplicate editions while preserving order and genuine ambiguity.
+///
+/// Mirrors eyecite's `_dedupe_editions` (eyecite #317). One edition can be
+/// reached both as an exact match and as a variation, e.g. when the relaxed
+/// reporter whitespace makes both `F.3d` and its variation `F. 3d` match the
+/// same text, or when a custom regex omits `$edition` so its canonical and
+/// variation forms are identical. Each list is de-duplicated, and variation
+/// editions that are already exact matches are dropped, so distinct editions
+/// (like the two `B.R.` reporters) are kept but none is listed twice.
+pub fn dedupe_editions(exact: &mut Vec<Edition>, variation: &mut Vec<Edition>) {
+    let mut seen: Vec<Edition> = Vec::with_capacity(exact.len() + variation.len());
+    exact.retain(|e| {
+        if seen.contains(e) {
+            false
+        } else {
+            seen.push(e.clone());
+            true
+        }
+    });
+    variation.retain(|e| {
+        if seen.contains(e) {
+            false
+        } else {
+            seen.push(e.clone());
+            true
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_dedupe_editions() {
+        let a = make_edition(Some("1900"), None);
+        let b = make_edition(Some("1950"), None);
+        let mut exact = vec![a.clone(), a.clone(), b.clone()];
+        let mut variation = vec![b.clone(), a.clone(), b.clone()];
+        dedupe_editions(&mut exact, &mut variation);
+        assert_eq!(exact, vec![a.clone(), b.clone()]);
+        assert!(variation.is_empty());
+
+        let mut exact = vec![];
+        let mut variation = vec![b.clone(), a.clone(), b.clone()];
+        dedupe_editions(&mut exact, &mut variation);
+        assert_eq!(variation, vec![b, a]);
+    }
 
     fn make_reporter(cite_type: &str, name: &str) -> Reporter {
         Reporter::new(

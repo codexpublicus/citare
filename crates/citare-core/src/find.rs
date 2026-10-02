@@ -13,16 +13,16 @@ use crate::helpers::{
     guess_edition,
 };
 use crate::models::citation::{
-    CaseMetadata, Citation, CitationCommon, FullCaseCitationData, FullCaseMetadata,
-    FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata, JournalMetadata,
-    LawMetadata, ResourceCitationCommon, ShortCaseCitationData, ShortCaseMetadata,
+    normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
+    FullCaseMetadata, FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata,
+    JournalMetadata, LawMetadata, ResourceCitationCommon, ShortCaseCitationData, ShortCaseMetadata,
     SupraCitationData, SupraMetadata, UnknownCitationData,
 };
 use crate::models::document::Document;
 use crate::models::edition::ReporterSource;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{SUPRA_ANTECEDENT_GROUPS, SUPRA_ANTECEDENT_REGEX};
-use crate::tokenizer::AhocorasickTokenizer;
+use crate::tokenizer::DEFAULT_TOKENIZER;
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -55,8 +55,7 @@ pub fn get_citations(
     let mut document = Document::new(plain_text, markup_text, clean_steps);
 
     // 2. Tokenize
-    let tokenizer = AhocorasickTokenizer::new();
-    document.tokenize(&tokenizer);
+    document.tokenize(&DEFAULT_TOKENIZER);
 
     // 3. For each citation token, extract citation
     let mut citations: Vec<Citation> = Vec::new();
@@ -161,7 +160,8 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
     let cite_sources: std::collections::HashSet<ReporterSource> =
         editions.iter().map(|e| e.reporter.source).collect();
 
-    let groups = token.groups().clone();
+    let mut groups = token.groups().clone();
+    normalize_blank_page(&mut groups);
     let all_editions: Vec<_> = ct
         .exact_editions
         .iter()
@@ -297,10 +297,17 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
         _ => unreachable!("Expected citation token"),
     };
 
-    let groups = token.groups().clone();
-    let page_prefix = groups.get("page").and_then(|v| v.as_deref()).unwrap_or("");
-
+    // The pin cite is matched against the original page text, before a
+    // blank page is normalized away (as eyecite does).
+    let page_prefix = token
+        .groups()
+        .get("page")
+        .and_then(|v| v.as_deref())
+        .unwrap_or("");
     let (pin_cite, span_end, parenthetical) = extract_pin_cite(&document.words, index, page_prefix);
+
+    let mut groups = token.groups().clone();
+    normalize_blank_page(&mut groups);
 
     let span_end_val = span_end.unwrap_or(0);
     let all_editions: Vec<_> = ct
@@ -570,14 +577,24 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         return Vec::new();
     }
 
-    let regexes: Vec<String> = reference_names(data)
-        .into_iter()
-        .map(|(key, value)| format!("(?P<{key}>{})", regex::escape(value)))
-        .collect();
-    if regexes.is_empty() {
+    let names = reference_names(data);
+    if names.is_empty() {
         return Vec::new();
     }
 
+    // A reference match must contain one of the names verbatim (they are
+    // escaped and matched case-sensitively). Skip compiling the
+    // per-citation regex when none appears after the citation, which is
+    // the common case.
+    let remaining_text = &plain_text[span_end..];
+    if !names.iter().any(|(_, name)| remaining_text.contains(name)) {
+        return Vec::new();
+    }
+
+    let regexes: Vec<String> = names
+        .iter()
+        .map(|(key, value)| format!("(?P<{key}>{})", regex::escape(value)))
+        .collect();
     let pin_cite_re = crate::regexes::reference_pin_cite_re(
         &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
     );
@@ -585,17 +602,32 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         return Vec::new();
     };
 
-    let remaining_text = &plain_text[span_end..];
-    re.captures_iter(remaining_text)
-        .filter_map(Result::ok)
-        .map(|caps| {
-            let m = caps.get(0).unwrap();
-            let span = (span_end + m.start(), span_end + m.end());
-            make_reference(m.as_str().to_string(), span, span, |name| {
-                caps.name(name).map(|g| g.as_str().to_string())
-            })
-        })
-        .collect()
+    // Like eyecite's `match.groupdict()`, the metadata holds only the groups
+    // that took part in the match: the matched name and the pin cite.
+    let mut references = Vec::new();
+    let mut pos = 0;
+    while pos <= remaining_text.len() {
+        let caps = match re.captures_from_pos(remaining_text, pos) {
+            Ok(Some(caps)) => caps,
+            _ => break,
+        };
+        let m = caps.get(0).expect("group 0 is always present");
+        let span = (span_end + m.start(), span_end + m.end());
+        references.push(make_reference(m.as_str().to_string(), span, span, |name| {
+            caps.name(name).map(|g| g.as_str().to_string())
+        }));
+
+        pos = if m.end() > m.start() {
+            m.end()
+        } else {
+            // Step past an empty match without splitting a UTF-8 character.
+            match remaining_text[m.end()..].chars().next() {
+                Some(c) => m.end() + c.len_utf8(),
+                None => break,
+            }
+        };
+    }
+    references
 }
 
 fn re_after_markup_reference() -> &'static regex::Regex {
@@ -1046,24 +1078,194 @@ mod tests {
         assert!(cites.is_empty() || !cites.iter().any(|c| c.matched_text().contains("S.W.")));
     }
 
+    fn only_full_case(cites: &[Citation]) -> &FullCaseCitationData {
+        assert_eq!(cites.len(), 1, "expected one citation, got {:?}", cites);
+        match &cites[0] {
+            Citation::FullCase(d) => d,
+            other => panic!("expected FullCase, got {:?}", other),
+        }
+    }
+
+    // Ported from eyecite tests/test_FindTest.py: a page made only of
+    // underscores is a known-missing page and is normalized to None.
+    #[test]
+    fn test_blank_page_is_none() {
+        let cites = get_citations("1 U.S. ___", false, "", &[]);
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(g.get("volume").cloned().flatten().as_deref(), Some("1"));
+        assert_eq!(
+            g.get("reporter").cloned().flatten().as_deref(),
+            Some("U.S.")
+        );
+        assert_eq!(g.get("page").cloned().flatten(), None);
+        // The matched text still carries the original underscores.
+        assert_eq!(cites[0].matched_text(), "1 U.S. ___");
+    }
+
+    #[test]
+    fn test_blank_page_followed_by_comma() {
+        // cf. eyecite#137
+        let cites = get_citations("1 U. S. ___,", false, "", &[]);
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(
+            g.get("reporter").cloned().flatten().as_deref(),
+            Some("U. S.")
+        );
+        assert_eq!(g.get("page").cloned().flatten(), None);
+    }
+
+    #[test]
+    fn test_blank_page_with_pin_cite() {
+        let cites = get_citations(
+            "\n 576 U.S. ___, 13",
+            false,
+            "",
+            &[CleanStep::AllWhitespace],
+        );
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(g.get("volume").cloned().flatten().as_deref(), Some("576"));
+        assert_eq!(g.get("page").cloned().flatten(), None);
+        assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("13"));
+        assert_eq!(d.metadata.case.court.as_deref(), Some("scotus"));
+    }
+
     #[test]
     fn test_placeholder_citation() {
-        // "585 U.S. ___" uses the placeholder page token; it should still
-        // produce a FullCase citation — the page group is "___" not None.
+        // "585 U.S. ___" uses the placeholder page token; it still produces a
+        // FullCase citation, with the page group normalized to None.
         let cites = get_citations("585 U.S. ___ (2018)", false, "", &[]);
-        assert!(
-            !cites.is_empty(),
-            "Expected a citation for placeholder page"
+        let d = only_full_case(&cites);
+        assert_eq!(
+            d.resource.common.groups.get("page").cloned().flatten(),
+            None
         );
-        if let Citation::FullCase(d) = &cites[0] {
-            // Placeholder page is captured as "___", not absent
-            let page = d
-                .resource
-                .common
-                .groups
-                .get("page")
-                .and_then(|v| v.as_deref());
-            assert_eq!(page, Some("___"), "Placeholder page should be '___'");
+        assert_eq!(d.metadata.case.year.as_deref(), Some("2018"));
+    }
+
+    fn references(cites: &[Citation]) -> Vec<&crate::models::citation::ReferenceCitationData> {
+        cites
+            .iter()
+            .filter_map(|c| match c {
+                Citation::Reference(d) => Some(d),
+                _ => None,
+            })
+            .collect()
+    }
+
+    // Ported from eyecite tests/test_FindTest.py: a reference citation
+    // carries its pin cite and only the party name that matched.
+    #[test]
+    fn test_reference_citation_plaintiff_and_pin_cite() {
+        let text = "Foo v. Bar 1 U.S. 12, 347-348. something something, In Foo at 62, we see that";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(cites.len(), 2, "{:?}", cites);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        let r = refs[0];
+        assert_eq!(cites[1].matched_text(), "Foo at 62");
+        assert_eq!(r.metadata.plaintiff.as_deref(), Some("Foo"));
+        assert_eq!(r.metadata.defendant, None);
+        assert_eq!(r.metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_skips_disallowed_defendant() {
+        let text = "Foo v. United States 1 U.S. 12, 347-348. something something ... \
+                    the United States at 1776 we see that and Foo at 62";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Foo"));
+        assert_eq!(refs[0].metadata.defendant, None);
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_must_follow_full_cite() {
+        let text = "In Foo at 62 we see that, Foo v. Bar 1 U.S. 12, 347-348. something something,";
+        let cites = get_citations(text, false, "", &[]);
+        assert!(references(&cites).is_empty());
+    }
+
+    #[test]
+    fn test_reference_citation_against_defendant() {
+        let text =
+            "In re Foo 1 Mass. 12, 347-348. something something, in Foo at 62, we see that, ";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff, None);
+        assert_eq!(refs[0].metadata.defendant.as_deref(), Some("Foo"));
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_after_id() {
+        let text = "we said in Morton v. Mancari, 417 U. S. 535, 552 (1974) \u{201c}Literally every \
+                    piece ....\u{201d}. \u{201c}asisovereign tribal entities . . . .\u{201d} Id. In \
+                    Mancari at 665";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff, None);
+        assert_eq!(refs[0].metadata.defendant.as_deref(), Some("Mancari"));
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 665"));
+    }
+
+    #[test]
+    fn test_reference_citation_amick() {
+        let text = "General Casualty cites as compelling Amick v. Liberty Mut. Ins. Co., 455 A.2d \
+                    793 (R.I. 1983). In that case ... Stats, do. See Amick at 795";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Amick"));
+        assert_eq!(refs[0].metadata.defendant, None);
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 795"));
+    }
+
+    // Ported from eyecite test_reference_extraction_using_resolved_names:
+    // resolved case names are also used to find references.
+    #[test]
+    fn test_reference_extraction_using_resolved_names() {
+        let text = "See, e.g., State v. W1ngler, 135 A. 2d 468 (1957);\n\
+                    [State v. Wingler at 175, citing, Minnesota ex rel.]";
+        let mut cites = get_citations(text, false, "", &[]);
+        assert!(references(&cites).is_empty());
+        if let Citation::FullCase(d) = &mut cites[0] {
+            d.metadata.resolved_case_name = Some("State v. Wingler".to_string());
+        } else {
+            panic!("expected FullCase, got {:?}", cites[0]);
+        }
+        let refs = extract_pincited_reference_citations(&cites[0], text);
+        assert_eq!(refs.len(), 1, "{:?}", refs);
+        assert_eq!(refs[0].matched_text(), "State v. Wingler at 175");
+        if let Citation::Reference(r) = &refs[0] {
+            assert_eq!(
+                r.metadata.resolved_case_name.as_deref(),
+                Some("State v. Wingler")
+            );
+            assert_eq!(r.metadata.plaintiff, None);
+            assert_eq!(r.metadata.pin_cite.as_deref(), Some("at 175"));
+        }
+    }
+
+    // Ported from eyecite: a "v." at the very start of the input leaves no
+    // case name, so the party falls through to antecedent_guess.
+    #[test]
+    fn test_missing_plaintiff_at_start_of_input() {
+        let cites = get_citations("v. Bar, 1 U.S. 1", false, "", &[]);
+        assert_eq!(cites.len(), 1);
+        match &cites[0] {
+            Citation::FullCase(d) => {
+                assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Bar"));
+                assert_eq!(d.metadata.plaintiff, None);
+                assert_eq!(d.metadata.defendant, None);
+            }
+            other => panic!("expected FullCase, got {:?}", other),
         }
     }
 
@@ -1148,5 +1350,145 @@ mod tests {
     fn test_ambiguous_flag() {
         let cites = get_citations("1 U.S. 1", false, "", &[]);
         assert!(!cites[0].is_ambiguous(), "U.S. should not be ambiguous");
+    }
+
+    /// Port of eyecite's `test_relaxed_reporter_whitespace` (eyecite #305):
+    /// reporters printed with spaced-out abbreviations still match, while
+    /// periods stay mandatory.
+    #[test]
+    fn test_relaxed_reporter_whitespace() {
+        fn group<'a>(c: &'a Citation, name: &str) -> Option<&'a str> {
+            c.resource_common()?.common.groups.get(name)?.as_deref()
+        }
+
+        // (text, type, reporter, reporter_found, [(group, value)])
+        type Case<'a> = (&'a str, &'a str, &'a str, &'a str, &'a [(&'a str, &'a str)]);
+        let cases: &[Case] = &[
+            (
+                "123 N. Y. S. 2d 456",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N. Y. S. 2d",
+                &[("volume", "123"), ("page", "456")],
+            ),
+            (
+                "260 F. R. D. 38",
+                "FullCaseCitation",
+                "F.R.D.",
+                "F. R. D.",
+                &[("volume", "260"), ("page", "38")],
+            ),
+            (
+                "8 N. Y. 3d 204",
+                "FullCaseCitation",
+                "N.Y.3d",
+                "N. Y. 3d",
+                &[("volume", "8"), ("page", "204")],
+            ),
+            // Partially spaced (space only after the final period)
+            (
+                "799 N.Y.S. 2d 795",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N.Y.S. 2d",
+                &[("volume", "799"), ("page", "795")],
+            ),
+            // Multi-word reporter with spaced tokens
+            (
+                "31 Ohio C. C. 270",
+                "FullCaseCitation",
+                "Ohio C.C.",
+                "Ohio C. C.",
+                &[("volume", "31"), ("page", "270")],
+            ),
+            // Compact forms still match unchanged
+            (
+                "799 N.Y.S.2d 795",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N.Y.S.2d",
+                &[("volume", "799"), ("page", "795")],
+            ),
+            // Short cite through the short_cite_re path
+            (
+                "See Adarand, 799 N. Y. S. 2d, at 797",
+                "ShortCaseCitation",
+                "N.Y.S.2d",
+                "N. Y. S. 2d",
+                &[("volume", "799"), ("page", "797")],
+            ),
+            // Laws and journals go through the same chokepoint
+            (
+                "18 U. S. C. \u{00a7} 4241",
+                "FullLawCitation",
+                "U.S.C.",
+                "U. S. C.",
+                &[("title", "18"), ("section", "4241")],
+            ),
+            (
+                "1 F. B. I. S. 1",
+                "FullJournalCitation",
+                "F.B.I.S.",
+                "F. B. I. S.",
+                &[],
+            ),
+        ];
+
+        for &(text, type_name, reporter, found, groups) in cases {
+            let cites = get_citations(text, false, "", &[]);
+            assert_eq!(cites.len(), 1, "{text:?}: {cites:?}");
+            let c = &cites[0];
+            assert_eq!(c.type_name(), type_name, "{text:?}");
+            assert_eq!(
+                c.corrected_reporter().as_deref(),
+                Some(reporter),
+                "{text:?}"
+            );
+            assert_eq!(group(c, "reporter"), Some(found), "{text:?}");
+            for &(name, value) in groups {
+                assert_eq!(group(c, name), Some(value), "{text:?} group {name}");
+            }
+        }
+
+        let cites = get_citations("See Adarand, 799 N. Y. S. 2d, at 797", false, "", &[]);
+        match &cites[0] {
+            Citation::ShortCase(d) => {
+                assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Adarand"))
+            }
+            other => panic!("expected short case, got {other:?}"),
+        }
+
+        // Periods stay mandatory.
+        assert!(get_citations("123 N Y S 2d 456", false, "", &[]).is_empty());
+    }
+
+    /// Port of eyecite's `test_no_duplicate_editions` (eyecite #317): the
+    /// same edition is never listed twice in `all_editions`, but genuine
+    /// ambiguity between distinct editions is preserved.
+    #[test]
+    fn test_no_duplicate_editions() {
+        for text in [
+            "238 F.3d 273", // whitespace-only variation
+            "410 U.S. 113",
+            "123 F.2d 456",
+            "5 Cal. 4th 1",
+            "410 S.W.2d 1", // custom regex without $edition
+        ] {
+            let cites = get_citations(text, false, "", &[]);
+            let rc = cites[0].resource_common().unwrap();
+            let names: Vec<_> = rc.all_editions.iter().map(|e| &e.short_name).collect();
+            assert_eq!(
+                rc.all_editions.len(),
+                1,
+                "{text:?} has duplicate editions: {names:?}"
+            );
+        }
+
+        // "B.R." maps to two distinct editions (Bankruptcy Reporter and
+        // Baltimore City Reports); de-duplication must keep both.
+        let cites = get_citations("1 B.R. 1", false, "", &[]);
+        let rc = cites[0].resource_common().unwrap();
+        assert_eq!(rc.all_editions.len(), 2);
+        assert_ne!(rc.all_editions[0], rc.all_editions[1]);
     }
 }
