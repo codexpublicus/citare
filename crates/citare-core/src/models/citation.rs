@@ -266,6 +266,34 @@ impl Citation {
         (start, end)
     }
 
+    /// The pin cite's `(start, end)` byte offsets, where citare located
+    /// them. Either bound may be `None`: like eyecite, citare records the
+    /// start only for a pin cite before the citation and the end only for
+    /// one after it.
+    pub fn pin_cite_span(&self) -> (Option<usize>, Option<usize>) {
+        let (start, end) = match self {
+            Citation::FullCase(d) => (
+                d.metadata.case.pin_cite_span_start,
+                d.metadata.case.pin_cite_span_end,
+            ),
+            Citation::ShortCase(d) => (
+                d.metadata.case.pin_cite_span_start,
+                d.metadata.case.pin_cite_span_end,
+            ),
+            Citation::FullLaw(d) => (d.metadata.pin_cite_span_start, d.metadata.pin_cite_span_end),
+            Citation::FullJournal(d) => {
+                (d.metadata.pin_cite_span_start, d.metadata.pin_cite_span_end)
+            }
+            Citation::Supra(d) => (d.metadata.pin_cite_span_start, d.metadata.pin_cite_span_end),
+            Citation::Id(d) => (d.metadata.pin_cite_span_start, d.metadata.pin_cite_span_end),
+            Citation::Reference(d) => {
+                (d.metadata.pin_cite_span_start, d.metadata.pin_cite_span_end)
+            }
+            Citation::Unknown(_) => (None, None),
+        };
+        (start, end)
+    }
+
     /// Returns `true` for citations that identify a resource (full citations).
     pub fn is_full(&self) -> bool {
         matches!(
