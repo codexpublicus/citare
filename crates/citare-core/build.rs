@@ -857,6 +857,38 @@ fn main() {
         output.len(),
         out_path.display()
     );
+
+    // -----------------------------------------------------------------------
+    // Court lookup keys
+    // -----------------------------------------------------------------------
+    // get_court_by_paren matches a parenthetical against each court's
+    // citation_string reduced to lowercase alphanumerics. Precompute that
+    // form here so the runtime neither embeds nor parses courts.json.
+    let mut courts_out = String::new();
+    writeln!(
+        courts_out,
+        "/// `(normalized citation_string, court id)` in courts-db order.\n\
+         pub static GENERATED_COURT_KEYS: &[(&str, &str)] = &["
+    )
+    .unwrap();
+    for court in &courts {
+        let key: String = court
+            .citation_string
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase();
+        writeln!(
+            courts_out,
+            "    ({}, {}),",
+            rust_str_literal(&key),
+            rust_str_literal(&court.id)
+        )
+        .unwrap();
+    }
+    writeln!(courts_out, "];").unwrap();
+    let courts_path = Path::new(&out_dir).join("generated_courts.rs");
+    fs::write(&courts_path, courts_out).expect("Failed to write generated_courts.rs");
 }
 
 // ---------------------------------------------------------------------------

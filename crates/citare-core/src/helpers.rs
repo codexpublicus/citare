@@ -101,13 +101,21 @@ fn re_leading_in() -> &'static regex::Regex {
 // Courts data
 // ---------------------------------------------------------------------------
 
-/// Embedded courts.json.
-const COURTS_JSON: &str = include_str!("../../../data/courts-db/courts_db/data/courts.json");
+/// Generated at build time from courts-db by `build.rs`.
+mod generated_courts {
+    include!(concat!(env!("OUT_DIR"), "/generated_courts.rs"));
+}
+use generated_courts::GENERATED_COURT_KEYS;
 
-/// Lazily-loaded courts list.
-static COURTS: LazyLock<Vec<citare_data_build::courts::Court>> = LazyLock::new(|| {
-    citare_data_build::courts::parse_courts(COURTS_JSON).expect("Failed to parse courts.json")
-});
+/// Lowercase alphanumeric form of a court citation string, used to match
+/// citation parentheticals against courts-db. `build.rs` applies the same
+/// reduction to every court's `citation_string`.
+fn normalize_court_string(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
 
 // ---------------------------------------------------------------------------
 // Anchored pattern cache
@@ -308,33 +316,22 @@ pub fn get_year(word: &str) -> Option<i32> {
 ///
 /// Does not handle SCOTUS (which lacks parentheticals).
 pub fn get_court_by_paren(paren_string: &str) -> Option<String> {
-    let court_str: String = paren_string
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>()
-        .to_lowercase();
+    let court_str = normalize_court_string(paren_string);
 
     if court_str.is_empty() {
         return None;
     }
 
-    let mut fallback: Option<String> = None;
-    for court in COURTS.iter() {
-        let s: String = court
-            .citation_string
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect::<String>()
-            .to_lowercase();
-
+    let mut fallback: Option<&str> = None;
+    for &(s, id) in GENERATED_COURT_KEYS {
         if s == court_str {
-            return Some(court.id.clone());
+            return Some(id.to_string());
         }
         if s.starts_with(&court_str) {
-            fallback = Some(court.id.clone());
+            fallback = Some(id);
         }
     }
-    fallback
+    fallback.map(str::to_string)
 }
 
 // ---------------------------------------------------------------------------
@@ -1352,6 +1349,21 @@ mod tests {
     #[test]
     fn test_get_court_by_paren_empty() {
         assert_eq!(get_court_by_paren(""), None);
+    }
+
+    #[test]
+    fn test_generated_court_keys_match_courts_db() {
+        let json = include_str!("../../../data/courts-db/courts_db/data/courts.json");
+        let courts = citare_data_build::courts::parse_courts(json).unwrap();
+        let expected: Vec<(String, String)> = courts
+            .iter()
+            .map(|c| (normalize_court_string(&c.citation_string), c.id.clone()))
+            .collect();
+        let generated: Vec<(String, String)> = GENERATED_COURT_KEYS
+            .iter()
+            .map(|&(k, id)| (k.to_string(), id.to_string()))
+            .collect();
+        assert_eq!(generated, expected);
     }
 
     #[test]
