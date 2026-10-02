@@ -193,7 +193,10 @@ mod tests {
     use super::*;
 
     fn vars(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     // --- safe_substitute ---
@@ -248,7 +251,10 @@ mod tests {
     #[test]
     fn test_recursive_substitute_already_stable() {
         let v = vars(&[("a", "hello")]);
-        assert_eq!(recursive_substitute("$a world", &v, 100).unwrap(), "hello world");
+        assert_eq!(
+            recursive_substitute("$a world", &v, 100).unwrap(),
+            "hello world"
+        );
     }
 
     #[test]
@@ -285,8 +291,14 @@ mod tests {
         // Comment key stripped
         assert!(!result.contains_key("volume_#"), "comment key present");
         // Optional variants
-        assert!(result.contains_key("volume_optional"), "missing 'volume_optional'");
-        assert!(result.contains_key("volume_year_optional"), "missing 'volume_year_optional'");
+        assert!(
+            result.contains_key("volume_optional"),
+            "missing 'volume_optional'"
+        );
+        assert!(
+            result.contains_key("volume_year_optional"),
+            "missing 'volume_year_optional'"
+        );
 
         // Check optional wrapping
         let vol = result.get("volume").unwrap();
@@ -331,9 +343,10 @@ mod tests {
     #[test]
     fn test_process_variables_from_json() {
         // Load actual regexes.json and verify output count
-        let data: serde_json::Value = serde_json::from_str(
-            include_str!("../../../data/reporters-db/reporters_db/data/regexes.json")
-        ).unwrap();
+        let data: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../data/reporters-db/reporters_db/data/regexes.json"
+        ))
+        .unwrap();
         let result = process_variables(&data);
         // 7 top-level keys produce 33 base variables + 33 optional = 66 total
         assert_eq!(result.len(), 66);
@@ -356,7 +369,11 @@ mod tests {
                     if !after_dollar.is_empty() {
                         let first_char = after_dollar.chars().next().unwrap();
                         if first_char.is_alphabetic() || first_char == '_' {
-                            panic!("Unresolved variable in {}: {}", k, rest.split_whitespace().next().unwrap_or(rest));
+                            panic!(
+                                "Unresolved variable in {}: {}",
+                                k,
+                                rest.split_whitespace().next().unwrap_or(rest)
+                            );
                         }
                     }
                 }
@@ -373,10 +390,18 @@ mod tests {
 
         // Should have 7 top-level keys in the raw JSON
         let top_keys = raw.as_object().unwrap().len();
-        assert_eq!(top_keys, 7, "expected 7 top-level keys in regexes.json, got {top_keys}");
+        assert_eq!(
+            top_keys, 7,
+            "expected 7 top-level keys in regexes.json, got {top_keys}"
+        );
 
         let vars = process_variables(&raw);
-        assert_eq!(vars.len(), 66, "expected 66 processed variables, got {}", vars.len());
+        assert_eq!(
+            vars.len(),
+            66,
+            "expected 66 processed variables, got {}",
+            vars.len()
+        );
         assert!(vars.contains_key("full_cite"), "missing 'full_cite'");
         assert!(vars.contains_key("page"), "missing 'page'");
         assert!(vars.contains_key("volume"), "missing 'volume'");

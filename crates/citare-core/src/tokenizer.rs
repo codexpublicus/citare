@@ -77,20 +77,21 @@ impl TokenExtractor {
     /// Get the compiled regex, compiling on first access.
     fn compiled_regex(&self) -> Option<&Regex> {
         self.compiled_regex
-            .get_or_init(|| {
-                match Regex::new(&self.regex) {
-                    Ok(r) => Some(r),
-                    Err(e) => {
-                        log::warn!("Failed to compile regex: {}", e);
-                        None
-                    }
+            .get_or_init(|| match Regex::new(&self.regex) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    log::warn!("Failed to compile regex: {}", e);
+                    None
                 }
             })
             .as_ref()
     }
 
     /// Find all non-overlapping matches of this extractor's regex in `text`.
-    pub fn find_iter<'a>(&'a self, text: &'a str) -> Box<dyn Iterator<Item = regex::Match<'a>> + 'a> {
+    pub fn find_iter<'a>(
+        &'a self,
+        text: &'a str,
+    ) -> Box<dyn Iterator<Item = regex::Match<'a>> + 'a> {
         match self.compiled_regex() {
             Some(re) => Box::new(re.find_iter(text)),
             None => Box::new(std::iter::empty()),
@@ -161,8 +162,7 @@ impl TokenExtractor {
 /// Reporter short names considered "nominative" — matches are deprioritised
 /// when they overlap with other citation matches.
 pub const NOMINATIVE_REPORTER_NAMES: &[&str] = &[
-    "Thompson", "Cooke", "Holmes", "Olcott", "Chase", "Gilmer", "Bee",
-    "Deady", "Taney",
+    "Thompson", "Cooke", "Holmes", "Olcott", "Chase", "Gilmer", "Bee", "Deady", "Taney",
 ];
 
 /// Returns `true` if `token` is a citation from a nominative reporter.
@@ -398,10 +398,7 @@ impl AhocorasickTokenizer {
                 unfiltered_indices.push(idx);
             } else if ext.case_insensitive {
                 for s in &ext.strings {
-                    ci_grouped
-                        .entry(s.to_lowercase())
-                        .or_default()
-                        .push(idx);
+                    ci_grouped.entry(s.to_lowercase()).or_default().push(idx);
                 }
             } else {
                 for s in &ext.strings {
@@ -415,10 +412,7 @@ impl AhocorasickTokenizer {
             (None, Vec::new())
         } else {
             let patterns: Vec<String> = cs_grouped.keys().cloned().collect();
-            let map: Vec<Vec<usize>> = patterns
-                .iter()
-                .map(|p| cs_grouped[p].clone())
-                .collect();
+            let map: Vec<Vec<usize>> = patterns.iter().map(|p| cs_grouped[p].clone()).collect();
             let ac = aho_corasick::AhoCorasick::builder()
                 .match_kind(aho_corasick::MatchKind::Standard)
                 .build(&patterns)
@@ -431,10 +425,7 @@ impl AhocorasickTokenizer {
             (None, Vec::new())
         } else {
             let patterns: Vec<String> = ci_grouped.keys().cloned().collect();
-            let map: Vec<Vec<usize>> = patterns
-                .iter()
-                .map(|p| ci_grouped[p].clone())
-                .collect();
+            let map: Vec<Vec<usize>> = patterns.iter().map(|p| ci_grouped[p].clone()).collect();
             let ac = aho_corasick::AhoCorasick::builder()
                 .match_kind(aho_corasick::MatchKind::Standard)
                 .build(&patterns)
@@ -463,8 +454,7 @@ impl AhocorasickTokenizer {
     /// Uses overlapping iteration to find all patterns, even when shorter
     /// patterns (e.g., "A.") overlap with longer ones (e.g., "A.2d").
     fn get_extractors(&self, text: &str) -> Vec<&TokenExtractor> {
-        let mut result: HashSet<usize> =
-            self.unfiltered_indices.iter().copied().collect();
+        let mut result: HashSet<usize> = self.unfiltered_indices.iter().copied().collect();
 
         if let Some(ref ac) = self.case_sensitive_ac {
             let mut state = aho_corasick::automaton::OverlappingState::start();
@@ -553,9 +543,7 @@ fn tokenize_impl(raw_tokens: &[Token], text: &str) -> (Tokens, Vec<(usize, Token
         if offset > token.start() {
             // Overlapping match
             if let Some(ref lt) = last_token {
-                if matches!(token, Token::Citation(_))
-                    && token_is_from_nominative_reporter(lt)
-                {
+                if matches!(token, Token::Citation(_)) && token_is_from_nominative_reporter(lt) {
                     // Prefer non-nominative: replace the last token
                     citation_tokens.pop();
                     all_tokens.pop();
@@ -846,10 +834,7 @@ mod tests {
             .iter()
             .filter(|(_, t)| matches!(t, Token::Section(_)))
             .collect();
-        assert!(
-            !section_tokens.is_empty(),
-            "Should find a Section token"
-        );
+        assert!(!section_tokens.is_empty(), "Should find a Section token");
     }
 
     #[test]
@@ -939,10 +924,10 @@ mod tests {
     #[test]
     fn test_harvard_slug_us() {
         let lookup = &*EDITIONS_LOOKUP;
-        let editions = lookup.get("U.S.").expect("U.S. should be in EDITIONS_LOOKUP");
-        let slug = editions
-            .iter()
-            .find_map(|e| e.harvard_slug.as_deref());
+        let editions = lookup
+            .get("U.S.")
+            .expect("U.S. should be in EDITIONS_LOOKUP");
+        let slug = editions.iter().find_map(|e| e.harvard_slug.as_deref());
         assert_eq!(
             slug,
             Some("us"),
@@ -953,10 +938,10 @@ mod tests {
     #[test]
     fn test_harvard_slug_a2d() {
         let lookup = &*EDITIONS_LOOKUP;
-        let editions = lookup.get("A.2d").expect("A.2d should be in EDITIONS_LOOKUP");
-        let slug = editions
-            .iter()
-            .find_map(|e| e.harvard_slug.as_deref());
+        let editions = lookup
+            .get("A.2d")
+            .expect("A.2d should be in EDITIONS_LOOKUP");
+        let slug = editions.iter().find_map(|e| e.harvard_slug.as_deref());
         assert_eq!(
             slug,
             Some("a2d"),
@@ -983,7 +968,10 @@ mod tests {
             .iter()
             .filter(|e| e.short_name == "A." && e.harvard_slug.is_some())
             .count();
-        assert_eq!(unmatched, 0, "A. should have no Harvard slug in generated data");
+        assert_eq!(
+            unmatched, 0,
+            "A. should have no Harvard slug in generated data"
+        );
     }
 
     #[test]

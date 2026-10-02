@@ -219,7 +219,11 @@ fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<
             insert_opt(&mut map, "defendant", &m.defendant);
             insert_opt(&mut map, "extra", &m.extra);
             insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-            insert_opt(&mut map, "resolved_case_name_short", &m.resolved_case_name_short);
+            insert_opt(
+                &mut map,
+                "resolved_case_name_short",
+                &m.resolved_case_name_short,
+            );
             insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
         }
         citare_core::Citation::ShortCase(d) => {
@@ -268,7 +272,11 @@ fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<
             insert_opt(&mut map, "pin_cite", &m.pin_cite);
             insert_opt(&mut map, "plaintiff", &m.plaintiff);
             insert_opt(&mut map, "defendant", &m.defendant);
-            insert_opt(&mut map, "resolved_case_name_short", &m.resolved_case_name_short);
+            insert_opt(
+                &mut map,
+                "resolved_case_name_short",
+                &m.resolved_case_name_short,
+            );
             insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
         }
         citare_core::Citation::Unknown(_) => {}
