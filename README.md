@@ -30,13 +30,18 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Citation resolution (linking short forms to full citations)
 - Text annotation with citation markers
 - Text cleaning (HTML extraction, whitespace normalization)
+- HTML-aware case name and reference extraction (`markup_text` input)
+- Span offsets in UTF-8 bytes, code points or UTF-16 units (CLI `--offsets`,
+  WASM `chars`/`utf16`; see [Span offsets](#span-offsets))
 - Harvard CAP slug mapping (366/399 reporters matched)
 - CLI, native Rust library, and WASM bindings
-- 201 tests, 44/44 cross-validation with eyecite
+- Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 268/278 on
+  the v2 set; 278 tests
 
 **Deferred:**
-- HTML-aware case name extraction (markup_text mode)
 - npm package publishing
+
+Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## CLI
 
@@ -140,7 +145,7 @@ Citations are automatically mapped to [Harvard Caselaw Access Project](https://c
 ## Data Sources
 
 Citation patterns are sourced from:
-- [reporters-db](https://github.com/freelawproject/reporters-db) — 1,235 reporters, 1,367 editions
+- [reporters-db](https://github.com/freelawproject/reporters-db) — 1,236 reporters, 1,368 editions
 - [courts-db](https://github.com/freelawproject/courts-db) — 2,800+ courts
 - [Harvard CAP](https://case.law) — 399 reporter slug mappings
 
