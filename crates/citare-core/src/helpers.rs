@@ -79,7 +79,7 @@ fn re_lowercase_word() -> &'static regex::Regex {
 
 fn re_stop_words_ci() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(&format!("(?i){}", &*STOP_WORD_REGEX)).unwrap())
+    RE.get_or_init(|| regex::Regex::new(&format!("(?i){}", *STOP_WORD_REGEX)).unwrap())
 }
 
 fn re_leading_in() -> &'static regex::Regex {

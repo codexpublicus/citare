@@ -683,9 +683,9 @@ mod tests {
         let citations = get_citations("1 U.S. 1 (4th Cir. 1999)", false, "", &[]);
         if let Some(Citation::FullCase(ref data)) = citations.first() {
             // Court should be set
-            if data.metadata.case.court.is_some() {
+            if let Some(court) = &data.metadata.case.court {
                 // Just verify it's a string
-                assert!(!data.metadata.case.court.as_ref().unwrap().is_empty());
+                assert!(!court.is_empty());
             }
         }
     }

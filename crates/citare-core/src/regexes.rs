@@ -41,7 +41,7 @@ pub fn short_cite_re(regex: &str) -> String {
 /// Create a reference pin-cite regex pattern from a slice of reporter regexes.
 pub fn reference_pin_cite_re(regexes: &[&str]) -> String {
     let joined = regexes.join("|");
-    format!(r"\b(?:{joined})\s+{pin}", pin = &*PIN_CITE_REGEX)
+    format!(r"\b(?:{joined})\s+{pin}", pin = *PIN_CITE_REGEX)
 }
 
 // ---------------------------------------------------------------------------

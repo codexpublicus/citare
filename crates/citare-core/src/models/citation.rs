@@ -370,20 +370,20 @@ impl std::hash::Hash for Citation {
             Citation::FullCase(_) | Citation::ShortCase(_) => {
                 let groups = &self.common().groups;
                 let page = groups.get("page").and_then(|v| v.as_ref());
-                if page.is_none() {
-                    // Unique — use object address as discriminant.
-                    (self as *const Self).hash(state);
-                } else {
+                if let Some(page) = page {
                     let mut hasher = Sha256::new();
                     if let Some(Some(vol)) = groups.get("volume") {
                         hasher.update(format!("volume:{}", vol));
                     }
-                    hasher.update(format!("page:{}", page.unwrap()));
+                    hasher.update(format!("page:{}", page));
                     if let Some(reporter) = self.corrected_reporter() {
                         hasher.update(format!("reporter:{}", reporter));
                     }
                     hasher.update(format!("class:{}", self.type_name()));
                     hasher.finalize().as_slice().hash(state);
+                } else {
+                    // Unique — use object address as discriminant.
+                    (self as *const Self).hash(state);
                 }
             }
 
