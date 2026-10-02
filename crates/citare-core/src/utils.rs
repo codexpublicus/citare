@@ -390,7 +390,8 @@ pub fn maybe_balance_style_tags(
 
         if has_opening && !has_closing {
             // Look for closing tag after end, within tolerance
-            let extended_end = (end + closing_tag.len() + tolerance).min(plain_text.len());
+            let extended_end =
+                advance_chars(plain_text, end, closing_tag.len() + tolerance).min(plain_text.len());
             let search_slice = &plain_text[start..extended_end];
             // Pick the first closing tag within tolerance
             if let Some(pos) = find_first(search_slice, &closing_tag) {
@@ -400,7 +401,7 @@ pub fn maybe_balance_style_tags(
 
         if !has_opening && has_closing {
             // Look for opening tag before start, within tolerance
-            let extended_start = start.saturating_sub(opening_tag.len() + tolerance);
+            let extended_start = retreat_chars(plain_text, start, opening_tag.len() + tolerance);
             let search_slice = &plain_text[extended_start..end];
             // Pick the last opening tag within tolerance
             if let Some(pos) = find_last(search_slice, &opening_tag) {
@@ -411,6 +412,28 @@ pub fn maybe_balance_style_tags(
 
     let span_text = plain_text[start..end].to_string();
     (start, end, span_text)
+}
+
+/// The byte offset `n` characters after byte offset `from`, or the end of
+/// `text`. eyecite counts offsets in characters; this moves a byte offset
+/// by the same number of them.
+pub(crate) fn advance_chars(text: &str, from: usize, n: usize) -> usize {
+    text[from..]
+        .char_indices()
+        .nth(n)
+        .map_or(text.len(), |(i, _)| from + i)
+}
+
+/// The byte offset `n` characters before byte offset `from`, or 0.
+pub(crate) fn retreat_chars(text: &str, from: usize, n: usize) -> usize {
+    if n == 0 {
+        return from;
+    }
+    text[..from]
+        .char_indices()
+        .rev()
+        .nth(n - 1)
+        .map_or(0, |(i, _)| i)
 }
 
 /// Find the byte offset of the first occurrence of `needle` in `haystack`.
