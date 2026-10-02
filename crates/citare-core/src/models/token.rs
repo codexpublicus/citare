@@ -131,8 +131,7 @@ impl Token {
             if sc.short != oc.short {
                 return false;
             }
-            sc.exact_editions
-                .extend(oc.exact_editions.iter().cloned());
+            sc.exact_editions.extend(oc.exact_editions.iter().cloned());
             sc.exact_editions
                 .sort_by(|a, b| a.short_name.cmp(&b.short_name));
             sc.exact_editions.dedup();

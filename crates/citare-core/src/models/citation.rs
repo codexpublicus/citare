@@ -351,7 +351,11 @@ fn hash_groups_and_editions(hasher: &mut Sha256, r: &ResourceCitationCommon) {
     for (k, v) in sorted_groups {
         hasher.update(format!("{}:{}", k, v.as_deref().unwrap_or("")));
     }
-    let mut editions: Vec<&str> = r.all_editions.iter().map(|e| e.short_name.as_str()).collect();
+    let mut editions: Vec<&str> = r
+        .all_editions
+        .iter()
+        .map(|e| e.short_name.as_str())
+        .collect();
     editions.sort_unstable();
     for e in editions {
         hasher.update(format!("edition:{}", e));
@@ -366,20 +370,20 @@ impl std::hash::Hash for Citation {
             Citation::FullCase(_) | Citation::ShortCase(_) => {
                 let groups = &self.common().groups;
                 let page = groups.get("page").and_then(|v| v.as_ref());
-                if page.is_none() {
-                    // Unique — use object address as discriminant.
-                    (self as *const Self).hash(state);
-                } else {
+                if let Some(page) = page {
                     let mut hasher = Sha256::new();
                     if let Some(Some(vol)) = groups.get("volume") {
                         hasher.update(format!("volume:{}", vol));
                     }
-                    hasher.update(format!("page:{}", page.unwrap()));
+                    hasher.update(format!("page:{}", page));
                     if let Some(reporter) = self.corrected_reporter() {
                         hasher.update(format!("reporter:{}", reporter));
                     }
                     hasher.update(format!("class:{}", self.type_name()));
                     hasher.finalize().as_slice().hash(state);
+                } else {
+                    // Unique — use object address as discriminant.
+                    (self as *const Self).hash(state);
                 }
             }
 
@@ -420,8 +424,8 @@ impl std::hash::Hash for Citation {
 
 impl PartialEq for Citation {
     fn eq(&self, other: &Self) -> bool {
-        use std::hash::{Hash, Hasher};
         use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
         let mut h1 = DefaultHasher::new();
         let mut h2 = DefaultHasher::new();
         self.hash(&mut h1);
@@ -517,14 +521,59 @@ mod tests {
         let resource = make_resource(token.clone());
 
         let variants: Vec<(&'static str, Citation)> = vec![
-            ("FullCaseCitation",    Citation::FullCase(FullCaseCitationData { resource: make_resource(token.clone()), metadata: Default::default() })),
-            ("ShortCaseCitation",   Citation::ShortCase(ShortCaseCitationData { resource: make_resource(token.clone()), metadata: Default::default() })),
-            ("FullLawCitation",     Citation::FullLaw(FullLawCitationData { resource: make_resource(token.clone()), metadata: Default::default() })),
-            ("FullJournalCitation", Citation::FullJournal(FullJournalCitationData { resource, metadata: Default::default() })),
-            ("SupraCitation",       Citation::Supra(SupraCitationData { common: common.clone(), metadata: Default::default() })),
-            ("IdCitation",         Citation::Id(IdCitationData { common: common.clone(), metadata: Default::default() })),
-            ("ReferenceCitation",   Citation::Reference(ReferenceCitationData { common: common.clone(), metadata: Default::default() })),
-            ("UnknownCitation",    Citation::Unknown(UnknownCitationData { common })),
+            (
+                "FullCaseCitation",
+                Citation::FullCase(FullCaseCitationData {
+                    resource: make_resource(token.clone()),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "ShortCaseCitation",
+                Citation::ShortCase(ShortCaseCitationData {
+                    resource: make_resource(token.clone()),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "FullLawCitation",
+                Citation::FullLaw(FullLawCitationData {
+                    resource: make_resource(token.clone()),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "FullJournalCitation",
+                Citation::FullJournal(FullJournalCitationData {
+                    resource,
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "SupraCitation",
+                Citation::Supra(SupraCitationData {
+                    common: common.clone(),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "IdCitation",
+                Citation::Id(IdCitationData {
+                    common: common.clone(),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "ReferenceCitation",
+                Citation::Reference(ReferenceCitationData {
+                    common: common.clone(),
+                    metadata: Default::default(),
+                }),
+            ),
+            (
+                "UnknownCitation",
+                Citation::Unknown(UnknownCitationData { common }),
+            ),
         ];
 
         for (expected, c) in variants {
@@ -575,17 +624,37 @@ mod tests {
     #[test]
     fn test_is_full() {
         let token = make_token("x", 0, 1);
-        assert!(Citation::FullCase(FullCaseCitationData { resource: make_resource(token.clone()), metadata: Default::default() }).is_full());
-        assert!(Citation::FullLaw(FullLawCitationData { resource: make_resource(token.clone()), metadata: Default::default() }).is_full());
+        assert!(Citation::FullCase(FullCaseCitationData {
+            resource: make_resource(token.clone()),
+            metadata: Default::default()
+        })
+        .is_full());
+        assert!(Citation::FullLaw(FullLawCitationData {
+            resource: make_resource(token.clone()),
+            metadata: Default::default()
+        })
+        .is_full());
         assert!(!make_id("id.").is_full());
     }
 
     #[test]
     fn test_is_case() {
         let token = make_token("x", 0, 1);
-        assert!(Citation::FullCase(FullCaseCitationData { resource: make_resource(token.clone()), metadata: Default::default() }).is_case());
-        assert!(Citation::ShortCase(ShortCaseCitationData { resource: make_resource(token.clone()), metadata: Default::default() }).is_case());
-        assert!(!Citation::FullLaw(FullLawCitationData { resource: make_resource(token.clone()), metadata: Default::default() }).is_case());
+        assert!(Citation::FullCase(FullCaseCitationData {
+            resource: make_resource(token.clone()),
+            metadata: Default::default()
+        })
+        .is_case());
+        assert!(Citation::ShortCase(ShortCaseCitationData {
+            resource: make_resource(token.clone()),
+            metadata: Default::default()
+        })
+        .is_case());
+        assert!(!Citation::FullLaw(FullLawCitationData {
+            resource: make_resource(token.clone()),
+            metadata: Default::default()
+        })
+        .is_case());
     }
 
     // --- corrected_reporter ---
@@ -611,7 +680,10 @@ mod tests {
     #[test]
     fn test_corrected_reporter_from_groups() {
         let mut resource = make_resource(make_token("1 U.S. 1", 0, 8));
-        resource.common.groups.insert("reporter".to_string(), Some("U.S.".to_string()));
+        resource
+            .common
+            .groups
+            .insert("reporter".to_string(), Some("U.S.".to_string()));
         let c = Citation::FullCase(FullCaseCitationData {
             resource,
             metadata: FullCaseMetadata::default(),

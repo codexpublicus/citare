@@ -93,11 +93,7 @@ impl SpanUpdater {
             self.bisect_left(offset)
         };
         // Clamp to the last valid entry
-        let index = if raw_index == 0 {
-            0
-        } else {
-            raw_index - 1
-        };
+        let index = if raw_index == 0 { 0 } else { raw_index - 1 };
         match self.deltas[index] {
             OffsetUpdate::Shift(d) => (offset as i64 + d) as usize,
             OffsetUpdate::Replace(new_offset) => new_offset,
@@ -385,9 +381,8 @@ mod tests {
     fn test_annotate_custom_annotator() {
         let text = "foo 1 U.S. 1 bar";
         let mut annotations = vec![((4, 12), "BEFORE".to_string(), "AFTER".to_string())];
-        let annotator = |before: &str, span: &str, after: &str| {
-            format!("[{}|{}|{}]", before, span, after)
-        };
+        let annotator =
+            |before: &str, span: &str, after: &str| format!("[{}|{}|{}]", before, span, after);
         let result = annotate_citations(
             text,
             &mut annotations,
@@ -419,7 +414,10 @@ mod tests {
         assert!(result.contains("<a>"), "missing opening tag in: {result}");
         assert!(result.contains("</a>"), "missing closing tag in: {result}");
         // Original HTML structure should be preserved around the annotation
-        assert!(result.contains("<b>bar</b>"), "original HTML lost in: {result}");
+        assert!(
+            result.contains("<b>bar</b>"),
+            "original HTML lost in: {result}"
+        );
     }
 
     #[test]

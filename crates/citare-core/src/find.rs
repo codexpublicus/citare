@@ -13,9 +13,9 @@ use crate::helpers::{
 };
 use crate::models::citation::{
     CaseMetadata, Citation, CitationCommon, FullCaseCitationData, FullCaseMetadata,
-    FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata,
-    JournalMetadata, LawMetadata, ResourceCitationCommon, ShortCaseCitationData,
-    ShortCaseMetadata, SupraCitationData, SupraMetadata, UnknownCitationData,
+    FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata, JournalMetadata,
+    LawMetadata, ResourceCitationCommon, ShortCaseCitationData, ShortCaseMetadata,
+    SupraCitationData, SupraMetadata, UnknownCitationData,
 };
 use crate::models::document::Document;
 use crate::models::edition::ReporterSource;
@@ -85,7 +85,8 @@ pub fn get_citations(
 
                     // TODO: Phase 8 - extract reference citations from markup
                     // For now, just extract pincited references
-                    let references = extract_pincited_reference_citations(&citation, &document.plain_text);
+                    let references =
+                        extract_pincited_reference_citations(&citation, &document.plain_text);
                     citations.extend(references);
 
                     citations.push(citation);
@@ -159,7 +160,12 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
         editions.iter().map(|e| e.reporter.source).collect();
 
     let groups = token.groups().clone();
-    let all_editions: Vec<_> = ct.exact_editions.iter().chain(ct.variation_editions.iter()).cloned().collect();
+    let all_editions: Vec<_> = ct
+        .exact_editions
+        .iter()
+        .chain(ct.variation_editions.iter())
+        .cloned()
+        .collect();
 
     if cite_sources.contains(&ReporterSource::Laws) {
         // Full law citation
@@ -257,10 +263,8 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
         add_pre_citation(&mut data, &document.words);
 
         // Guess court from reporter
-        data.metadata.case.court = guess_court(
-            &data.metadata.case.court,
-            &data.resource.all_editions,
-        );
+        data.metadata.case.court =
+            guess_court(&data.metadata.case.court, &data.resource.all_editions);
 
         // Guess edition
         data.resource.edition_guess = guess_edition(
@@ -291,14 +295,15 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
     let groups = token.groups().clone();
     let page_prefix = groups.get("page").and_then(|v| v.as_deref()).unwrap_or("");
 
-    let (pin_cite, span_end, parenthetical) = extract_pin_cite(
-        &document.words,
-        index,
-        page_prefix,
-    );
+    let (pin_cite, span_end, parenthetical) = extract_pin_cite(&document.words, index, page_prefix);
 
     let span_end_val = span_end.unwrap_or(0);
-    let all_editions: Vec<_> = ct.exact_editions.iter().chain(ct.variation_editions.iter()).cloned().collect();
+    let all_editions: Vec<_> = ct
+        .exact_editions
+        .iter()
+        .chain(ct.variation_editions.iter())
+        .cloned()
+        .collect();
 
     let mut data = ShortCaseCitationData {
         resource: ResourceCitationCommon {
@@ -306,7 +311,11 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
                 token: token.clone(),
                 index,
                 span_start: None,
-                span_end: if span_end_val > 0 { Some(span_end_val) } else { None },
+                span_end: if span_end_val > 0 {
+                    Some(span_end_val)
+                } else {
+                    None
+                },
                 full_span_start: None,
                 full_span_end: Some(span_end_val.max(token.end())),
                 groups,
@@ -338,10 +347,7 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
     );
 
     // Guess court
-    data.metadata.case.court = guess_court(
-        &data.metadata.case.court,
-        &data.resource.all_editions,
-    );
+    data.metadata.case.court = guess_court(&data.metadata.case.court, &data.resource.all_editions);
 
     Citation::ShortCase(data)
 }
@@ -467,10 +473,7 @@ fn handle_parallel_citation(current: &mut Citation, preceding: &Citation) {
 // Extract pincited reference citations
 // ---------------------------------------------------------------------------
 
-fn extract_pincited_reference_citations(
-    citation: &Citation,
-    plain_text: &str,
-) -> Vec<Citation> {
+fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -> Vec<Citation> {
     // Only applies to full case citations
     let data = match citation {
         Citation::FullCase(d) => d,
@@ -545,19 +548,21 @@ fn extract_pincited_reference_citations(
             groups: HashMap::new(),
         };
 
-        references.push(Citation::Reference(crate::models::citation::ReferenceCitationData {
-            common,
-            metadata: crate::models::citation::ReferenceMetadata {
-                parenthetical: None,
-                pin_cite: None,
-                pin_cite_span_start: None,
-                pin_cite_span_end: None,
-                plaintiff: data.metadata.plaintiff.clone(),
-                defendant: data.metadata.defendant.clone(),
-                resolved_case_name_short: None,
-                resolved_case_name: None,
+        references.push(Citation::Reference(
+            crate::models::citation::ReferenceCitationData {
+                common,
+                metadata: crate::models::citation::ReferenceMetadata {
+                    parenthetical: None,
+                    pin_cite: None,
+                    pin_cite_span_start: None,
+                    pin_cite_span_end: None,
+                    plaintiff: data.metadata.plaintiff.clone(),
+                    defendant: data.metadata.defendant.clone(),
+                    resolved_case_name_short: None,
+                    resolved_case_name: None,
+                },
             },
-        }));
+        ));
 
         search_start += m.start() + m.as_str().len().max(1);
     }
@@ -637,7 +642,9 @@ mod tests {
             "",
             &[],
         );
-        let has_short = citations.iter().any(|c| matches!(c, Citation::ShortCase(_)));
+        let has_short = citations
+            .iter()
+            .any(|c| matches!(c, Citation::ShortCase(_)));
         assert!(
             has_short,
             "Expected a ShortCase citation. Found: {:?}",
@@ -659,12 +666,7 @@ mod tests {
 
     #[test]
     fn test_get_citations_multiple() {
-        let citations = get_citations(
-            "See 1 U.S. 1 (1999); 2 U.S. 2 (2000)",
-            false,
-            "",
-            &[],
-        );
+        let citations = get_citations("See 1 U.S. 1 (1999); 2 U.S. 2 (2000)", false, "", &[]);
         let full_cases: Vec<_> = citations
             .iter()
             .filter(|c| matches!(c, Citation::FullCase(_)))
@@ -681,9 +683,9 @@ mod tests {
         let citations = get_citations("1 U.S. 1 (4th Cir. 1999)", false, "", &[]);
         if let Some(Citation::FullCase(ref data)) = citations.first() {
             // Court should be set
-            if data.metadata.case.court.is_some() {
+            if let Some(court) = &data.metadata.case.court {
                 // Just verify it's a string
-                assert!(!data.metadata.case.court.as_ref().unwrap().is_empty());
+                assert!(!court.is_empty());
             }
         }
     }
@@ -774,8 +776,16 @@ mod tests {
 
     #[test]
     fn test_supra_pin_cite() {
-        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Foo, supra, at 240.", false, "", &[]);
-        let supra = cites.iter().find(|c| matches!(c, Citation::Supra(_))).unwrap();
+        let cites = get_citations(
+            "Foo v. Bar, 1 U.S. 1 (1999). Foo, supra, at 240.",
+            false,
+            "",
+            &[],
+        );
+        let supra = cites
+            .iter()
+            .find(|c| matches!(c, Citation::Supra(_)))
+            .unwrap();
         if let Citation::Supra(d) = supra {
             assert_eq!(d.metadata.pin_cite.as_deref(), Some("at 240"));
             assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Foo"));
@@ -784,8 +794,16 @@ mod tests {
 
     #[test]
     fn test_supra_with_volume() {
-        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Foo, 515 supra, at 240.", false, "", &[]);
-        let supra = cites.iter().find(|c| matches!(c, Citation::Supra(_))).unwrap();
+        let cites = get_citations(
+            "Foo v. Bar, 1 U.S. 1 (1999). Foo, 515 supra, at 240.",
+            false,
+            "",
+            &[],
+        );
+        let supra = cites
+            .iter()
+            .find(|c| matches!(c, Citation::Supra(_)))
+            .unwrap();
         if let Citation::Supra(d) = supra {
             assert_eq!(d.metadata.volume.as_deref(), Some("515"));
         }
@@ -797,8 +815,16 @@ mod tests {
 
     #[test]
     fn test_short_case_pin_cite() {
-        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Bar, 1 U.S., at 2.", false, "", &[]);
-        let short = cites.iter().find(|c| matches!(c, Citation::ShortCase(_))).unwrap();
+        let cites = get_citations(
+            "Foo v. Bar, 1 U.S. 1 (1999). Bar, 1 U.S., at 2.",
+            false,
+            "",
+            &[],
+        );
+        let short = cites
+            .iter()
+            .find(|c| matches!(c, Citation::ShortCase(_)))
+            .unwrap();
         if let Citation::ShortCase(d) = short {
             assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("2"));
         }
@@ -810,7 +836,12 @@ mod tests {
 
     #[test]
     fn test_full_case_court_parsing() {
-        let cites = get_citations("Foo v. Bar, 1 U.S. 12, 347-348 (4th Cir. 1982)", false, "", &[]);
+        let cites = get_citations(
+            "Foo v. Bar, 1 U.S. 12, 347-348 (4th Cir. 1982)",
+            false,
+            "",
+            &[],
+        );
         if let Citation::FullCase(d) = &cites[0] {
             assert_eq!(d.metadata.case.court.as_deref(), Some("ca4"));
             assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("347-348"));
@@ -820,7 +851,12 @@ mod tests {
 
     #[test]
     fn test_full_case_with_month_day() {
-        let cites = get_citations("Foo v. Bar, 164 A.3d 1189 (Pa. Feb. 9, 2017)", false, "", &[]);
+        let cites = get_citations(
+            "Foo v. Bar, 164 A.3d 1189 (Pa. Feb. 9, 2017)",
+            false,
+            "",
+            &[],
+        );
         if let Citation::FullCase(d) = &cites[0] {
             assert_eq!(d.metadata.case.month.as_deref(), Some("Feb."));
             assert_eq!(d.metadata.case.day.as_deref(), Some("9"));
@@ -829,9 +865,17 @@ mod tests {
 
     #[test]
     fn test_full_case_parenthetical() {
-        let cites = get_citations("Foo v. Bar, 1 U.S. 1 (1999) (overruling something)", false, "", &[]);
+        let cites = get_citations(
+            "Foo v. Bar, 1 U.S. 1 (1999) (overruling something)",
+            false,
+            "",
+            &[],
+        );
         if let Citation::FullCase(d) = &cites[0] {
-            assert_eq!(d.metadata.case.parenthetical.as_deref(), Some("overruling something"));
+            assert_eq!(
+                d.metadata.case.parenthetical.as_deref(),
+                Some("overruling something")
+            );
         }
     }
 
@@ -873,7 +917,10 @@ mod tests {
     #[test]
     fn test_journal_with_year() {
         let cites = get_citations("1 Minn. L. Rev. 1 (2012)", false, "", &[]);
-        let j = cites.iter().find(|c| matches!(c, Citation::FullJournal(_))).unwrap();
+        let j = cites
+            .iter()
+            .find(|c| matches!(c, Citation::FullJournal(_)))
+            .unwrap();
         if let Citation::FullJournal(d) = j {
             assert_eq!(d.resource.year, Some(2012));
         }
@@ -897,10 +944,18 @@ mod tests {
         // "585 U.S. ___" uses the placeholder page token; it should still
         // produce a FullCase citation — the page group is "___" not None.
         let cites = get_citations("585 U.S. ___ (2018)", false, "", &[]);
-        assert!(!cites.is_empty(), "Expected a citation for placeholder page");
+        assert!(
+            !cites.is_empty(),
+            "Expected a citation for placeholder page"
+        );
         if let Citation::FullCase(d) = &cites[0] {
             // Placeholder page is captured as "___", not absent
-            let page = d.resource.common.groups.get("page").and_then(|v| v.as_deref());
+            let page = d
+                .resource
+                .common
+                .groups
+                .get("page")
+                .and_then(|v| v.as_deref());
             assert_eq!(page, Some("___"), "Placeholder page should be '___'");
         }
     }
@@ -908,7 +963,10 @@ mod tests {
     #[test]
     fn test_parallel_citations() {
         let cites = get_citations("Foo v. Bar, 1 U.S. 12, 1 S. Ct. 2 (1982)", false, "", &[]);
-        let full_cases: Vec<_> = cites.iter().filter(|c| matches!(c, Citation::FullCase(_))).collect();
+        let full_cases: Vec<_> = cites
+            .iter()
+            .filter(|c| matches!(c, Citation::FullCase(_)))
+            .collect();
         assert_eq!(full_cases.len(), 2, "Should find 2 parallel citations");
     }
 
@@ -916,7 +974,10 @@ mod tests {
     fn test_harvard_slug_in_citation() {
         let cites = get_citations("1 U.S. 1", false, "", &[]);
         if let Some(rc) = cites[0].resource_common() {
-            let slug = rc.all_editions.iter().find_map(|e| e.harvard_slug.as_deref());
+            let slug = rc
+                .all_editions
+                .iter()
+                .find_map(|e| e.harvard_slug.as_deref());
             assert_eq!(slug, Some("us"));
         }
     }

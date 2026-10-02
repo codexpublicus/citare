@@ -35,16 +35,13 @@ pub fn strip_punctuation_re(regex: &str) -> String {
 /// Convert a full citation regex into a short citation regex by replacing
 /// `(?P<page>` with `at\s?(p(\.|age)?)? (?P<page>`.
 pub fn short_cite_re(regex: &str) -> String {
-    regex.replace(
-        r"(?P<page>",
-        r"at\s?(p(\.|age)?)? (?P<page>",
-    )
+    regex.replace(r"(?P<page>", r"at\s?(p(\.|age)?)? (?P<page>")
 }
 
 /// Create a reference pin-cite regex pattern from a slice of reporter regexes.
 pub fn reference_pin_cite_re(regexes: &[&str]) -> String {
     let joined = regexes.join("|");
-    format!(r"\b(?:{joined})\s+{pin}", pin = &*PIN_CITE_REGEX)
+    format!(r"\b(?:{joined})\s+{pin}", pin = *PIN_CITE_REGEX)
 }
 
 // ---------------------------------------------------------------------------
@@ -65,28 +62,37 @@ pub const ROMAN_NUMERAL_REGEX: &str = concat!(
 );
 
 /// Page number: a plain digit, a roman numeral, or underscore placeholder.
-pub static PAGE_NUMBER_REGEX: LazyLock<String> = LazyLock::new(|| {
-    format!(r"(?:\d+|{ROMAN_NUMERAL_REGEX}|_+)")
-});
+pub static PAGE_NUMBER_REGEX: LazyLock<String> =
+    LazyLock::new(|| format!(r"(?:\d+|{ROMAN_NUMERAL_REGEX}|_+)"));
 
 /// Punctuation pattern (zero or more non-alphanumeric, non-space chars).
 pub const PUNCTUATION_REGEX: &str = r"[^\sa-zA-Z0-9]*";
 
 /// `id.` / `ibid.` token regex (with space/boundary wrapping).
-pub static ID_REGEX: LazyLock<String> = LazyLock::new(|| {
-    space_boundaries_re(r"id\.,?|ibid\.")
-});
+pub static ID_REGEX: LazyLock<String> = LazyLock::new(|| space_boundaries_re(r"id\.,?|ibid\."));
 
 /// `supra` token regex (with space/boundary and punctuation wrapping).
-pub static SUPRA_REGEX: LazyLock<String> = LazyLock::new(|| {
-    space_boundaries_re(&strip_punctuation_re("supra"))
-});
+pub static SUPRA_REGEX: LazyLock<String> =
+    LazyLock::new(|| space_boundaries_re(&strip_punctuation_re("supra")));
 
 /// Ordered list of stop words recognised during tokenisation.
 pub const STOP_WORDS: &[&str] = &[
-    "v", "in re", "re", "quoting", r"e\.g\.", "parte", "denied", "citing",
-    "aff'd", "affirmed", "remanded", "see also", "see", "granted",
-    "dismissed", "Cf",
+    "v",
+    "in re",
+    "re",
+    "quoting",
+    r"e\.g\.",
+    "parte",
+    "denied",
+    "citing",
+    "aff'd",
+    "affirmed",
+    "remanded",
+    "see also",
+    "see",
+    "granted",
+    "dismissed",
+    "Cf",
 ];
 
 /// Stop-word token regex.
@@ -104,12 +110,36 @@ pub const PARAGRAPH_REGEX: &str = r"(\n)";
 
 /// Common placeholder reporter patterns.
 pub const COMMON_PLACEHOLDER_REPORTERS: &[&str] = &[
-    r"A\.?2d", r"A\.?3d", r"AD3d", r"Cal\.", r"F\.?3d", r"F\.Supp\.2d",
-    r"Idaho", r"Iowa", r"L\.Ed\.", r"Mass\.", r"N\.?J\.?", r"N\.C\.\s?App\.",
-    r"N\.E\.3d", r"N\.J\.\sSuper\.(\sat)?", r"N\.W\.2d", r"N\.W\.3d",
-    r"N\.?Y\.?", r"Nev\.", r"NY3d", r"Ohio\sSt\.3d", r"P\.?3d",
-    r"S\.?E\.?2d", r"S\.?E\.?3d", r"S\.?W\.?2d", r"S\.?W\.?3d",
-    r"S\.C\.", r"S\.Ct\.", r"So\.?3d", r"U\.\s?S\.", r"W\.Va\.",
+    r"A\.?2d",
+    r"A\.?3d",
+    r"AD3d",
+    r"Cal\.",
+    r"F\.?3d",
+    r"F\.Supp\.2d",
+    r"Idaho",
+    r"Iowa",
+    r"L\.Ed\.",
+    r"Mass\.",
+    r"N\.?J\.?",
+    r"N\.C\.\s?App\.",
+    r"N\.E\.3d",
+    r"N\.J\.\sSuper\.(\sat)?",
+    r"N\.W\.2d",
+    r"N\.W\.3d",
+    r"N\.?Y\.?",
+    r"Nev\.",
+    r"NY3d",
+    r"Ohio\sSt\.3d",
+    r"P\.?3d",
+    r"S\.?E\.?2d",
+    r"S\.?E\.?3d",
+    r"S\.?W\.?2d",
+    r"S\.?W\.?3d",
+    r"S\.C\.",
+    r"S\.Ct\.",
+    r"So\.?3d",
+    r"U\.\s?S\.",
+    r"W\.Va\.",
     r"Wis\.\s?2d",
 ];
 
@@ -125,8 +155,7 @@ pub static PLACEHOLDER_CITATIONS: LazyLock<String> = LazyLock::new(|| {
 // Python's verbose-mode regexes are collapsed to single-line here.
 
 /// Optional trailing parenthetical, e.g. ` (overruling Foo)`.
-pub const PARENTHETICAL_REGEX: &str =
-    r"(?: ?\((?P<parenthetical>.*)\))?";
+pub const PARENTHETICAL_REGEX: &str = r"(?: ?\((?P<parenthetical>.*)\))?";
 
 /// The alternation body shared by all month regexes (no group wrapper).
 const MONTH_BODY: &str = concat!(
@@ -145,46 +174,41 @@ const MONTH_BODY: &str = concat!(
 );
 
 /// Month names (long and abbreviated) — named group `month`.
-pub static MONTH_REGEX: LazyLock<String> = LazyLock::new(|| {
-    format!("(?P<month>{MONTH_BODY})")
-});
+pub static MONTH_REGEX: LazyLock<String> = LazyLock::new(|| format!("(?P<month>{MONTH_BODY})"));
 
 /// Month regex with renamed group `month_la` for use inside lookahead
 /// (avoids duplicate named group with the capture-position `MONTH_REGEX`).
-pub static MONTH_REGEX_LOOKAHEAD: LazyLock<String> = LazyLock::new(|| {
-    format!("(?P<month_la>{MONTH_BODY})")
-});
+pub static MONTH_REGEX_LOOKAHEAD: LazyLock<String> =
+    LazyLock::new(|| format!("(?P<month_la>{MONTH_BODY})"));
 
 /// The inner body shared by all year regexes (no group wrapper).
 const YEAR_BODY: &str = r"\d{4}";
 
 /// Four-digit year with optional two-digit range suffix — named group `year`.
-pub static YEAR_REGEX: LazyLock<String> = LazyLock::new(|| {
-    format!("(?:(?P<year>{YEAR_BODY})(?:-\\d{{2}})?)")
-});
+pub static YEAR_REGEX: LazyLock<String> =
+    LazyLock::new(|| format!("(?:(?P<year>{YEAR_BODY})(?:-\\d{{2}})?)"));
 
 /// Year regex with renamed group `year_la` for use inside lookahead.
-pub static YEAR_REGEX_LOOKAHEAD: LazyLock<String> = LazyLock::new(|| {
-    format!("(?:(?P<year_la>{YEAR_BODY})(?:-\\d{{2}})?)")
-});
+pub static YEAR_REGEX_LOOKAHEAD: LazyLock<String> =
+    LazyLock::new(|| format!("(?:(?P<year_la>{YEAR_BODY})(?:-\\d{{2}})?)"));
 
 /// A single pin-cite token (label + number/range).
 pub const PIN_CITE_TOKEN_REGEX: &str = concat!(
     r"(?:",
-        r"(?:",
-            r"(?:& )?note|",
-            r"(?:& )?nn?\.?|",
-            r"(?:& )?fn?\.?|",
-            r"\u{00B6}{1,2}|",   // ¶
-            r"\u{00A7}{1,2}|",   // §
-            r"\*{1,4}|",
-            r"pg\.?|",
-            r"pp?\.?",
-        r") ?",
+    r"(?:",
+    r"(?:& )?note|",
+    r"(?:& )?nn?\.?|",
+    r"(?:& )?fn?\.?|",
+    r"\u{00B6}{1,2}|", // ¶
+    r"\u{00A7}{1,2}|", // §
+    r"\*{1,4}|",
+    r"pg\.?|",
+    r"pp?\.?",
+    r") ?",
     r")?",
     r"(?:",
-        r"\d+:\d+(?:-\d+(?::\d+)?)?|",
-        r"[*]?\d+(?:-\d+)?",
+    r"\d+:\d+(?:-\d+(?::\d+)?)?|",
+    r"[*]?\d+(?:-\d+)?",
     r")",
 );
 
@@ -194,14 +218,14 @@ pub static PIN_CITE_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
         concat!(
             r"(?P<pin_cite>",
-                r",? ?(?:at )?",
-                r"{token}",
-                r"(?:, ?{token})*",
-                r"(?=",
-                    r"[,.;)\]\\]|",
-                    r" ?[(\[]|",
-                    r"$",
-                r")",
+            r",? ?(?:at )?",
+            r"{token}",
+            r"(?:, ?{token})*",
+            r"(?=",
+            r"[,.;)\]\\]|",
+            r" ?[(\[]|",
+            r"$",
+            r")",
             r")",
         ),
         token = PIN_CITE_TOKEN_REGEX,
@@ -210,15 +234,13 @@ pub static PIN_CITE_REGEX: LazyLock<String> = LazyLock::new(|| {
 
 /// Pin cite regex variant A (group renamed to `pin_cite_a`).
 /// Used in the first branch of `POST_FULL_CITATION_REGEX`.
-pub static PIN_CITE_REGEX_A: LazyLock<String> = LazyLock::new(|| {
-    PIN_CITE_REGEX.replace("pin_cite", "pin_cite_a")
-});
+pub static PIN_CITE_REGEX_A: LazyLock<String> =
+    LazyLock::new(|| PIN_CITE_REGEX.replace("pin_cite", "pin_cite_a"));
 
 /// Pin cite regex variant B (group renamed to `pin_cite_b`).
 /// Used in the second branch of `POST_FULL_CITATION_REGEX`.
-pub static PIN_CITE_REGEX_B: LazyLock<String> = LazyLock::new(|| {
-    PIN_CITE_REGEX.replace("pin_cite", "pin_cite_b")
-});
+pub static PIN_CITE_REGEX_B: LazyLock<String> =
+    LazyLock::new(|| PIN_CITE_REGEX.replace("pin_cite", "pin_cite_b"));
 
 /// A single law subsection like `(a)`, `(1)`, `(viii)`.
 pub const LAW_SUBSECTION: &str = r"(?:\([0-9a-zA-Z]{1,4}\))";
@@ -234,18 +256,17 @@ pub static LAW_PIN_CITE_REGEX: LazyLock<String> = LazyLock::new(|| {
 
 /// Short-cite antecedent regex.
 /// Named group: `antecedent`.
-pub const SHORT_CITE_ANTECEDENT_REGEX: &str =
-    r"(?P<antecedent>[A-Za-z][\w\-.]+) ?,? ";
+pub const SHORT_CITE_ANTECEDENT_REGEX: &str = r"(?P<antecedent>[A-Za-z][\w\-.]+) ?,? ";
 
 /// Supra-cite antecedent regex (rewritten with unique branch group names).
 /// Named groups: `antecedent_a`, `volume_a`, `volume_b`, `antecedent_b`.
 pub const SUPRA_ANTECEDENT_REGEX: &str = concat!(
     r"(?:",
-        r"(?P<antecedent_a>[\w\-.]+) ?,? (?P<volume_a>\d+)|",
-        r"(?P<volume_b>\d+)|",
-        r"(?P<antecedent_b>[\w\-.]+) ?,?",
+    r"(?P<antecedent_a>[\w\-.]+) ?,? (?P<volume_a>\d+)|",
+    r"(?P<volume_b>\d+)|",
+    r"(?P<antecedent_b>[\w\-.]+) ?,?",
     r")",
-    r" ",   // final space
+    r" ", // final space
 );
 
 /// Mapping from logical group names to branch-specific names for
@@ -265,31 +286,31 @@ pub static POST_FULL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
         concat!(
             r"(?:",
-                // Branch 1: full cite with court+date paren
-                r"(?:",
-                    r"{pin_a}?",
-                    r",? ?",
-                    r"(?P<extra>[^(;]*)",
-                r")",
-                r"[(\[]",
-                r"(?:",
-                    r"(?:",
-                        r"(?P<court>.*?)",
-                        r"(?=",
-                            r"\s+{month_la}|",
-                            r"\s+{year_la}",
-                        r")",
-                    r")?",
-                    r" ?",
-                    r"(?P<month>{month_body})? ?",
-                    r"(?P<day>\d{{1,2}})?,? ?",
-                    r"(?:(?P<year>{year_body})(?:-\d{{2}})?)",
-                r")",
-                r"[)\]]",
-                r"{paren}",
+            // Branch 1: full cite with court+date paren
+            r"(?:",
+            r"{pin_a}?",
+            r",? ?",
+            r"(?P<extra>[^(;]*)",
+            r")",
+            r"[(\[]",
+            r"(?:",
+            r"(?:",
+            r"(?P<court>.*?)",
+            r"(?=",
+            r"\s+{month_la}|",
+            r"\s+{year_la}",
+            r")",
+            r")?",
+            r" ?",
+            r"(?P<month>{month_body})? ?",
+            r"(?P<day>\d{{1,2}})?,? ?",
+            r"(?:(?P<year>{year_body})(?:-\d{{2}})?)",
+            r")",
+            r"[)\]]",
+            r"{paren}",
             r"|",
-                // Branch 2: pin cite only
-                r"{pin_b}",
+            // Branch 2: pin cite only
+            r"{pin_b}",
             r")",
         ),
         pin_a = *PIN_CITE_REGEX_A,
@@ -314,11 +335,7 @@ pub const POST_FULL_CITATION_GROUPS: &[(&str, &[&str])] = &[
 /// Named groups: `antecedent`, `pin_cite`.
 pub static PRE_FULL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
-        concat!(
-            r"(?P<antecedent>[A-Z][a-z\-.]+) ?,?",
-            r"{pin}?",
-            r",? ?",
-        ),
+        concat!(r"(?P<antecedent>[A-Z][a-z\-.]+) ?,?", r"{pin}?", r",? ?",),
         pin = *PIN_CITE_REGEX,
     )
 });
@@ -326,11 +343,7 @@ pub static PRE_FULL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
 /// Post-short-citation regex (pin cite + optional parenthetical).
 pub static POST_SHORT_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
-        concat!(
-            r"{pin}?",
-            r" ?",
-            r"{paren}",
-        ),
+        concat!(r"{pin}?", r" ?", r"{paren}",),
         pin = *PIN_CITE_REGEX,
         paren = PARENTHETICAL_REGEX,
     )
@@ -343,11 +356,11 @@ pub static POST_LAW_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
             r"{law_pin}?",
             r" ?",
             r"(?:\(",
-                r"(?P<publisher>[A-Z][a-z]+\.?(?:\ Supp\.)?)?",
-                r" ?",
-                r"(?:{month} )?",
-                r"(?P<day>\d{{1,2}})?,? ?",
-                r"{year}?",
+            r"(?P<publisher>[A-Z][a-z]+\.?(?:\ Supp\.)?)?",
+            r" ?",
+            r"(?:{month} )?",
+            r"(?P<day>\d{{1,2}})?,? ?",
+            r"{year}?",
             r"\))?",
             r" ?",
             r"{paren}",
@@ -362,13 +375,7 @@ pub static POST_LAW_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
 /// Post-journal-citation regex (pin cite + optional year + parenthetical).
 pub static POST_JOURNAL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
-        concat!(
-            r"{pin}?",
-            r" ?",
-            r"(?:\({year}\))?",
-            r" ?",
-            r"{paren}",
-        ),
+        concat!(r"{pin}?", r" ?", r"(?:\({year}\))?", r" ?", r"{paren}",),
         pin = *PIN_CITE_REGEX,
         year = *YEAR_REGEX,
         paren = PARENTHETICAL_REGEX,
@@ -427,20 +434,17 @@ pub static SHORT_CITE_ANTECEDENT_RE: LazyLock<fancy_regex::Regex> = LazyLock::ne
 
 /// Compiled [`DEFENDANT_YEAR_REGEX`].
 pub static DEFENDANT_YEAR_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
-    fancy_regex::Regex::new(DEFENDANT_YEAR_REGEX)
-        .expect("DEFENDANT_YEAR_REGEX failed to compile")
+    fancy_regex::Regex::new(DEFENDANT_YEAR_REGEX).expect("DEFENDANT_YEAR_REGEX failed to compile")
 });
 
 /// Compiled [`PIN_CITE_REGEX`].
 pub static PIN_CITE_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
-    fancy_regex::Regex::new(&PIN_CITE_REGEX)
-        .expect("PIN_CITE_REGEX failed to compile")
+    fancy_regex::Regex::new(&PIN_CITE_REGEX).expect("PIN_CITE_REGEX failed to compile")
 });
 
 /// Compiled [`LAW_PIN_CITE_REGEX`].
 pub static LAW_PIN_CITE_RE: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
-    fancy_regex::Regex::new(&LAW_PIN_CITE_REGEX)
-        .expect("LAW_PIN_CITE_REGEX failed to compile")
+    fancy_regex::Regex::new(&LAW_PIN_CITE_REGEX).expect("LAW_PIN_CITE_REGEX failed to compile")
 });
 
 // ---------------------------------------------------------------------------
@@ -461,11 +465,7 @@ pub fn merge_branch_groups(
     for &(logical_name, branch_names) in group_mappings {
         let value = branch_names
             .iter()
-            .filter_map(|name| {
-                captures
-                    .name(name)
-                    .map(|m| m.as_str().to_string())
-            })
+            .filter_map(|name| captures.name(name).map(|m| m.as_str().to_string()))
             .next();
         result.insert(logical_name.to_string(), value);
     }
@@ -494,7 +494,7 @@ mod tests {
         assert!(re.is_match("xi"));
         assert!(re.is_match("xlii"));
         assert!(re.is_match("clv")); // 155
-        // Excluded single letters:
+                                     // Excluded single letters:
         assert!(!re.is_match("v"));
         assert!(!re.is_match("l"));
         assert!(!re.is_match("c"));

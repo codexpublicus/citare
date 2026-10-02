@@ -189,15 +189,17 @@ pub fn strip_punct(text: &str) -> String {
 
     // Starting quotes
     s = re_strip_punct_leading_quotes().replace(&s, "").into_owned();
-    s = re_strip_punct_backtick_quotes().replace_all(&s, "").into_owned();
-    s = re_strip_punct_space_quote().replace_all(&s, "").into_owned();
+    s = re_strip_punct_backtick_quotes()
+        .replace_all(&s, "")
+        .into_owned();
+    s = re_strip_punct_space_quote()
+        .replace_all(&s, "")
+        .into_owned();
 
     // Punctuation
     s = re_strip_punct_ellipsis().replace_all(&s, "").into_owned();
     s = re_strip_punct_symbols().replace_all(&s, "").into_owned();
-    s = re_strip_punct_trailing_dot()
-        .replace(&s, "$1")
-        .into_owned();
+    s = re_strip_punct_trailing_dot().replace(&s, "$1").into_owned();
     s = re_strip_punct_question_excl()
         .replace_all(&s, "")
         .into_owned();
@@ -210,7 +212,9 @@ pub fn strip_punct(text: &str) -> String {
     s = re_strip_punct_dashes().replace_all(&s, "").into_owned();
 
     // Ending quotes
-    s = re_strip_punct_double_quote().replace_all(&s, "").into_owned();
+    s = re_strip_punct_double_quote()
+        .replace_all(&s, "")
+        .into_owned();
     s = re_strip_punct_trailing_apostrophe()
         .replace_all(&s, "$1")
         .into_owned();
@@ -257,7 +261,11 @@ pub fn is_balanced_html(text: &str) -> bool {
 
             if let Some(stripped) = tag_content.strip_prefix('/') {
                 // Closing tag
-                let tag_name = stripped.split_whitespace().next().unwrap_or("").to_lowercase();
+                let tag_name = stripped
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_lowercase();
                 if stack.last().map(|s: &String| s.as_str()) == Some(&tag_name) {
                     stack.pop();
                 } else {
@@ -351,9 +359,7 @@ pub fn is_valid_name(name: &str) -> bool {
         return false;
     }
     let lower = name.to_lowercase();
-    !DISALLOWED_NAMES
-        .iter()
-        .any(|&d| d.to_lowercase() == lower)
+    !DISALLOWED_NAMES.iter().any(|&d| d.to_lowercase() == lower)
 }
 
 /// Hash a pre-serialized string with SHA-256 and return the first 8 bytes as

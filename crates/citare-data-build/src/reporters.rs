@@ -113,7 +113,8 @@ mod tests {
         let reporters = parse_reporters(data).unwrap();
         assert_eq!(reporters.len(), 1235);
         // Count total editions
-        let total_editions: usize = reporters.values()
+        let total_editions: usize = reporters
+            .values()
             .flat_map(|clusters| clusters.iter())
             .map(|c| c.editions.len())
             .sum();
@@ -136,9 +137,7 @@ mod tests {
 
     #[test]
     fn test_parse_reporters_spot_check() {
-        let raw = include_str!(
-            "../../../data/reporters-db/reporters_db/data/reporters.json"
-        );
+        let raw = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
         let map = parse_reporters(raw).expect("parse reporters.json");
 
         // Spot-check U.S. reporter

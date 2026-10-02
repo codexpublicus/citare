@@ -64,8 +64,7 @@ fn main() {
     // -----------------------------------------------------------------------
     // 1. Load and process regex variables with overrides
     // -----------------------------------------------------------------------
-    let regexes_json =
-        include_str!("../../data/reporters-db/reporters_db/data/regexes.json");
+    let regexes_json = include_str!("../../data/reporters-db/reporters_db/data/regexes.json");
     let mut raw: serde_json::Value =
         serde_json::from_str(regexes_json).expect("Failed to parse regexes.json");
 
@@ -100,8 +99,7 @@ fn main() {
     // -----------------------------------------------------------------------
     // 2. Parse data files
     // -----------------------------------------------------------------------
-    let reporters_json =
-        include_str!("../../data/reporters-db/reporters_db/data/reporters.json");
+    let reporters_json = include_str!("../../data/reporters-db/reporters_db/data/reporters.json");
     let reporters = parse_reporters(reporters_json).expect("Failed to parse reporters.json");
     let total_editions: usize = reporters
         .values()
@@ -118,8 +116,7 @@ fn main() {
     let laws = parse_laws(laws_json).expect("Failed to parse laws.json");
     println!("cargo::warning=Loaded {} laws", laws.len());
 
-    let journals_json =
-        include_str!("../../data/reporters-db/reporters_db/data/journals.json");
+    let journals_json = include_str!("../../data/reporters-db/reporters_db/data/journals.json");
     let journals = parse_journals(journals_json).expect("Failed to parse journals.json");
     println!("cargo::warning=Loaded {} journals", journals.len());
 
@@ -194,9 +191,7 @@ fn main() {
         // Add short cite variant
         let short_regex = short_cite_re(regex);
         if short_regex != *regex {
-            let short_entry = editions_by_regex
-                .entry(short_regex.clone())
-                .or_default();
+            let short_entry = editions_by_regex.entry(short_regex.clone()).or_default();
             match kind {
                 "editions" => short_entry.editions.push(edition.clone()),
                 "variations" => short_entry.variations.push(edition.clone()),
@@ -220,15 +215,15 @@ fn main() {
                        variation_names: &[String],
                        regex_variables: &HashMap<String, String>| {
         for template in regex_templates {
-            let resolved = citare_data_build::template::recursive_substitute(
-                template,
-                regex_variables,
-                100,
-            )
-            .unwrap_or_else(|e| {
-                eprintln!("cargo::warning=Failed to resolve template '{}': {}", template, e);
-                template.clone()
-            });
+            let resolved =
+                citare_data_build::template::recursive_substitute(template, regex_variables, 100)
+                    .unwrap_or_else(|e| {
+                        eprintln!(
+                            "cargo::warning=Failed to resolve template '{}': {}",
+                            template, e
+                        );
+                        template.clone()
+                    });
 
             // Fix Python-ism: {,N} -> {0,N}
             let resolved = resolved.replace("{,", "{0,");
@@ -585,10 +580,7 @@ fn main() {
             }
             Err(e) => {
                 skipped += 1;
-                eprintln!(
-                    "cargo::warning=Skipping invalid one-off regex: {}",
-                    e
-                );
+                eprintln!("cargo::warning=Skipping invalid one-off regex: {}", e);
             }
         }
     }
@@ -640,7 +632,11 @@ fn main() {
     let mut output = String::with_capacity(1024 * 1024); // ~1MB initial
 
     writeln!(output, "/// Auto-generated extractor data. Do not edit.").unwrap();
-    writeln!(output, "/// Generated from reporters-db and courts-db data at build time.").unwrap();
+    writeln!(
+        output,
+        "/// Generated from reporters-db and courts-db data at build time."
+    )
+    .unwrap();
     writeln!(output).unwrap();
 
     // -- Edition struct and array --
@@ -689,18 +685,8 @@ fn main() {
             rust_str_literal(&ed.short_name)
         )
         .unwrap();
-        writeln!(
-            output,
-            "        start: {},",
-            rust_option_str(&ed.start)
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        end: {},",
-            rust_option_str(&ed.end)
-        )
-        .unwrap();
+        writeln!(output, "        start: {},", rust_option_str(&ed.start)).unwrap();
+        writeln!(output, "        end: {},", rust_option_str(&ed.end)).unwrap();
         writeln!(
             output,
             "        harvard_slug: {},",
@@ -719,11 +705,7 @@ fn main() {
         REPORTER_PLACEHOLDER
     )
     .unwrap();
-    writeln!(
-        output,
-        "pub static GENERATED_TEMPLATES: &[&str] = &["
-    )
-    .unwrap();
+    writeln!(output, "pub static GENERATED_TEMPLATES: &[&str] = &[").unwrap();
     for tmpl in &templates {
         writeln!(output, "    {},", rust_str_literal(tmpl)).unwrap();
     }
@@ -821,12 +803,7 @@ fn main() {
     .unwrap();
     for ext in &oneoff_extractors {
         writeln!(output, "    GeneratedExtractor {{").unwrap();
-        writeln!(
-            output,
-            "        regex: {},",
-            rust_str_literal(&ext.regex)
-        )
-        .unwrap();
+        writeln!(output, "        regex: {},", rust_str_literal(&ext.regex)).unwrap();
         writeln!(output, "        token_type: {},", ext.token_type).unwrap();
         writeln!(
             output,
