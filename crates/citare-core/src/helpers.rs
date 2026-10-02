@@ -4,7 +4,7 @@
 //! extraction, court lookup, overlap filtering, and case name extraction.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, OnceLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 
 use fancy_regex::Regex as FancyRegex;
 use log::warn;
@@ -82,6 +82,16 @@ fn re_stop_words_ci() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(&format!("(?i){}", *STOP_WORD_REGEX)).unwrap())
 }
 
+fn re_year() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
+    RE.get_or_init(|| FancyRegex::new(&YEAR_REGEX).unwrap())
+}
+
+fn re_year_only() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
+    RE.get_or_init(|| FancyRegex::new(&format!("^(?:{})$", *YEAR_REGEX)).unwrap())
+}
+
 fn re_leading_in() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| regex::Regex::new(r"(?i)^In\s+").unwrap())
@@ -98,6 +108,61 @@ const COURTS_JSON: &str = include_str!("../../../data/courts-db/courts_db/data/c
 static COURTS: LazyLock<Vec<citare_data_build::courts::Court>> = LazyLock::new(|| {
     citare_data_build::courts::parse_courts(COURTS_JSON).expect("Failed to parse courts.json")
 });
+
+// ---------------------------------------------------------------------------
+// Anchored pattern cache
+// ---------------------------------------------------------------------------
+
+/// A `match_on_tokens` pattern compiled once: the anchored regex plus the
+/// named groups found in the unanchored source.
+struct AnchoredPattern {
+    re: FancyRegex,
+    names: Vec<String>,
+}
+
+/// Cache of compiled anchored patterns, keyed by `(pattern, forward)`.
+///
+/// Compiling the metadata regexes dominated per-call cost, and every
+/// in-crate caller passes one of a handful of static patterns.
+type PatternCache = HashMap<(String, bool), Option<Arc<AnchoredPattern>>>;
+static ANCHORED_PATTERNS: LazyLock<RwLock<PatternCache>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Upper bound on cached patterns, so callers passing many distinct
+/// patterns can't grow the cache without limit.
+const MAX_CACHED_PATTERNS: usize = 64;
+
+fn anchored_pattern(regex_str: &str, forward: bool) -> Option<Arc<AnchoredPattern>> {
+    let key = (regex_str.to_string(), forward);
+    if let Some(hit) = ANCHORED_PATTERNS
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+    {
+        return hit.clone();
+    }
+
+    let anchored = if forward {
+        format!("^(?:{})", regex_str)
+    } else {
+        format!("(?:{})$", regex_str)
+    };
+    // fancy_regex doesn't expose group names in source order, so collect
+    // every (?P<name>...) in the regex string instead.
+    let compiled = FancyRegex::new(&anchored).ok().map(|re| {
+        let names = re_named_groups()
+            .captures_iter(regex_str)
+            .map(|cap| cap[1].to_string())
+            .collect();
+        Arc::new(AnchoredPattern { re, names })
+    });
+
+    let mut cache = ANCHORED_PATTERNS.write().unwrap_or_else(|e| e.into_inner());
+    if cache.len() < MAX_CACHED_PATTERNS {
+        cache.insert(key, compiled.clone());
+    }
+    compiled
+}
 
 // ---------------------------------------------------------------------------
 // MatchResult
@@ -158,13 +223,6 @@ pub fn match_on_tokens(
 ) -> Option<MatchResult> {
     let mut text = prefix.to_string();
 
-    // Anchor the regex
-    let anchored = if forward {
-        format!("^(?:{})", regex_str)
-    } else {
-        format!("(?:{})$", regex_str)
-    };
-
     if forward {
         let start = (start_index.max(0) as usize).min(words.len());
         for token in &words[start..] {
@@ -210,20 +268,14 @@ pub fn match_on_tokens(
     }
 
     // Match using fancy_regex (supports lookahead)
-    let re = FancyRegex::new(&anchored).ok()?;
-    let captures = re.captures(&text).ok()??;
+    let pattern = anchored_pattern(regex_str, forward)?;
+    let captures = pattern.re.captures(&text).ok()??;
 
     // Extract all named groups
     let mut groups = HashMap::new();
-
-    // Extract named groups by iterating through capture group names
-    // fancy_regex doesn't provide capture_names(), so we use a workaround:
-    // look for all (?P<name>...) patterns in the regex string
-    let name_re = re_named_groups();
-    for cap in name_re.captures_iter(regex_str) {
-        let name = cap.get(1).unwrap().as_str();
+    for name in &pattern.names {
         let value = captures.name(name).map(|m| m.as_str().to_string());
-        groups.insert(name.to_string(), value);
+        groups.insert(name.clone(), value);
     }
 
     let overall = captures.get(0)?;
@@ -325,12 +377,9 @@ pub fn process_parenthetical(paren: Option<&str>) -> Option<String> {
     }
 
     // Filter year-only parentheticals
-    let year_re = FancyRegex::new(&YEAR_REGEX).ok()?;
-    if year_re.is_match(paren).unwrap_or(false) {
+    if re_year().is_match(paren).unwrap_or(false) {
         // Check if the whole string is just a year
-        let full_match = format!("^(?:{})$", *YEAR_REGEX);
-        let full_re = FancyRegex::new(&full_match).ok()?;
-        if full_re.is_match(paren).unwrap_or(false) {
+        if re_year_only().is_match(paren).unwrap_or(false) {
             return None;
         }
     }

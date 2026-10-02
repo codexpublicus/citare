@@ -7,6 +7,7 @@
 //! Ported from eyecite's `resolve.py`.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use crate::models::{
     Citation, IdCitationData, ReferenceCitationData, Resource, ShortCaseCitationData,
@@ -278,8 +279,9 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
     let page: i32 = page_str.parse().unwrap_or(0);
 
     // Extract the numeric portion of the pin cite (e.g. "at 5" → 5).
-    let re = regex::Regex::new(r"(?:at )?(\d+)").unwrap();
-    let pin: i32 = match re.captures(pin_cite) {
+    static PIN_NUMBER_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?:at )?(\d+)").unwrap());
+    let pin: i32 = match PIN_NUMBER_RE.captures(pin_cite) {
         Some(caps) => caps[1].parse().unwrap_or(0),
         // Non-numeric pin cite is assumed invalid.
         None => return true,
