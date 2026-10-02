@@ -358,6 +358,12 @@ impl Tokenizer {
 // AhocorasickTokenizer
 // ---------------------------------------------------------------------------
 
+/// Remove all whitespace from `text` (eyecite's `_strip_ws`), so the
+/// prefilter stays a superset of the whitespace-relaxed reporter regexes.
+fn strip_ws(text: &str) -> String {
+    text.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 /// A performance-optimised tokenizer that uses Aho-Corasick pre-filtering
 /// to only run extractors whose required strings appear in the text.
 pub struct AhocorasickTokenizer {
@@ -398,11 +404,14 @@ impl AhocorasickTokenizer {
                 unfiltered_indices.push(idx);
             } else if ext.case_insensitive {
                 for s in &ext.strings {
-                    ci_grouped.entry(s.to_lowercase()).or_default().push(idx);
+                    ci_grouped
+                        .entry(strip_ws(s).to_lowercase())
+                        .or_default()
+                        .push(idx);
                 }
             } else {
                 for s in &ext.strings {
-                    cs_grouped.entry(s.clone()).or_default().push(idx);
+                    cs_grouped.entry(strip_ws(s)).or_default().push(idx);
                 }
             }
         }
@@ -453,8 +462,16 @@ impl AhocorasickTokenizer {
     ///
     /// Uses overlapping iteration to find all patterns, even when shorter
     /// patterns (e.g., "A.") overlap with longer ones (e.g., "A.2d").
+    ///
+    /// Reporter regexes allow flexible whitespace between abbreviation tokens
+    /// (eyecite #305), so the prefilter strings and the text are both matched
+    /// with whitespace removed: `N. Y. S. 2d` must still select the
+    /// `N.Y.S.2d` extractor. Match spans still come from running the selected
+    /// extractors over the original text.
     fn get_extractors(&self, text: &str) -> Vec<&TokenExtractor> {
         let mut result: HashSet<usize> = self.unfiltered_indices.iter().copied().collect();
+        let stripped = strip_ws(text);
+        let text = stripped.as_str();
 
         if let Some(ref ac) = self.case_sensitive_ac {
             let mut state = aho_corasick::automaton::OverlappingState::start();
@@ -675,6 +692,43 @@ mod tests {
             })
             .collect();
         assert_eq!(strs, vec!["hello"]);
+    }
+
+    /// Port of eyecite's updated `test_extractor_filter` (eyecite #305): the
+    /// prefilter matches whitespace-insensitively, so the compact `U.S.` in
+    /// the text also selects the extractors for spaced variations like
+    /// `U. S.`, and spaced text selects the compact reporter's extractor.
+    /// citare emits one extractor per variation, so variations are checked
+    /// individually rather than as one combined string set.
+    #[test]
+    fn test_extractor_filter() {
+        let tokenizer = AhocorasickTokenizer::new();
+        let strings_for = |text: &str| -> HashSet<Vec<String>> {
+            tokenizer
+                .get_extractors(text)
+                .into_iter()
+                .filter(|e| !e.strings.is_empty())
+                .map(|e| {
+                    let mut s = e.strings.clone();
+                    s.sort();
+                    s
+                })
+                .collect()
+        };
+
+        let selected = strings_for("See foo, 123 U.S. 456. Id.");
+        let mut stop_words: Vec<String> = crate::regexes::STOP_WORDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        stop_words.sort();
+        assert!(selected.contains(&stop_words));
+        assert!(selected.contains(&vec!["U.S.".to_string()]));
+        assert!(selected.contains(&vec!["U. S.".to_string()]));
+        assert!(selected.contains(&vec!["ibid.".to_string(), "id.".to_string()]));
+
+        let selected = strings_for("123 N. Y. S. 2d 456");
+        assert!(selected.contains(&vec!["N.Y.S.2d".to_string()]));
     }
 
     /// Two extractors matching the same span merge into one token, and the

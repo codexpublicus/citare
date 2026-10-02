@@ -987,4 +987,114 @@ mod tests {
         let cites = get_citations("1 U.S. 1", false, "", &[]);
         assert!(!cites[0].is_ambiguous(), "U.S. should not be ambiguous");
     }
+
+    /// Port of eyecite's `test_relaxed_reporter_whitespace` (eyecite #305):
+    /// reporters printed with spaced-out abbreviations still match, while
+    /// periods stay mandatory.
+    #[test]
+    fn test_relaxed_reporter_whitespace() {
+        fn group<'a>(c: &'a Citation, name: &str) -> Option<&'a str> {
+            c.resource_common()?.common.groups.get(name)?.as_deref()
+        }
+
+        // (text, type, reporter, reporter_found, [(group, value)])
+        type Case<'a> = (&'a str, &'a str, &'a str, &'a str, &'a [(&'a str, &'a str)]);
+        let cases: &[Case] = &[
+            (
+                "123 N. Y. S. 2d 456",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N. Y. S. 2d",
+                &[("volume", "123"), ("page", "456")],
+            ),
+            (
+                "260 F. R. D. 38",
+                "FullCaseCitation",
+                "F.R.D.",
+                "F. R. D.",
+                &[("volume", "260"), ("page", "38")],
+            ),
+            (
+                "8 N. Y. 3d 204",
+                "FullCaseCitation",
+                "N.Y.3d",
+                "N. Y. 3d",
+                &[("volume", "8"), ("page", "204")],
+            ),
+            // Partially spaced (space only after the final period)
+            (
+                "799 N.Y.S. 2d 795",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N.Y.S. 2d",
+                &[("volume", "799"), ("page", "795")],
+            ),
+            // Multi-word reporter with spaced tokens
+            (
+                "31 Ohio C. C. 270",
+                "FullCaseCitation",
+                "Ohio C.C.",
+                "Ohio C. C.",
+                &[("volume", "31"), ("page", "270")],
+            ),
+            // Compact forms still match unchanged
+            (
+                "799 N.Y.S.2d 795",
+                "FullCaseCitation",
+                "N.Y.S.2d",
+                "N.Y.S.2d",
+                &[("volume", "799"), ("page", "795")],
+            ),
+            // Short cite through the short_cite_re path
+            (
+                "See Adarand, 799 N. Y. S. 2d, at 797",
+                "ShortCaseCitation",
+                "N.Y.S.2d",
+                "N. Y. S. 2d",
+                &[("volume", "799"), ("page", "797")],
+            ),
+            // Laws and journals go through the same chokepoint
+            (
+                "18 U. S. C. \u{00a7} 4241",
+                "FullLawCitation",
+                "U.S.C.",
+                "U. S. C.",
+                &[("title", "18"), ("section", "4241")],
+            ),
+            (
+                "1 F. B. I. S. 1",
+                "FullJournalCitation",
+                "F.B.I.S.",
+                "F. B. I. S.",
+                &[],
+            ),
+        ];
+
+        for &(text, type_name, reporter, found, groups) in cases {
+            let cites = get_citations(text, false, "", &[]);
+            assert_eq!(cites.len(), 1, "{text:?}: {cites:?}");
+            let c = &cites[0];
+            assert_eq!(c.type_name(), type_name, "{text:?}");
+            assert_eq!(
+                c.corrected_reporter().as_deref(),
+                Some(reporter),
+                "{text:?}"
+            );
+            assert_eq!(group(c, "reporter"), Some(found), "{text:?}");
+            for &(name, value) in groups {
+                assert_eq!(group(c, name), Some(value), "{text:?} group {name}");
+            }
+        }
+
+        let cites = get_citations("See Adarand, 799 N. Y. S. 2d, at 797", false, "", &[]);
+        match &cites[0] {
+            Citation::ShortCase(d) => {
+                assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Adarand"))
+            }
+            other => panic!("expected short case, got {other:?}"),
+        }
+
+        // Periods stay mandatory.
+        assert!(get_citations("123 N Y S 2d 456", false, "", &[]).is_empty());
+    }
 }

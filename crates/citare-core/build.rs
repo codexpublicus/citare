@@ -6,7 +6,7 @@ use std::path::Path;
 
 use citare_data_build::courts::parse_courts;
 use citare_data_build::regexes::{
-    id_regex, nonalphanum_boundaries_re, placeholder_citations_regex, short_cite_re,
+    id_regex, nonalphanum_boundaries_re, placeholder_citations_regex, relax_ws, short_cite_re,
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
 };
 use citare_data_build::reporters::{parse_journals, parse_laws, parse_reporters};
@@ -147,11 +147,13 @@ fn main() {
     let mut editions_by_regex: HashMap<String, EditionsByRegexEntry> = HashMap::new();
     let mut editions_lookup: HashMap<String, Vec<BuildEdition>> = HashMap::new();
 
-    // Helper: substitute $edition in a template with escaped edition names
+    // Helper: substitute $edition in a template with escaped edition names,
+    // relaxing inter-token whitespace so `N.Y.S.2d` also matches
+    // `N. Y. S. 2d` (eyecite #305).
     fn substitute_edition(template: &str, edition_names: &[&str]) -> String {
         let edition = edition_names
             .iter()
-            .map(|e| regex::escape(e))
+            .map(|e| relax_ws(&regex::escape(e)))
             .collect::<Vec<_>>()
             .join("|");
         citare_data_build::template::safe_substitute(
@@ -181,7 +183,9 @@ fn main() {
             _ => {}
         }
 
-        let have_strings = regex.contains(&regex::escape(reporter_strings[0]));
+        // The reporter is embedded with relaxed whitespace (see relax_ws), so
+        // look for the relaxed form.
+        let have_strings = regex.contains(&relax_ws(&regex::escape(reporter_strings[0])));
         if have_strings {
             for &s in reporter_strings {
                 entry.strings.insert(s.to_string());
