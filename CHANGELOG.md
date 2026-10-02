@@ -4,6 +4,16 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.4.1 - 2026-10-02
+
+### Fixes
+
+- *(core)* Keep spans on UTF-8 char boundaries ([#30](https://github.com/codexpublicus/citare/pull/30))
+
+### Performance
+
+- *(core)* Anchor the markup offset-map diff ([#31](https://github.com/codexpublicus/citare/pull/31))
+
 ## v0.4.0 - 2026-10-02
 
 ### Breaking changes
