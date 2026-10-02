@@ -492,18 +492,26 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         return Vec::new();
     }
 
-    // Build regexes from plaintiff/defendant names
-    let mut regexes = Vec::new();
-    if let Some(ref plaintiff) = data.metadata.plaintiff {
-        if crate::utils::is_valid_name(plaintiff) {
-            regexes.push(format!("(?P<plaintiff>{})", regex::escape(plaintiff)));
-        }
-    }
-    if let Some(ref defendant) = data.metadata.defendant {
-        if crate::utils::is_valid_name(defendant) {
-            regexes.push(format!("(?P<defendant>{})", regex::escape(defendant)));
-        }
-    }
+    // Build one named alternative per usable name, in eyecite's
+    // `ReferenceCitation.name_fields` order.
+    let name_fields: [(&str, &Option<String>); 4] = [
+        ("plaintiff", &data.metadata.plaintiff),
+        ("defendant", &data.metadata.defendant),
+        (
+            "resolved_case_name_short",
+            &data.metadata.resolved_case_name_short,
+        ),
+        ("resolved_case_name", &data.metadata.resolved_case_name),
+    ];
+    let regexes: Vec<String> = name_fields
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .as_deref()
+                .filter(|v| crate::utils::is_valid_name(v))
+                .map(|v| format!("(?P<{}>{})", key, regex::escape(v)))
+        })
+        .collect();
 
     if regexes.is_empty() {
         return Vec::new();
@@ -521,25 +529,22 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
 
     let mut references = Vec::new();
 
-    // fancy_regex doesn't have find_iter that returns spans easily,
-    // use a manual loop
-    let mut search_start = 0;
-    loop {
-        let remaining = &remaining_text[search_start..];
-        if remaining.is_empty() {
-            break;
-        }
-        let m = match re.find(remaining) {
-            Ok(Some(m)) => m,
+    // Like eyecite's `match.groupdict()`, the metadata holds only the groups
+    // that took part in the match: the matched name and the pin cite.
+    let mut pos = 0;
+    while pos <= remaining_text.len() {
+        let caps = match re.captures_from_pos(remaining_text, pos) {
+            Ok(Some(caps)) => caps,
             _ => break,
         };
+        let m = caps.get(0).expect("group 0 is always present");
+        let group = |name: &str| caps.name(name).map(|g| g.as_str().to_string());
 
-        let abs_start = span_end + search_start + m.start();
-        let abs_end = span_end + search_start + m.end();
-        let matched_text = m.as_str().to_string();
+        let abs_start = span_end + m.start();
+        let abs_end = span_end + m.end();
 
         let token = Token::CaseReference(crate::models::token::TokenData {
-            data: matched_text,
+            data: m.as_str().to_string(),
             start: abs_start,
             end: abs_end,
             groups: HashMap::new(),
@@ -560,18 +565,26 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
                 common,
                 metadata: crate::models::citation::ReferenceMetadata {
                     parenthetical: None,
-                    pin_cite: None,
+                    pin_cite: group("pin_cite"),
                     pin_cite_span_start: None,
                     pin_cite_span_end: None,
-                    plaintiff: data.metadata.plaintiff.clone(),
-                    defendant: data.metadata.defendant.clone(),
-                    resolved_case_name_short: None,
-                    resolved_case_name: None,
+                    plaintiff: group("plaintiff"),
+                    defendant: group("defendant"),
+                    resolved_case_name_short: group("resolved_case_name_short"),
+                    resolved_case_name: group("resolved_case_name"),
                 },
             },
         ));
 
-        search_start += m.start() + m.as_str().len().max(1);
+        pos = if m.end() > m.start() {
+            m.end()
+        } else {
+            // Step past an empty match without splitting a UTF-8 character.
+            match remaining_text[m.end()..].chars().next() {
+                Some(c) => m.end() + c.len_utf8(),
+                None => break,
+            }
+        };
     }
 
     references
@@ -1011,6 +1024,130 @@ mod tests {
             None
         );
         assert_eq!(d.metadata.case.year.as_deref(), Some("2018"));
+    }
+
+    fn references(cites: &[Citation]) -> Vec<&crate::models::citation::ReferenceCitationData> {
+        cites
+            .iter()
+            .filter_map(|c| match c {
+                Citation::Reference(d) => Some(d),
+                _ => None,
+            })
+            .collect()
+    }
+
+    // Ported from eyecite tests/test_FindTest.py: a reference citation
+    // carries its pin cite and only the party name that matched.
+    #[test]
+    fn test_reference_citation_plaintiff_and_pin_cite() {
+        let text = "Foo v. Bar 1 U.S. 12, 347-348. something something, In Foo at 62, we see that";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(cites.len(), 2, "{:?}", cites);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        let r = refs[0];
+        assert_eq!(cites[1].matched_text(), "Foo at 62");
+        assert_eq!(r.metadata.plaintiff.as_deref(), Some("Foo"));
+        assert_eq!(r.metadata.defendant, None);
+        assert_eq!(r.metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_skips_disallowed_defendant() {
+        let text = "Foo v. United States 1 U.S. 12, 347-348. something something ... \
+                    the United States at 1776 we see that and Foo at 62";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Foo"));
+        assert_eq!(refs[0].metadata.defendant, None);
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_must_follow_full_cite() {
+        let text = "In Foo at 62 we see that, Foo v. Bar 1 U.S. 12, 347-348. something something,";
+        let cites = get_citations(text, false, "", &[]);
+        assert!(references(&cites).is_empty());
+    }
+
+    #[test]
+    fn test_reference_citation_against_defendant() {
+        let text =
+            "In re Foo 1 Mass. 12, 347-348. something something, in Foo at 62, we see that, ";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff, None);
+        assert_eq!(refs[0].metadata.defendant.as_deref(), Some("Foo"));
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 62"));
+    }
+
+    #[test]
+    fn test_reference_citation_after_id() {
+        let text = "we said in Morton v. Mancari, 417 U. S. 535, 552 (1974) \u{201c}Literally every \
+                    piece ....\u{201d}. \u{201c}asisovereign tribal entities . . . .\u{201d} Id. In \
+                    Mancari at 665";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff, None);
+        assert_eq!(refs[0].metadata.defendant.as_deref(), Some("Mancari"));
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 665"));
+    }
+
+    #[test]
+    fn test_reference_citation_amick() {
+        let text = "General Casualty cites as compelling Amick v. Liberty Mut. Ins. Co., 455 A.2d \
+                    793 (R.I. 1983). In that case ... Stats, do. See Amick at 795";
+        let cites = get_citations(text, false, "", &[]);
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Amick"));
+        assert_eq!(refs[0].metadata.defendant, None);
+        assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 795"));
+    }
+
+    // Ported from eyecite test_reference_extraction_using_resolved_names:
+    // resolved case names are also used to find references.
+    #[test]
+    fn test_reference_extraction_using_resolved_names() {
+        let text = "See, e.g., State v. W1ngler, 135 A. 2d 468 (1957);\n\
+                    [State v. Wingler at 175, citing, Minnesota ex rel.]";
+        let mut cites = get_citations(text, false, "", &[]);
+        assert!(references(&cites).is_empty());
+        if let Citation::FullCase(d) = &mut cites[0] {
+            d.metadata.resolved_case_name = Some("State v. Wingler".to_string());
+        } else {
+            panic!("expected FullCase, got {:?}", cites[0]);
+        }
+        let refs = extract_pincited_reference_citations(&cites[0], text);
+        assert_eq!(refs.len(), 1, "{:?}", refs);
+        assert_eq!(refs[0].matched_text(), "State v. Wingler at 175");
+        if let Citation::Reference(r) = &refs[0] {
+            assert_eq!(
+                r.metadata.resolved_case_name.as_deref(),
+                Some("State v. Wingler")
+            );
+            assert_eq!(r.metadata.plaintiff, None);
+            assert_eq!(r.metadata.pin_cite.as_deref(), Some("at 175"));
+        }
+    }
+
+    // Ported from eyecite: a "v." at the very start of the input leaves no
+    // case name, so the party falls through to antecedent_guess.
+    #[test]
+    fn test_missing_plaintiff_at_start_of_input() {
+        let cites = get_citations("v. Bar, 1 U.S. 1", false, "", &[]);
+        assert_eq!(cites.len(), 1);
+        match &cites[0] {
+            Citation::FullCase(d) => {
+                assert_eq!(d.metadata.antecedent_guess.as_deref(), Some("Bar"));
+                assert_eq!(d.metadata.plaintiff, None);
+                assert_eq!(d.metadata.defendant, None);
+            }
+            other => panic!("expected FullCase, got {:?}", other),
+        }
     }
 
     #[test]

@@ -623,7 +623,12 @@ pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short
     let mut state = initialize_search_state(citation);
     scan_for_case_boundaries(words, citation, &mut state);
 
-    if state.candidate_case_name.is_some() {
+    // eyecite only processes a truthy (non-empty) candidate.
+    if state
+        .candidate_case_name
+        .as_deref()
+        .is_some_and(|c| !c.is_empty())
+    {
         process_case_name(citation, words, &state, short);
     }
 }
@@ -686,11 +691,7 @@ pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens
             // "v" stop word
             if is_v_token(word) {
                 state.v_token_found = true;
-                if i >= 2 {
-                    state.start_index = Some(i - 2);
-                } else {
-                    state.start_index = Some(0);
-                }
+                state.start_index = Some(v_token_start_index(words, i));
                 state.candidate_case_name = Some(extract_text(
                     words,
                     state.start_index.unwrap(),
@@ -895,12 +896,10 @@ fn scan_for_case_boundaries(
         // "v" stop word
         if is_v_token(word) {
             state.v_token_found = true;
-            state.start_index = Some(i.saturating_sub(2));
-            state.candidate_case_name = Some(extract_text(
-                words,
-                i.saturating_sub(2),
-                state.title_starting_index,
-            ));
+            let start = v_token_start_index(words, i);
+            state.start_index = Some(start);
+            state.candidate_case_name =
+                Some(extract_text(words, start, state.title_starting_index));
             continue;
         }
 
@@ -1034,6 +1033,20 @@ fn process_case_name(
 // ---------------------------------------------------------------------------
 // Small helper functions
 // ---------------------------------------------------------------------------
+
+/// Start index of the case name when a "v" token sits at word `i`.
+///
+/// eyecite uses `i - 2` as a Python slice start, so a "v" at the first or
+/// second word wraps around to the end of the word list and yields an empty
+/// candidate (e.g. `v. Bar, 1 U.S. 1` gets no case name, and `Bar` falls
+/// through to `antecedent_guess`). Mirror that wrap-around.
+fn v_token_start_index(words: &Tokens, i: usize) -> usize {
+    if i >= 2 {
+        i - 2
+    } else {
+        (words.len() + i).saturating_sub(2)
+    }
+}
 
 fn extract_text(words: &Tokens, start: usize, end: usize) -> String {
     let start = start.min(words.len());
