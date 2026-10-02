@@ -407,4 +407,52 @@ mod tests {
         let resolutions = resolve_citations(&citations);
         assert_eq!(resolutions.len(), 2);
     }
+
+    // Ported from eyecite tests/test_ResolveTest.py: two otherwise identical
+    // full citations with missing pages must not resolve to the same
+    // resource.
+    #[test]
+    fn test_blank_page_full_citations_are_distinct() {
+        let text = "Foo v. Bar, 1 U.S. ____. Foo v. Bar, 1 U.S. ____.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert_eq!(citations.len(), 2);
+        assert_ne!(citations[0], citations[1]);
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 2);
+        for cites in resolutions.values() {
+            assert_eq!(cites.len(), 1);
+        }
+    }
+
+    // A blank-page citation is still equal to a clone of itself, so it can
+    // serve as a stable resource key.
+    #[test]
+    fn test_blank_page_citation_equals_its_clone() {
+        let citations = crate::find::get_citations("1 U.S. ___", false, "", &[]);
+        let resource = resolve_full_citation(&citations[0]);
+        assert_eq!(resource.citation, citations[0]);
+        assert_eq!(resource, resolve_full_citation(&citations[0]));
+    }
+
+    // Ported from eyecite: an Id. pin cite after a full citation that only
+    // has a placeholder page can't be resolved.
+    #[test]
+    fn test_id_after_blank_page_not_resolved() {
+        let text = "Foo v. Bar, 1 U.S. ___. Id. at 100.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        assert_eq!(citations.len(), 2);
+        let resolutions = resolve_citations(&citations);
+        let total_resolved: usize = resolutions.values().map(|v| v.len()).sum();
+        assert_eq!(total_resolved, 1);
+    }
+
+    #[test]
+    fn test_short_cite_resolves_to_blank_page_full_cite() {
+        let text = "Foo v. Bar, 1 U.S. ___ (2019). Foo, 1 U.S., at 5.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        let resolutions = resolve_citations(&citations);
+        assert_eq!(resolutions.len(), 1);
+        let (_, cites) = resolutions.iter().next().unwrap();
+        assert_eq!(cites.len(), 2);
+    }
 }

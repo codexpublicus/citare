@@ -12,9 +12,9 @@ use crate::helpers::{
     find_case_name_short, guess_court, guess_edition,
 };
 use crate::models::citation::{
-    CaseMetadata, Citation, CitationCommon, FullCaseCitationData, FullCaseMetadata,
-    FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata, JournalMetadata,
-    LawMetadata, ResourceCitationCommon, ShortCaseCitationData, ShortCaseMetadata,
+    normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
+    FullCaseMetadata, FullJournalCitationData, FullLawCitationData, IdCitationData, IdMetadata,
+    JournalMetadata, LawMetadata, ResourceCitationCommon, ShortCaseCitationData, ShortCaseMetadata,
     SupraCitationData, SupraMetadata, UnknownCitationData,
 };
 use crate::models::document::Document;
@@ -158,7 +158,8 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
     let cite_sources: std::collections::HashSet<ReporterSource> =
         editions.iter().map(|e| e.reporter.source).collect();
 
-    let groups = token.groups().clone();
+    let mut groups = token.groups().clone();
+    normalize_blank_page(&mut groups);
     let all_editions: Vec<_> = ct
         .exact_editions
         .iter()
@@ -291,10 +292,17 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
         _ => unreachable!("Expected citation token"),
     };
 
-    let groups = token.groups().clone();
-    let page_prefix = groups.get("page").and_then(|v| v.as_deref()).unwrap_or("");
-
+    // The pin cite is matched against the original page text, before a
+    // blank page is normalized away (as eyecite does).
+    let page_prefix = token
+        .groups()
+        .get("page")
+        .and_then(|v| v.as_deref())
+        .unwrap_or("");
     let (pin_cite, span_end, parenthetical) = extract_pin_cite(&document.words, index, page_prefix);
+
+    let mut groups = token.groups().clone();
+    normalize_blank_page(&mut groups);
 
     let span_end_val = span_end.unwrap_or(0);
     let all_editions: Vec<_> = ct
@@ -938,25 +946,71 @@ mod tests {
         assert!(cites.is_empty() || !cites.iter().any(|c| c.matched_text().contains("S.W.")));
     }
 
+    fn only_full_case(cites: &[Citation]) -> &FullCaseCitationData {
+        assert_eq!(cites.len(), 1, "expected one citation, got {:?}", cites);
+        match &cites[0] {
+            Citation::FullCase(d) => d,
+            other => panic!("expected FullCase, got {:?}", other),
+        }
+    }
+
+    // Ported from eyecite tests/test_FindTest.py: a page made only of
+    // underscores is a known-missing page and is normalized to None.
+    #[test]
+    fn test_blank_page_is_none() {
+        let cites = get_citations("1 U.S. ___", false, "", &[]);
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(g.get("volume").cloned().flatten().as_deref(), Some("1"));
+        assert_eq!(
+            g.get("reporter").cloned().flatten().as_deref(),
+            Some("U.S.")
+        );
+        assert_eq!(g.get("page").cloned().flatten(), None);
+        // The matched text still carries the original underscores.
+        assert_eq!(cites[0].matched_text(), "1 U.S. ___");
+    }
+
+    #[test]
+    fn test_blank_page_followed_by_comma() {
+        // cf. eyecite#137
+        let cites = get_citations("1 U. S. ___,", false, "", &[]);
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(
+            g.get("reporter").cloned().flatten().as_deref(),
+            Some("U. S.")
+        );
+        assert_eq!(g.get("page").cloned().flatten(), None);
+    }
+
+    #[test]
+    fn test_blank_page_with_pin_cite() {
+        let cites = get_citations(
+            "\n 576 U.S. ___, 13",
+            false,
+            "",
+            &[CleanStep::AllWhitespace],
+        );
+        let d = only_full_case(&cites);
+        let g = &d.resource.common.groups;
+        assert_eq!(g.get("volume").cloned().flatten().as_deref(), Some("576"));
+        assert_eq!(g.get("page").cloned().flatten(), None);
+        assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("13"));
+        assert_eq!(d.metadata.case.court.as_deref(), Some("scotus"));
+    }
+
     #[test]
     fn test_placeholder_citation() {
-        // "585 U.S. ___" uses the placeholder page token; it should still
-        // produce a FullCase citation — the page group is "___" not None.
+        // "585 U.S. ___" uses the placeholder page token; it still produces a
+        // FullCase citation, with the page group normalized to None.
         let cites = get_citations("585 U.S. ___ (2018)", false, "", &[]);
-        assert!(
-            !cites.is_empty(),
-            "Expected a citation for placeholder page"
+        let d = only_full_case(&cites);
+        assert_eq!(
+            d.resource.common.groups.get("page").cloned().flatten(),
+            None
         );
-        if let Citation::FullCase(d) = &cites[0] {
-            // Placeholder page is captured as "___", not absent
-            let page = d
-                .resource
-                .common
-                .groups
-                .get("page")
-                .and_then(|v| v.as_deref());
-            assert_eq!(page, Some("___"), "Placeholder page should be '___'");
-        }
+        assert_eq!(d.metadata.case.year.as_deref(), Some("2018"));
     }
 
     #[test]
