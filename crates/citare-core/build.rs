@@ -458,16 +458,24 @@ fn main() {
             continue;
         }
 
-        let edition_indices: Vec<usize> = cluster
-            .editions
-            .iter()
-            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-            .collect();
-        let variation_indices: Vec<usize> = cluster
-            .variations
-            .iter()
-            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-            .collect();
+        // De-duplicate editions, dropping variations that are also exact
+        // matches (eyecite #317): a custom regex without `$edition` yields
+        // byte-identical canonical and variation regexes, which collapse
+        // into one entry listing the same edition twice.
+        let mut edition_indices: Vec<usize> = Vec::new();
+        for e in &cluster.editions {
+            let idx = intern_edition(e, &mut all_editions, &mut edition_index_map);
+            if !edition_indices.contains(&idx) {
+                edition_indices.push(idx);
+            }
+        }
+        let mut variation_indices: Vec<usize> = Vec::new();
+        for e in &cluster.variations {
+            let idx = intern_edition(e, &mut all_editions, &mut edition_index_map);
+            if !edition_indices.contains(&idx) && !variation_indices.contains(&idx) {
+                variation_indices.push(idx);
+            }
+        }
 
         // Try to extract the reporter group and create a template
         if let Some(caps) = reporter_group_re.captures(&wrapped) {

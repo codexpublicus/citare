@@ -1097,4 +1097,34 @@ mod tests {
         // Periods stay mandatory.
         assert!(get_citations("123 N Y S 2d 456", false, "", &[]).is_empty());
     }
+
+    /// Port of eyecite's `test_no_duplicate_editions` (eyecite #317): the
+    /// same edition is never listed twice in `all_editions`, but genuine
+    /// ambiguity between distinct editions is preserved.
+    #[test]
+    fn test_no_duplicate_editions() {
+        for text in [
+            "238 F.3d 273", // whitespace-only variation
+            "410 U.S. 113",
+            "123 F.2d 456",
+            "5 Cal. 4th 1",
+            "410 S.W.2d 1", // custom regex without $edition
+        ] {
+            let cites = get_citations(text, false, "", &[]);
+            let rc = cites[0].resource_common().unwrap();
+            let names: Vec<_> = rc.all_editions.iter().map(|e| &e.short_name).collect();
+            assert_eq!(
+                rc.all_editions.len(),
+                1,
+                "{text:?} has duplicate editions: {names:?}"
+            );
+        }
+
+        // "B.R." maps to two distinct editions (Bankruptcy Reporter and
+        // Baltimore City Reports); de-duplication must keep both.
+        let cites = get_citations("1 B.R. 1", false, "", &[]);
+        let rc = cites[0].resource_common().unwrap();
+        assert_eq!(rc.all_editions.len(), 2);
+        assert_ne!(rc.all_editions[0], rc.all_editions[1]);
+    }
 }

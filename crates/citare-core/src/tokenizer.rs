@@ -773,6 +773,31 @@ mod tests {
         }
     }
 
+    /// Port of eyecite's updated `test_tokenize`: "U. S." is both a
+    /// registered variation and, with relaxed whitespace, an exact match for
+    /// "U.S.". The overlapping matches merge into one token that keeps the
+    /// edition as an exact match only (eyecite #317).
+    #[test]
+    fn test_spaced_variation_is_exact_once() {
+        let tokenizer = AhocorasickTokenizer::new();
+        let (_tokens, citation_tokens) =
+            tokenizer.tokenize("See Roe v. Wade, 410 U. S. 113 (1973)");
+        let ct = citation_tokens
+            .iter()
+            .find_map(|(_, t)| match t {
+                Token::Citation(ct) => Some(ct),
+                _ => None,
+            })
+            .expect("citation token");
+        let exact: Vec<_> = ct
+            .exact_editions
+            .iter()
+            .map(|e| e.short_name.as_str())
+            .collect();
+        assert_eq!(exact, vec!["U.S."]);
+        assert!(ct.variation_editions.is_empty());
+    }
+
     #[test]
     fn test_basic_tokenize() {
         let tokenizer = AhocorasickTokenizer::new();
