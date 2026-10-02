@@ -486,14 +486,17 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
 
     // Build regexes from plaintiff/defendant names
     let mut regexes = Vec::new();
+    let mut names = Vec::new();
     if let Some(ref plaintiff) = data.metadata.plaintiff {
         if crate::utils::is_valid_name(plaintiff) {
             regexes.push(format!("(?P<plaintiff>{})", regex::escape(plaintiff)));
+            names.push(plaintiff);
         }
     }
     if let Some(ref defendant) = data.metadata.defendant {
         if crate::utils::is_valid_name(defendant) {
             regexes.push(format!("(?P<defendant>{})", regex::escape(defendant)));
+            names.push(defendant);
         }
     }
 
@@ -501,11 +504,21 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         return Vec::new();
     }
 
+    // A reference match must contain the plaintiff or defendant verbatim.
+    // Skip compiling the per-citation regex when neither name appears
+    // after the citation, which is the common case.
+    let remaining_text = &plain_text[span_end..];
+    if !names
+        .iter()
+        .any(|name| remaining_text.contains(name.as_str()))
+    {
+        return Vec::new();
+    }
+
     let pin_cite_re = crate::regexes::reference_pin_cite_re(
         &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
     );
 
-    let remaining_text = &plain_text[span_end..];
     let re = match fancy_regex::Regex::new(&pin_cite_re) {
         Ok(re) => re,
         Err(_) => return Vec::new(),
