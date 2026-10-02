@@ -532,9 +532,12 @@ fn tokenize_impl(raw_tokens: &[Token], text: &str) -> (Tokens, Vec<(usize, Token
         if let Some(ref mut lt) = last_token {
             // Attempt to merge identical matches from different extractors
             if lt.merge(token) {
-                // Also update the citation_tokens entry if it was a citation
-                if let Some((_, ref mut ct)) = citation_tokens.last_mut() {
+                // Keep the emitted token in sync with the merged one: both
+                // `citation_tokens` and `all_tokens` hold clones, and
+                // citation extraction reads editions from `all_tokens`.
+                if let Some((idx, ct)) = citation_tokens.last_mut() {
                     ct.merge(token);
+                    all_tokens[*idx] = TokenOrStr::Token(ct.clone());
                 }
                 continue;
             }
@@ -672,6 +675,48 @@ mod tests {
             })
             .collect();
         assert_eq!(strs, vec!["hello"]);
+    }
+
+    /// Two extractors matching the same span merge into one token, and the
+    /// merged editions must reach `all_tokens` (which citation extraction
+    /// reads), not just the `citation_tokens` list.
+    #[test]
+    fn test_merged_token_reaches_all_tokens() {
+        let make = |short_name: &str| {
+            let edition = Edition {
+                reporter: Reporter::new(
+                    short_name.to_string(),
+                    short_name.to_string(),
+                    "state".to_string(),
+                    ReporterSource::Reporters,
+                ),
+                short_name: short_name.to_string(),
+                start: None,
+                end: None,
+                harvard_slug: None,
+            };
+            Token::Citation(CitationTokenData {
+                token_data: TokenData {
+                    data: "1 P.R. 1".to_string(),
+                    start: 0,
+                    end: 8,
+                    groups: HashMap::new(),
+                },
+                exact_editions: vec![],
+                variation_editions: vec![edition],
+                short: false,
+            })
+        };
+        let raw = vec![make("P."), make("Pen. & W.")];
+        let (all_tokens, citation_tokens) = tokenize_impl(&raw, "1 P.R. 1");
+        assert_eq!(citation_tokens.len(), 1);
+        let idx = citation_tokens[0].0;
+        match &all_tokens[idx] {
+            TokenOrStr::Token(Token::Citation(ct)) => {
+                assert_eq!(ct.variation_editions.len(), 2);
+            }
+            other => panic!("expected citation token, got {other:?}"),
+        }
     }
 
     #[test]
