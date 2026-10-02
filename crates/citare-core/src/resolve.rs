@@ -78,7 +78,10 @@ pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
 
         last_resolution = resolution.clone();
         if let Some(resource) = resolution {
-            resolutions.entry(resource).or_default().push(citation.clone());
+            resolutions
+                .entry(resource)
+                .or_default()
+                .push(citation.clone());
         }
     }
 

@@ -1,4 +1,6 @@
-use citare_core::{annotate_citations, get_citations, resolve_citations, CleanStep, UnbalancedTags};
+use citare_core::{
+    annotate_citations, get_citations, resolve_citations, CleanStep, UnbalancedTags,
+};
 
 #[test]
 fn test_full_pipeline() {
@@ -24,7 +26,11 @@ fn test_full_pipeline() {
         .enumerate()
         .map(|(i, c)| {
             let (start, end) = c.span();
-            ((start, end), format!("<a id=\"{}\">", i), "</a>".to_string())
+            (
+                (start, end),
+                format!("<a id=\"{}\">", i),
+                "</a>".to_string(),
+            )
         })
         .collect();
     let annotated = annotate_citations(
@@ -37,7 +43,10 @@ fn test_full_pipeline() {
     );
     assert!(annotated.contains("<a id="), "missing opening tag");
     assert!(annotated.contains("</a>"), "missing closing tag");
-    assert!(annotated.contains("1 U.S. 1"), "missing first citation text");
+    assert!(
+        annotated.contains("1 U.S. 1"),
+        "missing first citation text"
+    );
 }
 
 #[test]
@@ -80,7 +89,11 @@ fn test_pipeline_annotation_order_independent() {
         .enumerate()
         .map(|(i, c)| {
             let (start, end) = c.span();
-            ((start, end), format!("<cite n=\"{}\">", i), "</cite>".to_string())
+            (
+                (start, end),
+                format!("<cite n=\"{}\">", i),
+                "</cite>".to_string(),
+            )
         })
         .collect();
 
@@ -147,7 +160,10 @@ fn test_harvard_slug_a2d_via_pipeline() {
         .iter()
         .filter(|c| matches!(c, citare_core::Citation::FullCase(_)))
         .collect();
-    assert!(!full.is_empty(), "Expected at least one FullCaseCitation for A.2d");
+    assert!(
+        !full.is_empty(),
+        "Expected at least one FullCaseCitation for A.2d"
+    );
 
     let slug = full[0]
         .resource_common()

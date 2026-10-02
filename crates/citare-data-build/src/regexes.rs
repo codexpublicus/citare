@@ -40,17 +40,27 @@ pub fn strip_punctuation_re(regex: &str) -> String {
 /// Convert a full citation regex into a short citation regex by replacing
 /// `(?P<page>` with `at\s?(p(\.|age)?)? (?P<page>`.
 pub fn short_cite_re(regex: &str) -> String {
-    regex.replace(
-        r"(?P<page>",
-        r"at\s?(p(\.|age)?)? (?P<page>",
-    )
+    regex.replace(r"(?P<page>", r"at\s?(p(\.|age)?)? (?P<page>")
 }
 
 /// Ordered list of stop words recognised during tokenisation.
 pub const STOP_WORDS: &[&str] = &[
-    "v", "in re", "re", "quoting", r"e\.g\.", "parte", "denied", "citing",
-    "aff'd", "affirmed", "remanded", "see also", "see", "granted",
-    "dismissed", "Cf",
+    "v",
+    "in re",
+    "re",
+    "quoting",
+    r"e\.g\.",
+    "parte",
+    "denied",
+    "citing",
+    "aff'd",
+    "affirmed",
+    "remanded",
+    "see also",
+    "see",
+    "granted",
+    "dismissed",
+    "Cf",
 ];
 
 /// Section token regex (e.g. `§1234`).
@@ -61,12 +71,36 @@ pub const PARAGRAPH_REGEX: &str = r"(\n)";
 
 /// Common placeholder reporter patterns.
 pub const COMMON_PLACEHOLDER_REPORTERS: &[&str] = &[
-    r"A\.?2d", r"A\.?3d", r"AD3d", r"Cal\.", r"F\.?3d", r"F\.Supp\.2d",
-    r"Idaho", r"Iowa", r"L\.Ed\.", r"Mass\.", r"N\.?J\.?", r"N\.C\.\s?App\.",
-    r"N\.E\.3d", r"N\.J\.\sSuper\.(\sat)?", r"N\.W\.2d", r"N\.W\.3d",
-    r"N\.?Y\.?", r"Nev\.", r"NY3d", r"Ohio\sSt\.3d", r"P\.?3d",
-    r"S\.?E\.?2d", r"S\.?E\.?3d", r"S\.?W\.?2d", r"S\.?W\.?3d",
-    r"S\.C\.", r"S\.Ct\.", r"So\.?3d", r"U\.\s?S\.", r"W\.Va\.",
+    r"A\.?2d",
+    r"A\.?3d",
+    r"AD3d",
+    r"Cal\.",
+    r"F\.?3d",
+    r"F\.Supp\.2d",
+    r"Idaho",
+    r"Iowa",
+    r"L\.Ed\.",
+    r"Mass\.",
+    r"N\.?J\.?",
+    r"N\.C\.\s?App\.",
+    r"N\.E\.3d",
+    r"N\.J\.\sSuper\.(\sat)?",
+    r"N\.W\.2d",
+    r"N\.W\.3d",
+    r"N\.?Y\.?",
+    r"Nev\.",
+    r"NY3d",
+    r"Ohio\sSt\.3d",
+    r"P\.?3d",
+    r"S\.?E\.?2d",
+    r"S\.?E\.?3d",
+    r"S\.?W\.?2d",
+    r"S\.?W\.?3d",
+    r"S\.C\.",
+    r"S\.Ct\.",
+    r"So\.?3d",
+    r"U\.\s?S\.",
+    r"W\.Va\.",
     r"Wis\.\s?2d",
 ];
 

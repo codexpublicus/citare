@@ -38,7 +38,11 @@ pub struct Court {
     pub name_abbreviation: Option<String>,
     #[serde(default = "default_empty", deserialize_with = "nullable_string")]
     pub citation_string: String,
-    #[serde(rename = "type", default = "default_empty", deserialize_with = "nullable_string")]
+    #[serde(
+        rename = "type",
+        default = "default_empty",
+        deserialize_with = "nullable_string"
+    )]
     pub court_type: String,
     #[serde(default = "default_empty", deserialize_with = "nullable_string")]
     pub system: String,
@@ -69,9 +73,7 @@ mod tests {
 
     #[test]
     fn test_parse_courts() {
-        let data = include_str!(
-            "../../../data/courts-db/courts_db/data/courts.json"
-        );
+        let data = include_str!("../../../data/courts-db/courts_db/data/courts.json");
         let courts = parse_courts(data).expect("parse courts.json");
         // Accept either 2805 or 2806 depending on submodule version
         assert!(
@@ -80,20 +82,24 @@ mod tests {
             courts.len()
         );
 
-        let with_citation_string = courts.iter().filter(|c| !c.citation_string.is_empty()).count();
+        let with_citation_string = courts
+            .iter()
+            .filter(|c| !c.citation_string.is_empty())
+            .count();
         assert_eq!(with_citation_string, 1956);
     }
 
     #[test]
     fn test_parse_courts_spot_check() {
-        let raw = include_str!(
-            "../../../data/courts-db/courts_db/data/courts.json"
-        );
+        let raw = include_str!("../../../data/courts-db/courts_db/data/courts.json");
         let courts = parse_courts(raw).expect("parse courts.json");
 
         // Spot-check a known court
         let pennsylvaniad = courts.iter().find(|c| c.id == "pennsylvaniad");
-        assert!(pennsylvaniad.is_some(), "expected court with id='pennsylvaniad'");
+        assert!(
+            pennsylvaniad.is_some(),
+            "expected court with id='pennsylvaniad'"
+        );
         let court = pennsylvaniad.unwrap();
         assert_eq!(court.citation_string, "D. Pa.");
     }
