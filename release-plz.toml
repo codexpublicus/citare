@@ -1,0 +1,93 @@
+[workspace]
+# citare is private and consumed as a git dependency pinned by tag, so
+# nothing goes to crates.io. git_only makes release-plz read the last
+# release from the git tags (v0.1.0 to v0.4.0) instead of the registry.
+git_only = true
+publish = false
+changelog_update = true
+changelog_path = "CHANGELOG.md"
+# One tag and one GitHub release for the whole workspace, matching the
+# hand-cut tags. citare-core alone creates them, below.
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
+git_tag_enable = false
+git_release_enable = false
+# Off: in git_only mode cargo-semver-checks builds the baseline from a git
+# worktree of the last tag, without submodules, and citare-core's build
+# script reads data/reporters-db and data/courts-db from them. The
+# baseline build fails and takes release-pr down with it. Breaking
+# changes are flagged by hand with `!` in the PR title instead.
+semver_check = false
+allow_dirty = false
+
+# All four crates share the workspace version and release together.
+[[package]]
+name = "citare-core"
+version_group = "citare"
+git_tag_enable = true
+git_release_enable = true
+changelog_include = ["citare-data-build", "citare-wasm", "citare-cli"]
+
+[[package]]
+name = "citare-data-build"
+version_group = "citare"
+changelog_update = false
+
+[[package]]
+name = "citare-wasm"
+version_group = "citare"
+changelog_update = false
+
+[[package]]
+name = "citare-cli"
+version_group = "citare"
+changelog_update = false
+
+[changelog]
+protect_breaking_commits = true
+# The same header as the hand-written CHANGELOG.md, which stays as it is.
+# release-plz inserts each new release above the latest one and leaves
+# the rest of the file untouched.
+header = """
+# Changelog
+
+Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
+`main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
+bump may break the API, and the breaking changes are listed first.
+
+"""
+# Matches the existing entries: `## vX.Y.Z - date`, breaking changes first.
+body = """
+{% if version %}\
+## v{{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% set breaking = commits | filter(attribute="breaking", value=true) %}\
+{% if breaking | length > 0 %}
+### Breaking changes
+{% for commit in breaking %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message | upper_first }}\
+{% endfor %}
+{% endif %}\
+{% for group, commits in commits | filter(attribute="breaking", value=false) | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}
+"""
+# The HTML comments fix the section order and are stripped from the heading.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactor" },
+  { message = "^docs", group = "<!-- 4 -->Documentation" },
+  { message = "^build", group = "<!-- 5 -->Build system" },
+  { message = "^ci", group = "<!-- 6 -->CI" },
+  { message = "^revert", group = "<!-- 7 -->Reverts" },
+  { message = "^style", skip = true },
+  { message = "^test", skip = true },
+  { message = "^chore", skip = true },
+]
