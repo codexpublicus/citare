@@ -503,17 +503,31 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         ),
         ("resolved_case_name", &data.metadata.resolved_case_name),
     ];
-    let regexes: Vec<String> = name_fields
+    let usable: Vec<(&str, &str)> = name_fields
         .iter()
         .filter_map(|(key, value)| {
             value
                 .as_deref()
                 .filter(|v| crate::utils::is_valid_name(v))
-                .map(|v| format!("(?P<{}>{})", key, regex::escape(v)))
+                .map(|v| (*key, v))
         })
         .collect();
+    let regexes: Vec<String> = usable
+        .iter()
+        .map(|(key, v)| format!("(?P<{}>{})", key, regex::escape(v)))
+        .collect();
+    let names: Vec<&str> = usable.iter().map(|(_, v)| *v).collect();
 
     if regexes.is_empty() {
+        return Vec::new();
+    }
+
+    // A reference match must contain one of the names verbatim (they are
+    // escaped and matched case-sensitively). Skip compiling the
+    // per-citation regex when none appears after the citation, which is
+    // the common case.
+    let remaining_text = &plain_text[span_end..];
+    if !names.iter().any(|name| remaining_text.contains(name)) {
         return Vec::new();
     }
 
@@ -521,7 +535,6 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
     );
 
-    let remaining_text = &plain_text[span_end..];
     let re = match fancy_regex::Regex::new(&pin_cite_re) {
         Ok(re) => re,
         Err(_) => return Vec::new(),
