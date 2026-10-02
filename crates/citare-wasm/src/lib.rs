@@ -2,9 +2,28 @@
 //!
 //! Exposes `getCitations`, `resolveCitations`, and `annotateCitations` to
 //! JavaScript via wasm-bindgen.
+//!
+//! # Offsets
+//!
+//! Every citation carries its spans three ways:
+//!
+//! - `span`, `full_span`, `pin_cite_span_start`, `pin_cite_span_end`: UTF-8
+//!   byte offsets, citare's native unit. Pass these back to
+//!   `annotateCitations`. They are wrong for JavaScript string indexing
+//!   whenever the text contains non-ASCII characters.
+//! - `utf16`: the same spans in UTF-16 code units, i.e. JavaScript string
+//!   indexes. `text.slice(...c.utf16.span)` returns the citation.
+//! - `chars`: the same spans in Unicode code points, the unit eyecite,
+//!   Python and the citation-bench protocol use. Store these when offsets
+//!   must outlive the JS string, e.g. as a `charspan` in a text layer.
+//!
+//! `utf16` and `chars` are objects `{ span, full_span, pin_cite_span_start,
+//! pin_cite_span_end }` and are `undefined` only if a span does not fall on
+//! a character boundary, which would be a citare bug.
 
 use std::collections::HashMap;
 
+use citare_core::{CitationSpans, OffsetMap, OffsetUnit};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -17,7 +36,18 @@ use wasm_bindgen::prelude::*;
 pub struct JsCitation {
     pub citation_type: String,
     pub matched_text: String,
+    /// UTF-8 byte span of the citation. See the module docs on offsets.
     pub span: (usize, usize),
+    /// UTF-8 byte span including case name, pin cite and parenthetical.
+    pub full_span: (usize, usize),
+    /// UTF-8 byte offset where the pin cite starts, if citare found it.
+    pub pin_cite_span_start: Option<usize>,
+    /// UTF-8 byte offset where the pin cite ends, if citare found it.
+    pub pin_cite_span_end: Option<usize>,
+    /// All spans in UTF-16 code units (JavaScript string indexes).
+    pub utf16: Option<CitationSpans>,
+    /// All spans in Unicode code points (eyecite / Python indexes).
+    pub chars: Option<CitationSpans>,
     pub groups: HashMap<String, Option<String>>,
     pub year: Option<i32>,
     pub harvard_slug: Option<String>,
@@ -51,7 +81,8 @@ pub struct JsAnnotation {
 #[wasm_bindgen(js_name = "getCitations")]
 pub fn get_citations(text: &str, remove_ambiguous: bool) -> JsValue {
     let citations = citare_core::get_citations(text, remove_ambiguous, "", &[]);
-    let js_citations: Vec<JsCitation> = citations.iter().map(citation_to_js).collect();
+    let map = OffsetMap::new(text);
+    let js_citations: Vec<JsCitation> = citations.iter().map(|c| citation_to_js(c, &map)).collect();
     serde_wasm_bindgen::to_value(&js_citations).unwrap_or(JsValue::NULL)
 }
 
@@ -63,12 +94,13 @@ pub fn get_citations(text: &str, remove_ambiguous: bool) -> JsValue {
 pub fn resolve_citations(text: &str, remove_ambiguous: bool) -> JsValue {
     let citations = citare_core::get_citations(text, remove_ambiguous, "", &[]);
     let resolutions = citare_core::resolve_citations(&citations);
+    let map = OffsetMap::new(text);
 
     let mut js_resolutions: Vec<JsResolution> = resolutions
         .into_iter()
         .map(|(resource, cites)| JsResolution {
             resource_text: resource.citation.matched_text().to_string(),
-            citations: cites.iter().map(citation_to_js).collect(),
+            citations: cites.iter().map(|c| citation_to_js(c, &map)).collect(),
         })
         .collect();
 
@@ -79,6 +111,9 @@ pub fn resolve_citations(text: &str, remove_ambiguous: bool) -> JsValue {
 }
 
 /// Insert annotation markers around citation spans in `plain_text`.
+///
+/// Spans are UTF-8 byte offsets: pass a citation's `span` (or `full_span`)
+/// field, not its `utf16` or `chars` spans.
 ///
 /// `annotations_js` must be a JavaScript array of objects with the shape:
 /// ```json
@@ -114,8 +149,10 @@ pub fn annotate_citations(plain_text: &str, annotations_js: JsValue) -> JsValue 
 // ---------------------------------------------------------------------------
 
 /// Convert a `citare_core::Citation` into its JS-friendly representation.
-fn citation_to_js(citation: &citare_core::Citation) -> JsCitation {
-    let (start, end) = citation.span();
+fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCitation {
+    let bytes = CitationSpans::from_citation(citation);
+    let utf16 = bytes.convert(map, OffsetUnit::Utf16).ok();
+    let chars = bytes.convert(map, OffsetUnit::Chars).ok();
 
     let year = citation.resource_common().and_then(|r| r.year);
 
@@ -135,7 +172,12 @@ fn citation_to_js(citation: &citare_core::Citation) -> JsCitation {
     JsCitation {
         citation_type: citation.type_name().to_string(),
         matched_text: citation.matched_text().to_string(),
-        span: (start, end),
+        span: bytes.span,
+        full_span: bytes.full_span,
+        pin_cite_span_start: bytes.pin_cite_span_start,
+        pin_cite_span_end: bytes.pin_cite_span_end,
+        utf16,
+        chars,
         groups: citation.common().groups.clone(),
         year,
         harvard_slug,
@@ -233,4 +275,37 @@ fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<
 #[inline]
 fn insert_opt(map: &mut HashMap<String, Option<String>>, key: &str, value: &Option<String>) {
     map.insert(key.to_string(), value.clone());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn js_citation_offsets_index_non_ascii_text() {
+        let text = "“Quoted” 🎉 Café v. Bär, 410 U.S. 113, 115 (1973). Id. at 116.";
+        let citations = citare_core::get_citations(text, false, "", &[]);
+        let map = OffsetMap::new(text);
+        let units: Vec<u16> = text.encode_utf16().collect();
+        let chars: Vec<char> = text.chars().collect();
+        assert!(!citations.is_empty());
+        for c in &citations {
+            let js = citation_to_js(c, &map);
+            // `span` can extend past `matched_text` (e.g. "Id. at 116"),
+            // so compare against the byte slice, not the token text.
+            let expected = &text[js.span.0..js.span.1];
+            assert!(expected.starts_with(&js.matched_text));
+
+            let (s, e) = js.utf16.expect("utf16 spans").span;
+            assert_eq!(String::from_utf16(&units[s..e]).unwrap(), expected);
+
+            let (s, e) = js.chars.expect("char spans").span;
+            assert_eq!(chars[s..e].iter().collect::<String>(), expected);
+
+            assert_eq!(js.full_span, c.full_span());
+            // Non-ASCII before every citation, so the units must differ.
+            assert!(js.utf16.unwrap().span.0 < js.span.0);
+            assert!(js.chars.unwrap().span.0 < js.utf16.unwrap().span.0);
+        }
+    }
 }
