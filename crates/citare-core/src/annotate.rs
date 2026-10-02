@@ -46,6 +46,15 @@ impl SpanUpdater {
         Self::from_diffs(&diffs, |s| s.chars().count())
     }
 
+    /// [`SpanUpdater::new`] (with its cleanup pass) counting UTF-8 bytes,
+    /// for [`annotate_citations`], whose spans and output are byte offsets.
+    fn new_semantic_bytes(text_before: &str, text_after: &str) -> Self {
+        let dmp = dmp::new();
+        let mut diffs = dmp.diff_main(text_before, text_after, false);
+        dmp.diff_cleanup_semantic_lossless(&mut diffs);
+        Self::from_diffs(&diffs, str::len)
+    }
+
     /// Build a `SpanUpdater` whose offsets are UTF-8 byte offsets, matching
     /// the spans that citations carry.
     ///
@@ -183,7 +192,12 @@ pub fn annotate_citations(
     } else if !source_text.is_empty() && source_text != plain_text {
         // Build an updater from placeholder-collapsed source HTML.
         let placeholder_text = crate::utils::placeholder_markup(source_text);
-        owned_updater = Some(SpanUpdater::new(plain_text, &placeholder_text));
+        // Spans are byte offsets and index `source_text` as bytes, so the
+        // map must count bytes, not characters.
+        owned_updater = Some(SpanUpdater::new_semantic_bytes(
+            plain_text,
+            &placeholder_text,
+        ));
         working_text = source_text;
         effective_updater = owned_updater.as_ref();
     } else {
@@ -217,6 +231,16 @@ pub fn annotate_citations(
             }
         }
 
+        // Spans from get_citations always fit, but callers (the WASM
+        // binding, for one) can pass any offsets. Skip one that would
+        // panic: out of range, reversed, or inside a character.
+        if start > end
+            || !working_text.is_char_boundary(end)
+            || !working_text.is_char_boundary(start)
+        {
+            continue;
+        }
+
         let mut span_text = working_text[start..end].to_string();
 
         // Optionally validate / repair unbalanced HTML.
@@ -243,7 +267,12 @@ pub fn annotate_citations(
             None => format!("{}{}{}", before, span_text, after),
         };
 
-        out.push_str(&working_text[last_end..start]);
+        // Balancing style tags can move `start` back before the end of the
+        // previous annotation; eyecite's `plain_text[last_end:start]` is
+        // then empty.
+        if last_end < start {
+            out.push_str(&working_text[last_end..start]);
+        }
         out.push_str(&annotated);
         last_end = end;
     }
