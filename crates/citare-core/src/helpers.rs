@@ -10,9 +10,10 @@ use fancy_regex::Regex as FancyRegex;
 use log::warn;
 
 use crate::models::citation::{
-    Citation, FullCaseCitationData, FullJournalCitationData, FullLawCitationData,
+    Citation, CitationCommon, FullCaseCitationData, FullJournalCitationData, FullLawCitationData,
     ShortCaseCitationData,
 };
+use crate::models::document::Document;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{
     POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX, POST_JOURNAL_CITATION_REGEX,
@@ -1157,6 +1158,250 @@ fn strip_stop_words(text: &str) -> String {
     let text = text.trim_matches(&[',', ' '][..]).to_string();
     let cleaned = stop_re.replace_all(&text, "").to_string();
     cleaned.trim_matches(&[',', ' '][..]).trim().to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Markup-aware case names (eyecite `find_case_name_in_html` and friends)
+// ---------------------------------------------------------------------------
+
+fn re_versus_split() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"(?i)\s+vs?\.?\s+").unwrap())
+}
+
+/// `str(word).strip(", ") == ""`
+fn is_whitespace_word(word: &TokenOrStr) -> bool {
+    token_to_str(word)
+        .trim_matches(|c| c == ',' || c == ' ')
+        .is_empty()
+}
+
+/// Truncate `text` like Python's `text[: -drop]`, staying on a char
+/// boundary.
+fn drop_last_bytes(text: &str, drop: usize) -> String {
+    let mut keep = text.len().saturating_sub(drop);
+    while !text.is_char_boundary(keep) {
+        keep -= 1;
+    }
+    text[..keep].to_string()
+}
+
+/// The single emphasis tag containing plain-text `position`, if exactly one
+/// does (eyecite `find_html_tags_at_position`).
+fn find_html_tag_at_position(document: &Document, position: usize) -> Option<(usize, usize)> {
+    let to_markup = document.plain_to_markup.as_ref()?;
+    let markup_loc = to_markup.update(position, true);
+    let mut tags = document
+        .emphasis_tags
+        .iter()
+        .filter(|(_, start, end)| *start <= markup_loc && markup_loc < *end);
+    let (_, start, end) = tags.next()?;
+    if tags.next().is_some() {
+        return None;
+    }
+    Some((*start, *end))
+}
+
+/// Map an emphasis tag's markup span to plain text, returning the plain
+/// text it covers and its plain span (eyecite
+/// `convert_html_to_plain_text_and_loc`).
+fn convert_html_to_plain_text_and_loc(
+    document: &Document,
+    tag: (usize, usize),
+) -> (String, usize, usize) {
+    let Some(to_plain) = document.markup_to_plain.as_ref() else {
+        return (String::new(), 0, 0);
+    };
+    let start = to_plain.update(tag.0, true);
+    let end = to_plain.update(tag.1, true);
+    let text = document
+        .plain_text
+        .get(start..end)
+        .unwrap_or("")
+        .to_string();
+    (text, start, end)
+}
+
+fn common_span(common: &CitationCommon) -> (usize, usize) {
+    (
+        common.span_start.unwrap_or_else(|| common.token.start()),
+        common.span_end.unwrap_or_else(|| common.token.end()),
+    )
+}
+
+/// Python's `text.strip().strip(",")` plus an optional `.strip("(")`.
+fn clean_party(text: &str, strip_paren: bool) -> String {
+    let text = text.trim().trim_matches(',');
+    if strip_paren {
+        text.trim_matches('(').to_string()
+    } else {
+        text.to_string()
+    }
+}
+
+/// Set plaintiff and defendant from one or two emphasis tags.
+fn set_parties_from_html(
+    citation: &mut FullCaseCitationData,
+    document: &Document,
+    plaintiff_tag: (usize, usize),
+    defendant_tag: (usize, usize),
+) {
+    let (plaintiff, defendant, mut start) = if plaintiff_tag == defendant_tag {
+        // Both parties in one element: split on "v." / "vs."
+        let (case_name, start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+        let mut parts = re_versus_split().splitn(&case_name, 2);
+        let first = parts.next().unwrap_or("").to_string();
+        match parts.next() {
+            Some(second) => (first, second.to_string(), start),
+            None => (String::new(), case_name.clone(), start),
+        }
+    } else {
+        let (plaintiff, start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+        let (defendant, _, _) = convert_html_to_plain_text_and_loc(document, defendant_tag);
+        (plaintiff, defendant, start)
+    };
+
+    let clean_plaintiff = strip_stop_words(&plaintiff);
+    citation.metadata.plaintiff = Some(clean_party(&clean_plaintiff, true));
+    citation.metadata.defendant = Some(clean_party(&strip_stop_words(&defendant), false));
+
+    if clean_plaintiff.len() != plaintiff.len() {
+        start += plaintiff.len().saturating_sub(clean_plaintiff.len());
+    }
+    citation.resource.common.full_span_start = Some(start);
+}
+
+/// Extract plaintiff and defendant around the "v." token at `index`.
+fn extract_parties_from_versus(
+    citation: &mut FullCaseCitationData,
+    document: &Document,
+    index: usize,
+) {
+    let words = &document.words;
+    let versus_start = match &words[index] {
+        TokenOrStr::Token(t) => t.start(),
+        TokenOrStr::Str(_) => return,
+    };
+    // Python's words[index - 2:index] is empty when index < 2.
+    let left_shift = if index >= 2 {
+        text_len_between(words, index - 2, index)
+    } else {
+        0
+    };
+    let right_shift = text_len_between(words, index, index + 2);
+    let Some(plaintiff_pos) = versus_start.checked_sub(left_shift) else {
+        return;
+    };
+    let defendant_pos = versus_start + right_shift;
+
+    let (Some(plaintiff_tag), Some(defendant_tag)) = (
+        find_html_tag_at_position(document, plaintiff_pos),
+        find_html_tag_at_position(document, defendant_pos),
+    ) else {
+        return;
+    };
+    set_parties_from_html(citation, document, plaintiff_tag, defendant_tag);
+}
+
+/// Extract the defendant after a non-"v." stop word at `index` (e.g.
+/// "In re <i>Foo</i>").
+fn extract_defendant_after_stopword(
+    citation: &mut FullCaseCitationData,
+    document: &Document,
+    index: usize,
+) {
+    let words = &document.words;
+    let word_start = match &words[index] {
+        TokenOrStr::Token(t) => t.start(),
+        TokenOrStr::Str(_) => return,
+    };
+    let mut shift = 3;
+    while index + shift < words.len()
+        && matches!(&words[index + shift], TokenOrStr::Str(s) if s == " ")
+    {
+        shift += 1;
+    }
+    let right_offset = text_len_between(words, index, index + shift);
+    let Some(loc) = (word_start + right_offset).checked_sub(1) else {
+        return;
+    };
+
+    let Some(tag) = find_html_tag_at_position(document, loc) else {
+        return;
+    };
+    let (mut defendant, start, end) = convert_html_to_plain_text_and_loc(document, tag);
+    let (cite_start, _) = common_span(&citation.resource.common);
+    if end > cite_start {
+        defendant = drop_last_bytes(&defendant, end - cite_start);
+    }
+    citation.metadata.defendant = Some(
+        strip_stop_words(&defendant)
+            .trim_matches(|c| c == ',' || c == ' ')
+            .to_string(),
+    );
+    citation.resource.common.full_span_start = Some(start);
+}
+
+/// Find plaintiff/defendant of a full case citation from emphasis tags in
+/// the document's markup (eyecite `find_case_name_in_html`).
+///
+/// Does nothing unless the document was built from markup.
+pub fn find_case_name_in_html(citation: &mut FullCaseCitationData, document: &Document) {
+    if document.plain_to_markup.is_none() {
+        return;
+    }
+    let words = &document.words;
+    let index = citation.resource.common.index;
+    let back_seek = index.saturating_sub(BACKWARD_SEEK);
+    for i in (back_seek..index).rev() {
+        let word = &words[i];
+        if is_whitespace_word(word) {
+            continue;
+        }
+        if is_v_token(word) {
+            extract_parties_from_versus(citation, document, i);
+            return;
+        }
+        if let TokenOrStr::Token(Token::StopWord(_)) = word {
+            extract_defendant_after_stopword(citation, document, i);
+            return;
+        }
+    }
+}
+
+/// Find the antecedent of a short case citation from emphasis tags in the
+/// document's markup (eyecite `find_case_name_in_html(short=True)`).
+///
+/// Does nothing unless the document was built from markup.
+pub fn find_case_name_in_html_short(citation: &mut ShortCaseCitationData, document: &Document) {
+    if document.plain_to_markup.is_none() {
+        return;
+    }
+    let words = &document.words;
+    let index = citation.resource.common.index;
+    let back_seek = index.saturating_sub(BACKWARD_SEEK);
+    // The first non-blank word before the citation decides.
+    let Some(i) = (back_seek..index)
+        .rev()
+        .find(|&i| !is_whitespace_word(&words[i]))
+    else {
+        return;
+    };
+
+    let offset = text_len_between(words, i, index);
+    let Some(loc) = citation.resource.common.token.start().checked_sub(offset) else {
+        return;
+    };
+    let Some(tag) = find_html_tag_at_position(document, loc) else {
+        return;
+    };
+    let (mut antecedent, start, end) = convert_html_to_plain_text_and_loc(document, tag);
+    let (cite_start, _) = common_span(&citation.resource.common);
+    if end > cite_start {
+        antecedent = drop_last_bytes(&antecedent, end - cite_start);
+    }
+    citation.metadata.antecedent_guess = Some(strip_stop_words(&antecedent));
+    citation.resource.common.full_span_start = Some(start);
 }
 
 // ---------------------------------------------------------------------------

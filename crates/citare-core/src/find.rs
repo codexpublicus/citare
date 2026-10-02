@@ -9,7 +9,8 @@ use crate::clean::CleanStep;
 use crate::helpers::{
     add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation,
     disambiguate_reporters, extract_pin_cite, filter_citations, find_case_name,
-    find_case_name_short, guess_court, guess_edition,
+    find_case_name_in_html, find_case_name_in_html_short, find_case_name_short, guess_court,
+    guess_edition,
 };
 use crate::models::citation::{
     normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
@@ -84,10 +85,9 @@ pub fn get_citations(
                         }
                     }
 
-                    // TODO: Phase 8 - extract reference citations from markup
-                    // For now, just extract pincited references
-                    let references =
-                        extract_pincited_reference_citations(&citation, &document.plain_text);
+                    // Check for reference citations that follow a full
+                    // citation, using the plaintiff or defendant
+                    let references = extract_reference_citations(&citation, &document);
                     citations.extend(references);
 
                     citations.push(citation);
@@ -257,9 +257,12 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
         // Add post-citation metadata (court, year, pin_cite, etc.)
         add_post_citation(&mut data, &document.words);
 
-        // Find case name (plaintiff/defendant)
-        // For now, use plain text only (markup-aware is Phase 8)
-        find_case_name(&mut data, &document.words, false);
+        // Find case name (plaintiff/defendant), from emphasis tags first
+        // when the document came from markup
+        find_case_name_in_html(&mut data, document);
+        if data.metadata.defendant.is_none() {
+            find_case_name(&mut data, &document.words, false);
+        }
 
         // Add pre-citation metadata (antecedent before repeated full cite)
         add_pre_citation(&mut data, &document.words);
@@ -345,8 +348,12 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
         },
     };
 
-    // Find case name (antecedent)
-    find_case_name_short(&mut data, &document.words);
+    // Find case name (antecedent), from emphasis tags first when the
+    // document came from markup
+    find_case_name_in_html_short(&mut data, document);
+    if data.metadata.antecedent_guess.is_none() {
+        find_case_name_short(&mut data, &document.words);
+    }
 
     // Guess edition
     data.resource.edition_guess = guess_edition(
@@ -479,14 +486,90 @@ fn handle_parallel_citation(current: &mut Citation, preceding: &Citation) {
 }
 
 // ---------------------------------------------------------------------------
-// Extract pincited reference citations
+// Reference citations
 // ---------------------------------------------------------------------------
 
+/// Party names of a full case citation usable to find references, keyed by
+/// `ReferenceCitation.name_fields` in eyecite order.
+fn reference_names(data: &FullCaseCitationData) -> Vec<(&'static str, &str)> {
+    let m = &data.metadata;
+    [
+        ("plaintiff", &m.plaintiff),
+        ("defendant", &m.defendant),
+        ("resolved_case_name_short", &m.resolved_case_name_short),
+        ("resolved_case_name", &m.resolved_case_name),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| {
+        value
+            .as_deref()
+            .filter(|v| crate::utils::is_valid_name(v))
+            .map(|v| (key, v))
+    })
+    .collect()
+}
+
+/// Build a `ReferenceCitation` over `plain_start..plain_end`, taking its
+/// metadata from the named groups that matched (eyecite's
+/// `match.groupdict()`).
+fn make_reference(
+    data: String,
+    span: (usize, usize),
+    full_span: (usize, usize),
+    group: impl Fn(&str) -> Option<String>,
+) -> Citation {
+    let common = CitationCommon {
+        token: Token::CaseReference(crate::models::token::TokenData {
+            data,
+            start: span.0,
+            end: span.1,
+            groups: HashMap::new(),
+        }),
+        index: 0,
+        span_start: Some(span.0),
+        span_end: Some(span.1),
+        full_span_start: Some(full_span.0),
+        full_span_end: Some(full_span.1),
+        groups: HashMap::new(),
+    };
+    Citation::Reference(crate::models::citation::ReferenceCitationData {
+        common,
+        metadata: crate::models::citation::ReferenceMetadata {
+            parenthetical: None,
+            pin_cite: group("pin_cite"),
+            pin_cite_span_start: None,
+            pin_cite_span_end: None,
+            plaintiff: group("plaintiff"),
+            defendant: group("defendant"),
+            resolved_case_name_short: group("resolved_case_name_short"),
+            resolved_case_name: group("resolved_case_name"),
+        },
+    })
+}
+
+/// Extract reference citations that follow a full case citation, from the
+/// plain text and, when the document came from markup, from emphasis tags.
+fn extract_reference_citations(citation: &Citation, document: &Document) -> Vec<Citation> {
+    let Citation::FullCase(data) = citation else {
+        return Vec::new();
+    };
+    if document.plain_text.len() <= citation.span().1 {
+        return Vec::new();
+    }
+    let mut references = extract_pincited_reference_citations(citation, &document.plain_text);
+    if document.markup_text.is_some() {
+        references.extend(find_reference_citations_from_markup(
+            document, citation, data,
+        ));
+    }
+    references
+}
+
+/// Extract reference citations with the name-pincite pattern
+/// ("Foo at 123").
 fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -> Vec<Citation> {
-    // Only applies to full case citations
-    let data = match citation {
-        Citation::FullCase(d) => d,
-        _ => return Vec::new(),
+    let Citation::FullCase(data) = citation else {
+        return Vec::new();
     };
 
     let (_, span_end) = citation.span();
@@ -494,33 +577,8 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
         return Vec::new();
     }
 
-    // Build one named alternative per usable name, in eyecite's
-    // `ReferenceCitation.name_fields` order.
-    let name_fields: [(&str, &Option<String>); 4] = [
-        ("plaintiff", &data.metadata.plaintiff),
-        ("defendant", &data.metadata.defendant),
-        (
-            "resolved_case_name_short",
-            &data.metadata.resolved_case_name_short,
-        ),
-        ("resolved_case_name", &data.metadata.resolved_case_name),
-    ];
-    let usable: Vec<(&str, &str)> = name_fields
-        .iter()
-        .filter_map(|(key, value)| {
-            value
-                .as_deref()
-                .filter(|v| crate::utils::is_valid_name(v))
-                .map(|v| (*key, v))
-        })
-        .collect();
-    let regexes: Vec<String> = usable
-        .iter()
-        .map(|(key, v)| format!("(?P<{}>{})", key, regex::escape(v)))
-        .collect();
-    let names: Vec<&str> = usable.iter().map(|(_, v)| *v).collect();
-
-    if regexes.is_empty() {
+    let names = reference_names(data);
+    if names.is_empty() {
         return Vec::new();
     }
 
@@ -529,23 +587,24 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
     // per-citation regex when none appears after the citation, which is
     // the common case.
     let remaining_text = &plain_text[span_end..];
-    if !names.iter().any(|name| remaining_text.contains(name)) {
+    if !names.iter().any(|(_, name)| remaining_text.contains(name)) {
         return Vec::new();
     }
 
+    let regexes: Vec<String> = names
+        .iter()
+        .map(|(key, value)| format!("(?P<{key}>{})", regex::escape(value)))
+        .collect();
     let pin_cite_re = crate::regexes::reference_pin_cite_re(
         &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
     );
-
-    let re = match fancy_regex::Regex::new(&pin_cite_re) {
-        Ok(re) => re,
-        Err(_) => return Vec::new(),
+    let Ok(re) = fancy_regex::Regex::new(&pin_cite_re) else {
+        return Vec::new();
     };
-
-    let mut references = Vec::new();
 
     // Like eyecite's `match.groupdict()`, the metadata holds only the groups
     // that took part in the match: the matched name and the pin cite.
+    let mut references = Vec::new();
     let mut pos = 0;
     while pos <= remaining_text.len() {
         let caps = match re.captures_from_pos(remaining_text, pos) {
@@ -553,43 +612,10 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
             _ => break,
         };
         let m = caps.get(0).expect("group 0 is always present");
-        let group = |name: &str| caps.name(name).map(|g| g.as_str().to_string());
-
-        let abs_start = span_end + m.start();
-        let abs_end = span_end + m.end();
-
-        let token = Token::CaseReference(crate::models::token::TokenData {
-            data: m.as_str().to_string(),
-            start: abs_start,
-            end: abs_end,
-            groups: HashMap::new(),
-        });
-
-        let common = CitationCommon {
-            token,
-            index: 0,
-            span_start: Some(abs_start),
-            span_end: Some(abs_end),
-            full_span_start: Some(abs_start),
-            full_span_end: Some(abs_end),
-            groups: HashMap::new(),
-        };
-
-        references.push(Citation::Reference(
-            crate::models::citation::ReferenceCitationData {
-                common,
-                metadata: crate::models::citation::ReferenceMetadata {
-                    parenthetical: None,
-                    pin_cite: group("pin_cite"),
-                    pin_cite_span_start: None,
-                    pin_cite_span_end: None,
-                    plaintiff: group("plaintiff"),
-                    defendant: group("defendant"),
-                    resolved_case_name_short: group("resolved_case_name_short"),
-                    resolved_case_name: group("resolved_case_name"),
-                },
-            },
-        ));
+        let span = (span_end + m.start(), span_end + m.end());
+        references.push(make_reference(m.as_str().to_string(), span, span, |name| {
+            caps.name(name).map(|g| g.as_str().to_string())
+        }));
 
         pos = if m.end() > m.start() {
             m.end()
@@ -601,7 +627,85 @@ fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -
             }
         };
     }
+    references
+}
 
+fn re_after_markup_reference() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^\s*(v[.s]|supra)\s").unwrap())
+}
+
+/// Use `<em>`/`<i>` style tags and the citation's party names to find
+/// reference citations in the markup (eyecite
+/// `find_reference_citations_from_markup`). Spans are mapped back to the
+/// plain text, like every other citation's.
+fn find_reference_citations_from_markup(
+    document: &Document,
+    citation: &Citation,
+    data: &FullCaseCitationData,
+) -> Vec<Citation> {
+    let (Some(to_markup), Some(to_plain), Some(markup)) = (
+        document.plain_to_markup.as_ref(),
+        document.markup_to_plain.as_ref(),
+        document.markup_text.as_deref(),
+    ) else {
+        return Vec::new();
+    };
+
+    let regexes: Vec<String> = reference_names(data)
+        .into_iter()
+        .map(|(key, value)| {
+            let value = value
+                .split_whitespace()
+                .map(regex::escape)
+                .collect::<Vec<_>>()
+                .join(r"\s+");
+            format!("(?P<{key}>{value})")
+        })
+        .collect();
+    if regexes.is_empty() {
+        return Vec::new();
+    }
+
+    // Include punctuation and spaces around the party name so the match is
+    // contiguous with the style tags.
+    let pattern = format!(r"<(?:em|i)>\s*({})[:;.,\s]*</(?:em|i)>", regexes.join("|"));
+    let Ok(re) = regex::Regex::new(&pattern) else {
+        return Vec::new();
+    };
+
+    let start_in_markup = to_markup.update(citation.span().0, true);
+    let Some(haystack) = markup.get(start_in_markup..) else {
+        return Vec::new();
+    };
+
+    let mut references = Vec::new();
+    for caps in re.captures_iter(haystack) {
+        let whole = caps.get(0).unwrap();
+        let name = caps.get(1).unwrap();
+        let full_start = to_plain.update(start_in_markup + whole.start(), false);
+        let full_end = to_plain.update(start_in_markup + whole.end(), true);
+        let start = to_plain.update(start_in_markup + name.start(), false);
+        let end = to_plain.update(start_in_markup + name.end(), true);
+
+        // `<i>Foo</i> v. <i>Bar, supra</i>`: <i>Foo</i> is not a reference.
+        let after = document.plain_text.get(full_end..).unwrap_or("");
+        if re_after_markup_reference().is_match(after) {
+            continue;
+        }
+
+        let text = document
+            .plain_text
+            .get(start..end)
+            .unwrap_or("")
+            .to_string();
+        references.push(make_reference(
+            text,
+            (start, end),
+            (full_start, full_end),
+            |group| caps.name(group).map(|g| g.as_str().to_string()),
+        ));
+    }
     references
 }
 
