@@ -52,8 +52,28 @@ impl SpanUpdater {
     /// Unlike [`SpanUpdater::new`], no cleanup pass is applied to the diff,
     /// mirroring eyecite's `SpanUpdater` (`cleanup="No"`). This is what the
     /// markup <-> plain text maps on [`crate::Document`] use.
+    ///
+    /// The diff is Myers' algorithm, whose running time is the text length
+    /// times the number of edits. Between an opinion's markup and its plain
+    /// text both grow with the input, so one diff over a long opinion is
+    /// quadratic: 400 KB of markup took minutes (#28). Above
+    /// `WHOLE_DIFF_MAX` bytes the texts are cut at anchors (see
+    /// [`diff_anchors`]) and each piece is diffed on its own; below it, the
+    /// whole diff is cheap and runs as before.
     pub fn new_bytes(text_before: &str, text_after: &str) -> Self {
-        let diffs = dmp::new().diff_main(text_before, text_after, false);
+        let dmp = dmp::new();
+        let anchors = if text_before.len() + text_after.len() <= WHOLE_DIFF_MAX {
+            Vec::new()
+        } else {
+            diff_anchors(text_before, text_after)
+        };
+        let mut diffs = Vec::new();
+        let (mut a, mut b) = (0, 0);
+        for (anchor_a, anchor_b) in anchors {
+            diffs.extend(dmp.diff_main(&text_before[a..anchor_a], &text_after[b..anchor_b], false));
+            (a, b) = (anchor_a, anchor_b);
+        }
+        diffs.extend(dmp.diff_main(&text_before[a..], &text_after[b..], false));
         Self::from_diffs(&diffs, str::len)
     }
 
@@ -121,6 +141,120 @@ impl SpanUpdater {
     fn bisect_right(&self, target: usize) -> usize {
         self.offsets.partition_point(|&x| x <= target)
     }
+}
+
+/// Combined length (bytes) up to which [`SpanUpdater::new_bytes`] diffs
+/// the two texts whole.
+const WHOLE_DIFF_MAX: usize = 16 * 1024;
+/// Words shorter than this (in bytes) are not used as anchors.
+const ANCHOR_MIN_WORD: usize = 2;
+/// Minimum length (bytes of the first text) of a piece between anchors.
+const ANCHOR_MIN_GAP: usize = 256;
+
+/// Points `(a, b)` where `text_a[a..]` and `text_b[b..]` can be diffed
+/// apart from what precedes them, in increasing order in both texts.
+///
+/// An anchor is the start of a word (a maximal run of alphanumeric
+/// characters) that occurs exactly once in each text. Every word of the
+/// plain text comes from the markup's visible text, so a word unique in
+/// both is the same passage in both. Of those pairs, the longest chain that
+/// is in order in both texts is kept, and each gap between two anchors is
+/// searched again for words unique within that gap: the rules of patience
+/// diff. The chain is then thinned to one anchor per `ANCHOR_MIN_GAP`
+/// bytes. Anchoring takes time linear in the input (times the nesting
+/// depth, which stays small), and leaves Myers with pieces a few hundred
+/// bytes long.
+fn diff_anchors(text_a: &str, text_b: &str) -> Vec<(usize, usize)> {
+    // A stack of byte ranges (start_a, end_a, start_b, end_b) still to
+    // search, rather than recursion: a long run of short gaps nests deeply.
+    let mut pending = vec![(0, text_a.len(), 0, text_b.len())];
+    let mut chain = Vec::new();
+    while let Some((start_a, end_a, start_b, end_b)) = pending.pop() {
+        let found = unique_word_chain(&text_a[start_a..end_a], &text_b[start_b..end_b]);
+        let (mut a, mut b) = (start_a, start_b);
+        for (next_a, next_b) in found {
+            let (next_a, next_b) = (start_a + next_a, start_b + next_b);
+            pending.push((a, next_a, b, next_b));
+            chain.push((next_a, next_b));
+            (a, b) = (next_a, next_b);
+        }
+        if (a, b) != (start_a, start_b) {
+            pending.push((a, end_a, b, end_b));
+        }
+    }
+    // Anchors from disjoint gaps are in order in both texts, so sorting by
+    // the first text's offset restores the chain.
+    chain.sort_unstable();
+
+    let mut anchors: Vec<(usize, usize)> = Vec::new();
+    let mut last_a = 0;
+    for (a, b) in chain {
+        if a >= last_a + ANCHOR_MIN_GAP {
+            anchors.push((a, b));
+            last_a = a;
+        }
+    }
+    anchors
+}
+
+/// The longest in-order chain of `(a, b)` starts of words that occur once
+/// in `text_a` and once in `text_b`. A word at the very start of either
+/// text is left out, so every anchor splits the range it was found in.
+fn unique_word_chain(text_a: &str, text_b: &str) -> Vec<(usize, usize)> {
+    use std::collections::HashMap;
+
+    if text_a.len() < ANCHOR_MIN_GAP || text_b.len() < ANCHOR_MIN_WORD {
+        return Vec::new();
+    }
+
+    // word -> (count in a, start in a, count in b, start in b)
+    let mut words: HashMap<&str, (u32, usize, u32, usize)> = HashMap::new();
+    for (start, word) in alphanumeric_words(text_a) {
+        let entry = words.entry(word).or_insert((0, start, 0, 0));
+        entry.0 += 1;
+    }
+    for (start, word) in alphanumeric_words(text_b) {
+        if let Some(entry) = words.get_mut(word) {
+            entry.2 += 1;
+            entry.3 = start;
+        }
+    }
+
+    let mut pairs: Vec<(usize, usize)> = words
+        .into_values()
+        .filter(|&(count_a, a, count_b, b)| count_a == 1 && count_b == 1 && a > 0 && b > 0)
+        .map(|(_, a, _, b)| (a, b))
+        .collect();
+    pairs.sort_unstable();
+
+    // Longest chain increasing in b (patience sorting, O(n log n)).
+    let mut tails: Vec<usize> = Vec::new(); // index into pairs
+    let mut prev: Vec<Option<usize>> = vec![None; pairs.len()];
+    for (i, &(_, b)) in pairs.iter().enumerate() {
+        let pos = tails.partition_point(|&t| pairs[t].1 < b);
+        prev[i] = pos.checked_sub(1).map(|p| tails[p]);
+        if pos == tails.len() {
+            tails.push(i);
+        } else {
+            tails[pos] = i;
+        }
+    }
+    let mut chain = Vec::with_capacity(tails.len());
+    let mut cursor = tails.last().copied();
+    while let Some(i) = cursor {
+        chain.push(pairs[i]);
+        cursor = prev[i];
+    }
+    chain.reverse();
+    chain
+}
+
+/// Runs of alphanumeric characters at least `ANCHOR_MIN_WORD` bytes long,
+/// with their byte offsets.
+fn alphanumeric_words(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.len() >= ANCHOR_MIN_WORD)
+        .map(move |word| (word.as_ptr() as usize - text.as_ptr() as usize, word))
 }
 
 // ── annotate_citations ────────────────────────────────────────────────────────
@@ -340,6 +474,47 @@ mod tests {
             to_markup.update(plain.find("Bar").unwrap(), true),
             markup.find("Bar").unwrap()
         );
+    }
+
+    #[test]
+    fn test_span_updater_bytes_long_markup_is_anchored() {
+        // Past WHOLE_DIFF_MAX the diff runs piecewise between anchors; every
+        // word must still map to itself in both directions.
+        let mut markup = String::new();
+        let mut plain = String::new();
+        for i in 0..2000 {
+            markup.push_str(&format!(
+                r#"<p class="x{i}">Para{i} <i>see</i> {i} U.S. {i}</p>"#
+            ));
+            plain.push_str(&format!("Para{i} see {i} U.S. {i} "));
+        }
+        assert!(markup.len() + plain.len() > WHOLE_DIFF_MAX);
+        assert!(!diff_anchors(&plain, &markup).is_empty());
+        let to_markup = SpanUpdater::new_bytes(&plain, &markup);
+        let to_plain = SpanUpdater::new_bytes(&markup, &plain);
+        for i in (0..2000).step_by(97) {
+            let word = format!("Para{i} ");
+            let p = plain.find(&word).unwrap();
+            let m = markup.find(&word).unwrap();
+            assert_eq!(to_markup.update(p, true), m, "plain -> markup for {word}");
+            assert_eq!(to_plain.update(m, true), p, "markup -> plain for {word}");
+        }
+    }
+
+    #[test]
+    fn test_diff_anchors_are_unique_words_in_order() {
+        let a = format!(
+            "{} alpha {} beta {}",
+            "x ".repeat(200),
+            "y ".repeat(200),
+            "z "
+        );
+        let b = format!("<{}> alpha <{}> beta <z>", "q".repeat(300), "q".repeat(300));
+        let anchors = diff_anchors(&a, &b);
+        assert_eq!(anchors.len(), 2);
+        for (pa, pb) in anchors {
+            assert_eq!(a[pa..].split(' ').next(), b[pb..].split(' ').next());
+        }
     }
 
     // ── annotate_citations tests ───────────────────────────────────────────────
