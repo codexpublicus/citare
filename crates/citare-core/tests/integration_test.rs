@@ -182,3 +182,30 @@ fn test_harvard_slug_a2d_via_pipeline() {
         "A.2d citation should have harvard_slug = Some(\"a2d\")"
     );
 }
+
+// Ported from eyecite tests/test_AnnotateTest.py: the annotator still
+// renders the original underscores even though `page` is None.
+#[test]
+fn test_annotate_blank_page() {
+    let text = "foo 1 U.S. ____ bar";
+    let citations = get_citations(text, false, "", &[]);
+    assert_eq!(citations.len(), 1);
+    assert_eq!(
+        citations[0].common().groups.get("page").cloned().flatten(),
+        None
+    );
+    let mut annotations: Vec<((usize, usize), String, String)> = citations
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.span(), format!("<{}>", i), format!("</{}>", i)))
+        .collect();
+    let annotated = annotate_citations(
+        text,
+        &mut annotations,
+        "",
+        UnbalancedTags::Unchecked,
+        None,
+        None,
+    );
+    assert_eq!(annotated, "foo <0>1 U.S. ____</0> bar");
+}

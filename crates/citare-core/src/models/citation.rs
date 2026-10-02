@@ -367,6 +367,20 @@ impl Citation {
     }
 }
 
+/// Set a known-missing page (a run of underscores, e.g. `1 U.S. ___`) to
+/// `None`, mirroring eyecite's `CitationBase.__post_init__`. The matched text
+/// and spans keep the original underscores.
+pub(crate) fn normalize_blank_page(groups: &mut HashMap<String, Option<String>>) {
+    if let Some(page) = groups.get_mut("page") {
+        if page
+            .as_deref()
+            .is_some_and(|p| !p.is_empty() && p.bytes().all(|b| b == b'_'))
+        {
+            *page = None;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Hash / Eq – mirrors eyecite's __hash__ semantics
 // ---------------------------------------------------------------------------
@@ -410,8 +424,8 @@ impl std::hash::Hash for Citation {
                     hasher.update(format!("class:{}", self.type_name()));
                     hasher.finalize().as_slice().hash(state);
                 } else {
-                    // Unique — use object address as discriminant.
-                    (self as *const Self).hash(state);
+                    // Unique — no other citation shares this identity.
+                    self.hash_identity(state);
                 }
             }
 
@@ -447,6 +461,23 @@ impl std::hash::Hash for Citation {
                 hasher.finalize().as_slice().hash(state);
             }
         }
+    }
+}
+
+impl Citation {
+    /// Hash this citation's position in its document, standing in for
+    /// eyecite's `id(self)` on case citations without a page. Unlike an
+    /// address, this survives cloning, so the citation stays equal to its
+    /// copies (and usable as a resource key) while distinct citations in a
+    /// document never collide.
+    fn hash_identity<H: std::hash::Hasher>(&self, state: &mut H) {
+        use std::hash::Hash;
+        let c = self.common();
+        "identity".hash(state);
+        self.type_name().hash(state);
+        c.index.hash(state);
+        c.token.start().hash(state);
+        c.token.end().hash(state);
     }
 }
 
