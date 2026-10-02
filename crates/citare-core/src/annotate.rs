@@ -14,6 +14,7 @@
 /// // 'b' in "bar" has moved from offset 4 to offset 8
 /// assert_eq!(updater.update(4, true), 8);
 /// ```
+#[derive(Debug, Clone)]
 pub struct SpanUpdater {
     /// Sorted list of character offsets in `text_before` that mark the start
     /// of a new tracking region.
@@ -22,6 +23,7 @@ pub struct SpanUpdater {
     deltas: Vec<OffsetUpdate>,
 }
 
+#[derive(Debug, Clone, Copy)]
 enum OffsetUpdate {
     /// Relative shift: `new_offset = old_offset + delta`.
     Shift(i64),
@@ -33,26 +35,36 @@ enum OffsetUpdate {
 impl SpanUpdater {
     /// Build a `SpanUpdater` by diffing `text_before` against `text_after`.
     ///
-    /// The diff is character-level (Unicode scalar values).
+    /// The diff is character-level (Unicode scalar values), and offsets are
+    /// counted in characters.
     pub fn new(text_before: &str, text_after: &str) -> Self {
-        // dmp::Dmp::diff_main works on &str and returns Vec<dmp::Diff>.
-        // dmp::Diff has:
-        //   .operation: i32  (-1 = delete, 0 = equal, 1 = insert)
-        //   .text: String
         let dmp = dmp::new();
         let mut diffs = dmp.diff_main(text_before, text_after, false);
         // Apply semantic lossless cleanup so diffs align on word/phrase
         // boundaries rather than arbitrary character positions.
         dmp.diff_cleanup_semantic_lossless(&mut diffs);
-        let diffs = diffs;
+        Self::from_diffs(&diffs, |s| s.chars().count())
+    }
 
+    /// Build a `SpanUpdater` whose offsets are UTF-8 byte offsets, matching
+    /// the spans that citations carry.
+    ///
+    /// Unlike [`SpanUpdater::new`], no cleanup pass is applied to the diff,
+    /// mirroring eyecite's `SpanUpdater` (`cleanup="No"`). This is what the
+    /// markup <-> plain text maps on [`crate::Document`] use.
+    pub fn new_bytes(text_before: &str, text_after: &str) -> Self {
+        let diffs = dmp::new().diff_main(text_before, text_after, false);
+        Self::from_diffs(&diffs, str::len)
+    }
+
+    fn from_diffs(diffs: &[dmp::Diff], measure: impl Fn(&str) -> usize) -> Self {
         let mut offsets: Vec<usize> = Vec::new();
         let mut deltas: Vec<OffsetUpdate> = Vec::new();
         let mut offset: usize = 0; // position in text_before
         let mut delta: i64 = 0; // cumulative shift
 
-        for diff in &diffs {
-            let amount = diff.text.chars().count();
+        for diff in diffs {
+            let amount = measure(&diff.text);
             match diff.operation {
                 0 => {
                     // Equal — start a new tracking region with current delta
@@ -305,6 +317,29 @@ mod tests {
         let updater = SpanUpdater::new(before, after);
         // 'b' in "bar" was at char offset 5 (c,a,f,é,' ' = 5), now at 9
         assert_eq!(updater.update(5, true), 9);
+    }
+
+    #[test]
+    fn test_span_updater_bytes_counts_utf8_bytes() {
+        // "é" is two bytes, so "bar" starts at byte 6 before and byte 10
+        // after the insertion of "XYZ ".
+        let updater = SpanUpdater::new_bytes("café bar", "café XYZ bar");
+        assert_eq!(updater.update(6, true), 10);
+        assert_eq!(updater.update(0, true), 0);
+    }
+
+    #[test]
+    fn test_span_updater_bytes_markup_to_plain() {
+        let markup = "<p>In <i>Foo</i> v. Bar</p>";
+        let plain = "In Foo v. Bar";
+        let to_plain = SpanUpdater::new_bytes(markup, plain);
+        let foo = markup.find("Foo").unwrap();
+        assert_eq!(to_plain.update(foo, true), plain.find("Foo").unwrap());
+        let to_markup = SpanUpdater::new_bytes(plain, markup);
+        assert_eq!(
+            to_markup.update(plain.find("Bar").unwrap(), true),
+            markup.find("Bar").unwrap()
+        );
     }
 
     // ── annotate_citations tests ───────────────────────────────────────────────

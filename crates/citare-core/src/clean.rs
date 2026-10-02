@@ -45,49 +45,44 @@ pub fn underscores(text: &str) -> String {
     re_underscores().replace_all(text, "").into_owned()
 }
 
-/// Extract visible text from HTML, skipping `<style>`, `<script>`, `<head>`,
-/// `<link>`, `<page-number>` elements, and elements with
-/// `class="star-pagination"`.
+/// Extract visible text from HTML.
+///
+/// Mirrors eyecite's `clean.html`, which selects every text node with
+/// non-blank content (XPath `normalize-space()`) whose *direct* parent is not
+/// `<style>`, `<link>`, `<head>`, `<page-number>`, `<script>` or an element
+/// with `class="star-pagination"`, and joins those nodes with a single space.
+/// Text nodes are kept verbatim (not trimmed), so whitespace around inline
+/// tags survives: `In <i>Foo</i>` becomes `"In  Foo"`.
 pub fn html(html_content: &str) -> String {
     let document = Html::parse_document(html_content);
-    let mut parts: Vec<String> = Vec::new();
+    let mut parts: Vec<&str> = Vec::new();
 
     for node in document.tree.nodes() {
-        // We only care about text nodes.
         let Node::Text(ref text) = node.value() else {
             continue;
         };
 
-        let content = text.text.trim();
-        if content.is_empty() {
+        // XPath normalize-space() only strips space, tab, CR and LF.
+        if text
+            .text
+            .chars()
+            .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+        {
             continue;
         }
 
-        // Walk ancestors; skip if any ancestor is a suppressed element.
-        let mut suppressed = false;
-        let mut ancestor = node.parent();
-        while let Some(a) = ancestor {
-            if let Node::Element(ref elem) = a.value() {
-                let name = elem.name();
-                if matches!(name, "style" | "script" | "head" | "link" | "page-number") {
-                    suppressed = true;
-                    break;
-                }
-                // class="star-pagination"
-                if elem
-                    .attr("class")
-                    .map(|c| c.split_whitespace().any(|cls| cls == "star-pagination"))
-                    .unwrap_or(false)
-                {
-                    suppressed = true;
-                    break;
-                }
+        let suppressed = node.parent().is_some_and(|parent| match parent.value() {
+            Node::Element(elem) => {
+                matches!(
+                    elem.name(),
+                    "style" | "script" | "head" | "link" | "page-number"
+                ) || elem.attr("class") == Some("star-pagination")
             }
-            ancestor = a.parent();
-        }
+            _ => false,
+        });
 
         if !suppressed {
-            parts.push(content.to_string());
+            parts.push(&text.text);
         }
     }
 
@@ -195,6 +190,31 @@ mod tests {
         assert!(result.contains("visible"));
         assert!(result.contains("also visible"));
         assert!(!result.contains("*5"));
+    }
+
+    #[test]
+    fn test_html_keeps_text_node_whitespace() {
+        // Matches eyecite/lxml: text nodes are joined verbatim with " ".
+        assert_eq!(
+            html("<p>In <i>Foo</i> v. <i>Bar,</i> 1 U.S. 1</p>"),
+            "In  Foo  v.  Bar,  1 U.S. 1"
+        );
+        assert_eq!(html("See <em>Bivens </em>v. x"), "See  Bivens  v. x");
+    }
+
+    #[test]
+    fn test_html_only_direct_parent_is_suppressed() {
+        // eyecite only checks the direct parent and an exact class match.
+        assert_eq!(
+            html(
+                r#"a <span class="star-pagination"><b>*5</b></span> b <span class="x star-pagination">*6</span>"#
+            ),
+            "a  *5  b  *6"
+        );
+        assert_eq!(
+            html("<html><head><title>t</title></head><body>b</body></html>"),
+            "t b"
+        );
     }
 
     #[test]
