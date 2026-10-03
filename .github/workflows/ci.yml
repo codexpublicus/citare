@@ -103,22 +103,29 @@ jobs:
       - name: Build WASM
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm
 
-  # Conformance ratchet (#12): citation-bench's vectors against this checkout. Fails on
-  # any vector that isn't in citation-bench's baselines/citare.known-failures, and lists
-  # the listed ones that now pass, so the baseline only shrinks.
+  # Conformance ratchet (#12) and benchmark report (#35). The ratchet runs
+  # citation-bench's vectors against this checkout and fails on any vector that isn't in
+  # citation-bench's baselines/citare.known-failures, listing the listed ones that now
+  # pass so the baseline only shrinks. It is the job's only pass/fail gate.
   #
-  # citation-bench is pinned to CITATION_BENCH_REF, so a new vector or a rebaselined
-  # known-failures file can't break this job unannounced. To bump it, take a commit from
-  # citation-bench's main, run `CITARE_PATH=<this checkout> mise run bench:citare` in
-  # citation-bench at that commit, and update CITATION_BENCH_REF here (full SHA) in its
-  # own PR.
+  # The report then runs citare over the one-percent CourtListener sample and compares
+  # it with eyecite (citation-bench's stored run, so eyecite itself doesn't run here)
+  # and with the last release's saved run, when that release has one attached. It goes
+  # to the job summary and the bench-report artifact, and the bench-comment job posts
+  # it on the PR. Nothing in it fails the build.
+  #
+  # citation-bench is pinned in .github/citation-bench-ref, so a new vector, a
+  # rebaselined known-failures file or a new report can't change this job unannounced.
+  # To bump it, take a commit from citation-bench's main, run
+  # `CITARE_PATH=<this checkout> mise run bench:citare` in citation-bench at that
+  # commit, and update the file in its own PR.
   parity:
     name: Parity (citation-bench)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     env:
-      CITATION_BENCH_REF: e6749c825108fc2e8cf02767a0028c9661f7c917
       # The deploy key comes from codexpublicus/infra. Until it exists the job skips
       # rather than failing; a secret can't be tested in `if:` directly.
       HAS_BENCH_KEY: ${{ secrets.CITATION_BENCH_DEPLOY_KEY != '' }}
@@ -136,12 +143,26 @@ jobs:
         with:
           path: citare
           submodules: recursive
+          persist-credentials: false
+
+      - name: Read the citation-bench pin
+        if: env.HAS_BENCH_KEY == 'true'
+        id: pin
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          ref=$(grep -v '^#' citare/.github/citation-bench-ref | tr -d '[:space:]')
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::.github/citation-bench-ref isn't a full SHA"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          # Names this run in the report: citare-pr<N>-<commit>, or citare-<commit> on main.
+          echo "CITARE_LABEL=citare-${PR:+pr$PR-}${HEAD_SHA:0:7}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.HAS_BENCH_KEY == 'true'
         with:
           repository: codexpublicus/citation-bench
-          ref: ${{ env.CITATION_BENCH_REF }}
+          ref: ${{ steps.pin.outputs.ref }}
           ssh-key: ${{ secrets.CITATION_BENCH_DEPLOY_KEY }}
           persist-credentials: false
           path: citation-bench
@@ -160,9 +181,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             citation-bench/target
-          key: ${{ runner.os }}-parity-${{ env.CITATION_BENCH_REF }}-${{ hashFiles('citare/**/Cargo.toml') }}
+          key: ${{ runner.os }}-parity-${{ steps.pin.outputs.ref }}-${{ hashFiles('citare/**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-parity-${{ env.CITATION_BENCH_REF }}-
+            ${{ runner.os }}-parity-${{ steps.pin.outputs.ref }}-
             ${{ runner.os }}-parity-
 
       # The adapter's Cargo.toml names citare by its git URL, and cargo fetches that
@@ -170,9 +191,11 @@ jobs:
       # read-only token covers the fetch.
       - name: Run the conformance vectors
         if: env.HAS_BENCH_KEY == 'true'
+        id: vectors
         working-directory: citation-bench
         env:
           CITARE_PATH: ${{ github.workspace }}/citare
+          CITATION_BENCH_REF: ${{ steps.pin.outputs.ref }}
           CARGO_NET_GIT_FETCH_WITH_CLI: "true"
           GIT_CONFIG_COUNT: "1"
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/codexpublicus/citare.insteadOf
@@ -180,7 +203,8 @@ jobs:
         run: |
           set -o pipefail
           status=0
-          mise run bench:citare 2>&1 | tee "$RUNNER_TEMP/bench.log" || status=$?
+          mise run bench:citare --save results/vectors/citare.json --label "$CITARE_LABEL" 2>&1 | tee "$RUNNER_TEMP/bench.log" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
           {
             echo "## citation-bench parity"
             echo
@@ -202,4 +226,101 @@ jobs:
               sed 's/^/- `/; s/$/`/' <<<"$fixed"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
+
+      # The last release's saved runs, which the release benchmark attaches as assets.
+      - name: Fetch the last release's runs
+        if: env.HAS_BENCH_KEY == 'true'
+        id: previous
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIR: ${{ runner.temp }}/previous
+        run: |
+          tag=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          mkdir -p "$DIR"
+          if gh release download "$tag" -R "$GITHUB_REPOSITORY" -D "$DIR" \
+              -p citare-corpus-1pct.json.gz -p citare-vectors.json.gz; then
+            gunzip -c "$DIR/citare-corpus-1pct.json.gz" > "$DIR/corpus-1pct.json"
+            gunzip -c "$DIR/citare-vectors.json.gz" > "$DIR/vectors.json"
+          else
+            echo "note=$tag has no saved benchmark runs attached, so there is nothing to compare it with. The Release benchmark workflow attaches them (run it on $tag to backfill)." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Benchmark report
+        if: env.HAS_BENCH_KEY == 'true'
+        id: report
+        continue-on-error: true
+        working-directory: citation-bench
+        env:
+          CITARE_PATH: ${{ github.workspace }}/citare
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/codexpublicus/citare.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/codexpublicus/citare
+          PREVIOUS_NOTE: ${{ steps.previous.outputs.note || 'No earlier release to compare with.' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          start=$SECONDS
+          mise run report:citare --size 1 --previous "$RUNNER_TEMP/previous" \
+            --previous-note "$PREVIOUS_NOTE" --link "$RUN_URL" --out reports/citare
+          echo "Report: $(( SECONDS - start )) s, from the eyecite restore to the Markdown." >> reports/citare/timing.txt
+          cat reports/citare/bench-report.md >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p reports/citare/runs
+          cp results/vectors/citare.json reports/citare/runs/citare-vectors.json
+          cp results/corpus-1pct/citare.json reports/citare/runs/citare-corpus-1pct.json
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.report.outcome == 'success'
+        with:
+          name: bench-report
+          path: citation-bench/reports/citare/
+          retention-days: 30
+
+      - name: Fail on regressions
+        if: env.HAS_BENCH_KEY == 'true'
+        env:
+          STATUS: ${{ steps.vectors.outputs.status }}
+        run: exit "${STATUS:-1}"
+
+  # Posts the report as one PR comment and edits it on later pushes. Kept apart from
+  # parity so the job that builds and runs PR code never holds a write token. Same-repo
+  # PRs only: a fork's token can't comment, and a public repo would want citation-bench
+  # #8's workflow_run split instead.
+  bench-comment:
+    name: Benchmark comment
+    needs: parity
+    if: >-
+      always() && github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && needs.parity.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        id: download
+        continue-on-error: true
+        with:
+          name: bench-report
+          path: report
+
+      - name: Post or update the comment
+        if: steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          MARKER: "<!-- citare-bench-report -->"
+        run: |
+          { echo "$MARKER"; cat report/comment.md; } > body.md
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" | head -1)
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@body.md > /dev/null
+            echo "updated comment $id"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@body.md > /dev/null
+            echo "posted a new comment"
+          fi
+

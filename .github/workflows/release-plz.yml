@@ -16,6 +16,8 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     permissions:
       contents: write
       # `release` looks up the PR each commit came from
@@ -28,10 +30,33 @@ jobs:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
+        id: release-plz
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The workspace tag, which only citare-core creates; empty when nothing released.
+      - name: Read the release tag
+        id: tag
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: |
+          echo "tag=$(jq -r '[.[]? | select(.package_name == "citare-core")][0].tag // empty' <<<"${RELEASES:-[]}")" >> "$GITHUB_OUTPUT"
+
+  # Benchmarks the new tag and attaches the report to its release (#35). A release
+  # cut with GITHUB_TOKEN triggers no `release: published` workflow, so it hangs off
+  # this one. The write token stays in bench-release.yml's publish job; the job that
+  # builds and runs citare only reads.
+  bench:
+    name: Release benchmark
+    needs: release
+    if: needs.release.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/bench-release.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    secrets: inherit
 
   # Opens or refreshes the release PR: the workspace version bump and the
   # CHANGELOG.md entry. GitHub refuses the PR unless the repo allows
