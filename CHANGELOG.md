@@ -4,6 +4,22 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.5.0 - 2026-10-03
+
+### Breaking changes
+
+- *(core)* Map annotate spans in bytes only ([#45](https://github.com/codexpublicus/citare/pull/45))
+
+### Features
+
+- Markup input for WASM and CLI ([#38](https://github.com/codexpublicus/citare/pull/38))
+
+### Fixes
+
+- *(core)* Capture § pin cites on id. cites ([#41](https://github.com/codexpublicus/citare/pull/41))
+- Make extraction output deterministic ([#42](https://github.com/codexpublicus/citare/pull/42))
+- *(core)* Key CAP slugs by edition ([#36](https://github.com/codexpublicus/citare/pull/36))
+
 ## v0.4.1 - 2026-10-02
 
 ### Fixes

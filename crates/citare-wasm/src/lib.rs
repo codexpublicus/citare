@@ -58,7 +58,7 @@
 //! `<i>` gives a `full_span` that runs from inside the `<i>` past its `</i>`,
 //! and a reference citation can begin at the opening `<i>`.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use citare_core::{CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit};
 use serde::{Deserialize, Serialize};
@@ -88,11 +88,11 @@ pub struct JsCitation {
     /// The spans mapped onto the markup, for `format: "html"` input only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markup: Option<JsSpans>,
-    pub groups: HashMap<String, Option<String>>,
+    pub groups: BTreeMap<String, Option<String>>,
     pub year: Option<i32>,
     pub harvard_slug: Option<String>,
     pub ambiguous: bool,
-    pub metadata: HashMap<String, Option<String>>,
+    pub metadata: BTreeMap<String, Option<String>>,
 }
 
 /// One set of citation spans in UTF-8 bytes, UTF-16 units and code points.
@@ -386,17 +386,17 @@ fn resolve(
     let resolutions = citare_core::resolve_citations(&citations);
     let converter = Converter::new(&document);
 
-    let mut js_resolutions: Vec<JsResolution> = resolutions
+    // Document order of each resource's full citation, the order eyecite's
+    // insertion-ordered dict returns them in.
+    let mut resolutions: Vec<_> = resolutions.into_iter().collect();
+    resolutions.sort_by_key(|(resource, _)| resource.citation.span());
+    Ok(resolutions
         .into_iter()
         .map(|(resource, cites)| JsResolution {
             resource_text: resource.citation.matched_text().to_string(),
             citations: cites.iter().map(|c| converter.convert(c)).collect(),
         })
-        .collect();
-
-    // Sort for deterministic output.
-    js_resolutions.sort_by(|a, b| a.resource_text.cmp(&b.resource_text));
-    Ok(js_resolutions)
+        .collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -434,7 +434,7 @@ fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCi
         utf16,
         chars,
         markup: None,
-        groups: citation.common().groups.clone(),
+        groups: citation.common().groups.clone().into_iter().collect(),
         year,
         harvard_slug,
         ambiguous: citation.is_ambiguous(),
@@ -443,8 +443,8 @@ fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCi
 }
 
 /// Flatten per-variant metadata structs into a uniform string map.
-fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<String>> {
-    let mut map: HashMap<String, Option<String>> = HashMap::new();
+fn extract_metadata(citation: &citare_core::Citation) -> BTreeMap<String, Option<String>> {
+    let mut map: BTreeMap<String, Option<String>> = BTreeMap::new();
 
     match citation {
         citare_core::Citation::FullCase(d) => {
@@ -529,7 +529,7 @@ fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<
 /// Insert `key -> value.clone()` into `map`.  The value is `None` when the
 /// `Option` is `None`, so the key is still present for schema consistency.
 #[inline]
-fn insert_opt(map: &mut HashMap<String, Option<String>>, key: &str, value: &Option<String>) {
+fn insert_opt(map: &mut BTreeMap<String, Option<String>>, key: &str, value: &Option<String>) {
     map.insert(key.to_string(), value.clone());
 }
 

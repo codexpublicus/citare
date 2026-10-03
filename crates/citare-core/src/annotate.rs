@@ -2,22 +2,27 @@
 
 // ── SpanUpdater ───────────────────────────────────────────────────────────────
 
-/// Maps character offsets from one version of a text to another using a
+/// Maps UTF-8 byte offsets from one version of a text to another using a
 /// diff-based offset-tracking approach.
+///
+/// Byte offsets are the only unit: citation spans are byte offsets, and
+/// [`annotate_citations`] and the [`crate::Document`] span maps slice text
+/// with what this returns. There is one constructor, so a map built in one
+/// place agrees with a map of the same texts built in another.
 ///
 /// # Example
 /// ```
 /// # use citare_core::annotate::SpanUpdater;
-/// let updater = SpanUpdater::new("foo bar", "foo baz bar");
-/// // 'f' is still at offset 0
+/// let updater = SpanUpdater::new_bytes("café bar", "café XYZ bar");
+/// // 'c' is still at offset 0
 /// assert_eq!(updater.update(0, true), 0);
-/// // 'b' in "bar" has moved from offset 4 to offset 8
-/// assert_eq!(updater.update(4, true), 8);
+/// // 'b' in "bar" has moved from byte 6 to byte 10 ("é" is two bytes)
+/// assert_eq!(updater.update(6, true), 10);
 /// ```
 #[derive(Debug, Clone)]
 pub struct SpanUpdater {
-    /// Sorted list of character offsets in `text_before` that mark the start
-    /// of a new tracking region.
+    /// Sorted list of byte offsets in `text_before` that mark the start of a
+    /// new tracking region.
     offsets: Vec<usize>,
     /// One delta entry per entry in `offsets`.
     deltas: Vec<OffsetUpdate>,
@@ -33,34 +38,12 @@ enum OffsetUpdate {
 }
 
 impl SpanUpdater {
-    /// Build a `SpanUpdater` by diffing `text_before` against `text_after`.
-    ///
-    /// The diff is character-level (Unicode scalar values), and offsets are
-    /// counted in characters.
-    pub fn new(text_before: &str, text_after: &str) -> Self {
-        let dmp = dmp::new();
-        let mut diffs = dmp.diff_main(text_before, text_after, false);
-        // Apply semantic lossless cleanup so diffs align on word/phrase
-        // boundaries rather than arbitrary character positions.
-        dmp.diff_cleanup_semantic_lossless(&mut diffs);
-        Self::from_diffs(&diffs, |s| s.chars().count())
-    }
-
-    /// [`SpanUpdater::new`] (with its cleanup pass) counting UTF-8 bytes,
-    /// for [`annotate_citations`], whose spans and output are byte offsets.
-    fn new_semantic_bytes(text_before: &str, text_after: &str) -> Self {
-        let dmp = dmp::new();
-        let mut diffs = dmp.diff_main(text_before, text_after, false);
-        dmp.diff_cleanup_semantic_lossless(&mut diffs);
-        Self::from_diffs(&diffs, str::len)
-    }
-
     /// Build a `SpanUpdater` whose offsets are UTF-8 byte offsets, matching
     /// the spans that citations carry.
     ///
-    /// Unlike [`SpanUpdater::new`], no cleanup pass is applied to the diff,
-    /// mirroring eyecite's `SpanUpdater` (`cleanup="No"`). This is what the
-    /// markup <-> plain text maps on [`crate::Document`] use.
+    /// The diff runs over characters, so every region boundary is a char
+    /// boundary in both texts, and is measured in bytes. No cleanup pass is
+    /// applied, mirroring eyecite's `SpanUpdater` (`cleanup="No"`).
     ///
     /// The diff is Myers' algorithm, whose running time is the text length
     /// times the number of edits. Between an opinion's markup and its plain
@@ -83,17 +66,17 @@ impl SpanUpdater {
             (a, b) = (anchor_a, anchor_b);
         }
         diffs.extend(dmp.diff_main(&text_before[a..], &text_after[b..], false));
-        Self::from_diffs(&diffs, str::len)
+        Self::from_diffs(&diffs)
     }
 
-    fn from_diffs(diffs: &[dmp::Diff], measure: impl Fn(&str) -> usize) -> Self {
+    fn from_diffs(diffs: &[dmp::Diff]) -> Self {
         let mut offsets: Vec<usize> = Vec::new();
         let mut deltas: Vec<OffsetUpdate> = Vec::new();
         let mut offset: usize = 0; // position in text_before
         let mut delta: i64 = 0; // cumulative shift
 
         for diff in diffs {
-            let amount = measure(&diff.text);
+            let amount = diff.text.len();
             match diff.operation {
                 0 => {
                     // Equal — start a new tracking region with current delta
@@ -102,11 +85,11 @@ impl SpanUpdater {
                     offset += amount;
                 }
                 1 => {
-                    // Insert — only affects delta (text_before has no chars here)
+                    // Insert — only affects delta (text_before has no bytes here)
                     delta += amount as i64;
                 }
                 -1 => {
-                    // Delete — map deleted chars to the current absolute position
+                    // Delete — map deleted bytes to the current absolute position
                     offsets.push(offset);
                     deltas.push(OffsetUpdate::Replace((offset as i64 + delta) as usize));
                     offset += amount;
@@ -119,7 +102,7 @@ impl SpanUpdater {
         Self { offsets, deltas }
     }
 
-    /// Translate a character offset from `text_before` to the corresponding
+    /// Translate a byte offset from `text_before` to the corresponding
     /// position in `text_after`.
     ///
     /// `use_right = true` uses bisect-right semantics (for span ends);
@@ -324,14 +307,11 @@ pub fn annotate_citations(
         working_text = source_text;
         effective_updater = Some(updater);
     } else if !source_text.is_empty() && source_text != plain_text {
-        // Build an updater from placeholder-collapsed source HTML.
+        // Build an updater from placeholder-collapsed source HTML: the same
+        // map `Document::plain_to_markup` holds for these texts, so the
+        // wrappers land where the citations' markup spans say.
         let placeholder_text = crate::utils::placeholder_markup(source_text);
-        // Spans are byte offsets and index `source_text` as bytes, so the
-        // map must count bytes, not characters.
-        owned_updater = Some(SpanUpdater::new_semantic_bytes(
-            plain_text,
-            &placeholder_text,
-        ));
+        owned_updater = Some(SpanUpdater::new_bytes(plain_text, &placeholder_text));
         working_text = source_text;
         effective_updater = owned_updater.as_ref();
     } else {
@@ -427,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_span_updater_no_change() {
-        let updater = SpanUpdater::new("hello", "hello");
+        let updater = SpanUpdater::new_bytes("hello", "hello");
         assert_eq!(updater.update(0, true), 0);
         assert_eq!(updater.update(3, true), 3);
         assert_eq!(updater.update(5, true), 5);
@@ -435,51 +415,47 @@ mod tests {
 
     #[test]
     fn test_span_updater_insertion() {
-        // "foo bar" → "foo baz bar"  (inserted "baz " after "foo ")
-        let updater = SpanUpdater::new("foo bar", "foo baz bar");
+        // "foo bar" → "foo XYZ bar"  (inserted "XYZ " after "foo ")
+        let updater = SpanUpdater::new_bytes("foo bar", "foo XYZ bar");
         // 'f' still at 0
         assert_eq!(updater.update(0, true), 0);
         // 'b' in "bar" was at offset 4, now at offset 8
         assert_eq!(updater.update(4, true), 8);
+        // With no cleanup pass, "foo baz bar" diffs as "foo ba" + "z ba" +
+        // "r", so "bar" stays at 4, as in eyecite.
+        assert_eq!(
+            SpanUpdater::new_bytes("foo bar", "foo baz bar").update(4, true),
+            4
+        );
     }
 
     #[test]
     fn test_span_updater_deletion() {
         // "foo baz bar" → "foo bar"  (deleted "baz ")
-        let updater = SpanUpdater::new("foo baz bar", "foo bar");
+        let updater = SpanUpdater::new_bytes("foo baz bar", "foo bar");
         // 'f' still at 0
         assert_eq!(updater.update(0, true), 0);
     }
 
     #[test]
     fn test_span_updater_empty_strings() {
-        let updater = SpanUpdater::new("", "");
+        let updater = SpanUpdater::new_bytes("", "");
         assert_eq!(updater.update(0, true), 0);
     }
 
     #[test]
     fn test_span_updater_pure_insert() {
         // "" → "hello": everything is an insertion, offset 0 stays 0
-        let updater = SpanUpdater::new("", "hello");
+        let updater = SpanUpdater::new_bytes("", "hello");
         assert_eq!(updater.update(0, true), 0);
     }
 
     #[test]
     fn test_span_updater_pure_delete() {
         // "hello" → "": all text deleted, any offset maps to 0
-        let updater = SpanUpdater::new("hello", "");
+        let updater = SpanUpdater::new_bytes("hello", "");
         assert_eq!(updater.update(0, true), 0);
         assert_eq!(updater.update(3, true), 0);
-    }
-
-    #[test]
-    fn test_span_updater_unicode() {
-        // Ensure character-level (not byte-level) counting works
-        let before = "café bar";
-        let after = "café baz bar";
-        let updater = SpanUpdater::new(before, after);
-        // 'b' in "bar" was at char offset 5 (c,a,f,é,' ' = 5), now at 9
-        assert_eq!(updater.update(5, true), 9);
     }
 
     #[test]

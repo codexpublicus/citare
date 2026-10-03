@@ -4,7 +4,7 @@
 //! and a performance-optimised [`AhocorasickTokenizer`] that pre-filters
 //! extractors using Aho-Corasick string matching.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{LazyLock, OnceLock};
 
 use aho_corasick::AhoCorasick;
@@ -372,8 +372,10 @@ impl AhocorasickTokenizer {
     /// Build from a list of extractors (useful for testing).
     fn from_extractors(extractors: Vec<TokenExtractor>) -> Self {
         let mut unfiltered_indices = Vec::new();
-        let mut cs_grouped: HashMap<String, Vec<usize>> = HashMap::new();
-        let mut ci_grouped: HashMap<String, Vec<usize>> = HashMap::new();
+        // Ordered maps, so the automata's pattern ids are the same in every
+        // process.
+        let mut cs_grouped: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut ci_grouped: BTreeMap<String, Vec<usize>> = BTreeMap::new();
 
         for (idx, ext) in extractors.iter().enumerate() {
             if ext.strings.is_empty() {
@@ -396,8 +398,7 @@ impl AhocorasickTokenizer {
         let (case_sensitive_ac, case_sensitive_map) = if cs_grouped.is_empty() {
             (None, Vec::new())
         } else {
-            let patterns: Vec<String> = cs_grouped.keys().cloned().collect();
-            let map: Vec<Vec<usize>> = patterns.iter().map(|p| cs_grouped[p].clone()).collect();
+            let (patterns, map): (Vec<String>, Vec<Vec<usize>>) = cs_grouped.into_iter().unzip();
             let ac = aho_corasick::AhoCorasick::builder()
                 .match_kind(aho_corasick::MatchKind::Standard)
                 .build(&patterns)
@@ -409,8 +410,7 @@ impl AhocorasickTokenizer {
         let (case_insensitive_ac, case_insensitive_map) = if ci_grouped.is_empty() {
             (None, Vec::new())
         } else {
-            let patterns: Vec<String> = ci_grouped.keys().cloned().collect();
-            let map: Vec<Vec<usize>> = patterns.iter().map(|p| ci_grouped[p].clone()).collect();
+            let (patterns, map): (Vec<String>, Vec<Vec<usize>>) = ci_grouped.into_iter().unzip();
             let ac = aho_corasick::AhoCorasick::builder()
                 .match_kind(aho_corasick::MatchKind::Standard)
                 .build(&patterns)
@@ -444,8 +444,17 @@ impl AhocorasickTokenizer {
     /// with whitespace removed: `N. Y. S. 2d` must still select the
     /// `N.Y.S.2d` extractor. Match spans still come from running the selected
     /// extractors over the original text.
+    ///
+    /// The extractors come back in registry order, the order the base
+    /// [`Tokenizer`] runs them in. Tokens with equal spans keep that order
+    /// through the stable sort in `tokenize_impl`, so it decides which token
+    /// wins an overlap and the order of merged editions. A hash set here
+    /// made that order vary per process (#22).
     fn get_extractors(&self, text: &str) -> Vec<&TokenExtractor> {
-        let mut result: HashSet<usize> = self.unfiltered_indices.iter().copied().collect();
+        let mut selected = vec![false; self.extractors.len()];
+        for &idx in &self.unfiltered_indices {
+            selected[idx] = true;
+        }
         let stripped = strip_ws(text);
         let text = stripped.as_str();
 
@@ -458,7 +467,7 @@ impl AhocorasickTokenizer {
                     None => break,
                 };
                 for &idx in &self.case_sensitive_map[mat.pattern().as_usize()] {
-                    result.insert(idx);
+                    selected[idx] = true;
                 }
             }
         }
@@ -473,12 +482,16 @@ impl AhocorasickTokenizer {
                     None => break,
                 };
                 for &idx in &self.case_insensitive_map[mat.pattern().as_usize()] {
-                    result.insert(idx);
+                    selected[idx] = true;
                 }
             }
         }
 
-        result.iter().map(|&i| &self.extractors[i]).collect()
+        self.extractors
+            .iter()
+            .zip(selected)
+            .filter_map(|(ext, keep)| keep.then_some(ext))
+            .collect()
     }
 
     fn extract_tokens(&self, text: &str) -> Vec<Token> {
@@ -610,6 +623,7 @@ pub fn append_text(tokens: &mut Tokens, text: &str) {
 mod tests {
     use super::*;
     use crate::models::edition::{Reporter, ReporterSource};
+    use std::collections::HashSet;
 
     #[test]
     fn test_extractor_count() {
@@ -706,6 +720,40 @@ mod tests {
 
         let selected = strings_for("123 N. Y. S. 2d 456");
         assert!(selected.contains(&vec!["N.Y.S.2d".to_string()]));
+    }
+
+    /// The prefilter returns the selected extractors in registry order, the
+    /// order the base `Tokenizer` (and eyecite's) runs them in, so tokens
+    /// with equal spans reach the merge and overlap steps in the same order
+    /// on every run and in every process (#22).
+    #[test]
+    fn test_extractor_order_is_registry_order() {
+        let text = "See foo, 123 U.S. 456; 5 F.3d 17; 2 Mass. 3; 1 Johns. 2; \
+                    100 N. Y. S. 2d 4; 22 U.S.C. § 1983. Id. at 5; supra.";
+        let mut first: Option<Vec<usize>> = None;
+        for _ in 0..4 {
+            let tokenizer = AhocorasickTokenizer::new();
+            let indices: Vec<usize> = tokenizer
+                .get_extractors(text)
+                .into_iter()
+                .map(|e| {
+                    tokenizer
+                        .extractors
+                        .iter()
+                        .position(|x| std::ptr::eq(x, e))
+                        .expect("selected extractor is in the registry")
+                })
+                .collect();
+            assert!(indices.len() > 10, "too few extractors selected");
+            assert!(
+                indices.windows(2).all(|w| w[0] < w[1]),
+                "extractors not in registry order: {indices:?}"
+            );
+            match &first {
+                None => first = Some(indices),
+                Some(f) => assert_eq!(f, &indices),
+            }
+        }
     }
 
     /// Two extractors matching the same span merge into one token, and the
