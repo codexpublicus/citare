@@ -23,6 +23,7 @@
 
 pub mod annotate;
 pub mod clean;
+pub mod data;
 pub mod find;
 pub mod helpers;
 pub mod models;

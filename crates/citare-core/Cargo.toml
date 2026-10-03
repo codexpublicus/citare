@@ -9,6 +9,13 @@ homepage = "https://github.com/codexpublicus/citare"
 keywords = ["legal", "citation", "nlp", "law", "parser"]
 categories = ["text-processing", "parsing"]
 
+[features]
+default = ["embedded-data"]
+# Compile the reporter/edition/court data bundle into the library. Without
+# it, call `citare_core::data::load` with a bundle before finding citations
+# (the small WASM build does this; see docs/data-bundle.md).
+embedded-data = []
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

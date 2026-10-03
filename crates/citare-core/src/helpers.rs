@@ -102,12 +102,6 @@ fn re_leading_in() -> &'static regex::Regex {
 // Courts data
 // ---------------------------------------------------------------------------
 
-/// Generated at build time from courts-db by `build.rs`.
-mod generated_courts {
-    include!(concat!(env!("OUT_DIR"), "/generated_courts.rs"));
-}
-use generated_courts::GENERATED_COURT_KEYS;
-
 /// Lowercase alphanumeric form of a court citation string, used to match
 /// citation parentheticals against courts-db. `build.rs` applies the same
 /// reduction to every court's `citation_string`.
@@ -348,8 +342,8 @@ pub fn get_court_by_paren(paren_string: &str) -> Option<String> {
     }
 
     let mut fallback: Option<&str> = None;
-    for &(s, id) in GENERATED_COURT_KEYS {
-        if s == court_str {
+    for (s, id) in &crate::data::get().bundle.court_keys {
+        if s.as_ref() == court_str {
             return Some(id.to_string());
         }
         if s.starts_with(&court_str) {
@@ -1683,9 +1677,11 @@ mod tests {
             .iter()
             .map(|c| (normalize_court_string(&c.citation_string), c.id.clone()))
             .collect();
-        let generated: Vec<(String, String)> = GENERATED_COURT_KEYS
+        let generated: Vec<(String, String)> = crate::data::get()
+            .bundle
+            .court_keys
             .iter()
-            .map(|&(k, id)| (k.to_string(), id.to_string()))
+            .map(|(k, id)| (k.to_string(), id.to_string()))
             .collect();
         assert_eq!(generated, expected);
     }

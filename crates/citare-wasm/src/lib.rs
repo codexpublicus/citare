@@ -177,6 +177,34 @@ extern "C" {
 // Exported functions
 // ---------------------------------------------------------------------------
 
+/// Load the citare data bundle (`citare-data-<hash>.bin`, see
+/// docs/data-bundle.md). A build without the `embedded-data` feature must
+/// call this once before `getCitations` or `resolveCitations`; a build with
+/// it may, to use a different bundle, if no citations have been found yet.
+/// Throws if the bytes are not a bundle this build can read, or if data is
+/// already loaded.
+#[wasm_bindgen(js_name = "initData")]
+pub fn init_data(bytes: &[u8]) -> Result<(), JsError> {
+    citare_core::data::load(bytes).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Whether citation data is available: embedded in this build, or loaded
+/// with `initData`.
+#[wasm_bindgen(js_name = "dataLoaded")]
+pub fn data_loaded() -> bool {
+    citare_core::data::is_available()
+}
+
+fn require_data() -> Result<(), JsError> {
+    if citare_core::data::is_available() {
+        Ok(())
+    } else {
+        Err(JsError::new(
+            "citare data is not loaded: call initData(bytes) with a citare data bundle first",
+        ))
+    }
+}
+
 /// Find citations in `text` and return them as a JSON-serialisable array.
 ///
 /// `remove_ambiguous` — when `true`, drop citations that could not be
@@ -190,6 +218,7 @@ pub fn get_citations(
     remove_ambiguous: bool,
     options: Option<FindOptionsJs>,
 ) -> Result<JsValue, JsError> {
+    require_data()?;
     let options = parse_options(options)?;
     let js_citations = find(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
     Ok(serde_wasm_bindgen::to_value(&js_citations).unwrap_or(JsValue::NULL))
@@ -205,6 +234,7 @@ pub fn resolve_citations(
     remove_ambiguous: bool,
     options: Option<FindOptionsJs>,
 ) -> Result<JsValue, JsError> {
+    require_data()?;
     let options = parse_options(options)?;
     let js_resolutions = resolve(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
     Ok(serde_wasm_bindgen::to_value(&js_resolutions).unwrap_or(JsValue::NULL))

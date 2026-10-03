@@ -10,7 +10,7 @@ use std::sync::{LazyLock, OnceLock};
 use aho_corasick::AhoCorasick;
 use regex::Regex;
 
-use crate::models::edition::{Edition, Reporter, ReporterSource};
+use crate::models::edition::Edition;
 use crate::models::token::{CitationTokenData, Token, TokenData, TokenOrStr, Tokens};
 
 // ---------------------------------------------------------------------------
@@ -182,13 +182,7 @@ pub fn token_is_from_nominative_reporter(token: &Token) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Build-time generated extractor data
-// ---------------------------------------------------------------------------
-
-include!(concat!(env!("OUT_DIR"), "/generated_extractors.rs"));
-
-// ---------------------------------------------------------------------------
-// Extractor builder (uses build-time generated data)
+// Extractor builder (uses the data bundle, see `crate::data`)
 // ---------------------------------------------------------------------------
 
 /// Global lazily-initialised extractors.
@@ -206,28 +200,6 @@ pub static DEFAULT_TOKENIZER: LazyLock<AhocorasickTokenizer> =
 pub static EDITIONS_LOOKUP: LazyLock<HashMap<String, Vec<Edition>>> =
     LazyLock::new(build_editions_lookup);
 
-/// Convert a generated edition to a runtime Edition.
-fn edition_from_generated(gen: &GeneratedEdition) -> Edition {
-    let source = match gen.reporter_source {
-        0 => ReporterSource::Reporters,
-        1 => ReporterSource::Laws,
-        2 => ReporterSource::Journals,
-        _ => ReporterSource::Reporters,
-    };
-    Edition {
-        reporter: Reporter::new(
-            gen.reporter_short_name.to_string(),
-            gen.reporter_name.to_string(),
-            gen.reporter_cite_type.to_string(),
-            source,
-        ),
-        short_name: gen.short_name.to_string(),
-        start: gen.start.map(|s| s.to_string()),
-        end: gen.end.map(|s| s.to_string()),
-        harvard_slug: gen.harvard_slug.map(|s| s.to_string()),
-    }
-}
-
 /// Convert a token type byte to a TokenType enum.
 fn token_type_from_u8(v: u8) -> TokenType {
     match v {
@@ -242,34 +214,31 @@ fn token_type_from_u8(v: u8) -> TokenType {
     }
 }
 
-/// Build all extractors from the build-time generated data.
+/// Build all extractors from the loaded data bundle.
 ///
 /// Reconstructs the full set of extractors by substituting reporter strings
-/// into deduplicated regex templates.  This produces the same extractors as
-/// the old flat `GENERATED_EXTRACTORS` array, but the generated source file
-/// is ~60% smaller because each template is stored only once.
-///
-/// Regex compilation is still deferred — each extractor compiles its regex
-/// lazily on first use.
+/// into deduplicated regex templates. Regex compilation is still deferred:
+/// each extractor compiles its regex lazily on first use.
 pub fn build_extractors() -> Vec<TokenExtractor> {
-    let mut extractors =
-        Vec::with_capacity(GENERATED_REPORTER_MAP.len() + GENERATED_ONEOFF_EXTRACTORS.len());
+    let data = crate::data::get();
+    let bundle = &data.bundle;
+    let mut extractors = Vec::with_capacity(bundle.reporter_map.len() + bundle.oneoffs.len());
 
     // Citation extractors: combine templates with reporter strings
-    for entry in GENERATED_REPORTER_MAP {
-        let template = GENERATED_TEMPLATES[entry.template_idx];
+    for entry in &bundle.reporter_map {
+        let template = &bundle.templates[entry.template_idx as usize];
         // Substitute the reporter placeholder with the actual reporter string
-        let regex = template.replace(REPORTER_PLACEHOLDER, entry.reporter_string);
+        let regex = template.replace(crate::data::REPORTER_PLACEHOLDER, &entry.reporter_string);
 
         let editions: Vec<Edition> = entry
             .edition_indices
             .iter()
-            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .map(|&i| data.editions[i as usize].clone())
             .collect();
         let variations: Vec<Edition> = entry
             .variation_indices
             .iter()
-            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .map(|&i| data.editions[i as usize].clone())
             .collect();
 
         extractors.push(TokenExtractor {
@@ -287,13 +256,11 @@ pub fn build_extractors() -> Vec<TokenExtractor> {
     }
 
     // One-off extractors (Id, Supra, StopWord, etc.)
-    for gen in GENERATED_ONEOFF_EXTRACTORS {
-        let token_type = token_type_from_u8(gen.token_type);
-
+    for gen in &bundle.oneoffs {
         extractors.push(TokenExtractor {
             regex: gen.regex.to_string(),
             compiled_regex: OnceLock::new(),
-            token_type,
+            token_type: token_type_from_u8(gen.token_type),
             extra: ExtractorExtra::default(),
             strings: gen.strings.iter().map(|s| s.to_string()).collect(),
             case_insensitive: gen.case_insensitive,
@@ -303,13 +270,14 @@ pub fn build_extractors() -> Vec<TokenExtractor> {
     extractors
 }
 
-/// Build the editions lookup table from the build-time generated data.
+/// Build the editions lookup table from the loaded data bundle.
 fn build_editions_lookup() -> HashMap<String, Vec<Edition>> {
-    let mut lookup = HashMap::with_capacity(GENERATED_EDITIONS_LOOKUP.len());
-    for &(key, indices) in GENERATED_EDITIONS_LOOKUP {
+    let data = crate::data::get();
+    let mut lookup = HashMap::with_capacity(data.bundle.editions_lookup.len());
+    for (key, indices) in &data.bundle.editions_lookup {
         let editions: Vec<Edition> = indices
             .iter()
-            .map(|&i| edition_from_generated(&GENERATED_EDITIONS[i]))
+            .map(|&i| data.editions[i as usize].clone())
             .collect();
         lookup.insert(key.to_string(), editions);
     }
@@ -641,6 +609,7 @@ pub fn append_text(tokens: &mut Tokens, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::edition::{Reporter, ReporterSource};
 
     #[test]
     fn test_extractor_count() {
@@ -1096,7 +1065,9 @@ mod tests {
             }
         }
         // Also verify at the raw generated data level
-        let unmatched = GENERATED_EDITIONS
+        let unmatched = crate::data::get()
+            .bundle
+            .editions
             .iter()
             .filter(|e| e.short_name == "A." && e.harvard_slug.is_some())
             .count();
@@ -1109,19 +1080,20 @@ mod tests {
     #[test]
     fn test_harvard_slug_in_generated_editions() {
         // Verify the generated data array contains expected slugs
-        let us_edition = GENERATED_EDITIONS
+        let editions = &crate::data::get().bundle.editions;
+        let us_edition = editions
             .iter()
-            .find(|e| e.short_name == "U.S." && e.harvard_slug == Some("us"));
+            .find(|e| e.short_name == "U.S." && e.harvard_slug.as_deref() == Some("us"));
         assert!(
             us_edition.is_some(),
-            "GENERATED_EDITIONS should contain U.S. with harvard_slug = Some(\"us\")"
+            "the data bundle should contain U.S. with harvard_slug = Some(\"us\")"
         );
-        let a2d_edition = GENERATED_EDITIONS
+        let a2d_edition = editions
             .iter()
-            .find(|e| e.short_name == "A.2d" && e.harvard_slug == Some("a2d"));
+            .find(|e| e.short_name == "A.2d" && e.harvard_slug.as_deref() == Some("a2d"));
         assert!(
             a2d_edition.is_some(),
-            "GENERATED_EDITIONS should contain A.2d with harvard_slug = Some(\"a2d\")"
+            "the data bundle should contain A.2d with harvard_slug = Some(\"a2d\")"
         );
     }
 }
