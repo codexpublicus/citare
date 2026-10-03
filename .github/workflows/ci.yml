@@ -324,17 +324,3 @@ jobs:
             echo "posted a new comment"
           fi
 
-  # TEMPORARY: exercises bench-release.yml on an existing tag without publishing.
-  # Removed before merge.
-  release-bench-test:
-    name: Release benchmark (test)
-    if: github.event_name == 'pull_request'
-    # The called workflow's publish job asks for contents: write, and a caller has to
-    # grant what every called job asks for, even a skipped one. publish is off here.
-    permissions:
-      contents: write
-    uses: ./.github/workflows/bench-release.yml
-    with:
-      tag: v0.4.1
-      publish: false
-    secrets: inherit
