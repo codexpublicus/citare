@@ -102,3 +102,104 @@ jobs:
 
       - name: Build WASM
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm
+
+  # Conformance ratchet (#12): citation-bench's vectors against this checkout. Fails on
+  # any vector that isn't in citation-bench's baselines/citare.known-failures, and lists
+  # the listed ones that now pass, so the baseline only shrinks.
+  #
+  # citation-bench is pinned to CITATION_BENCH_REF, so a new vector or a rebaselined
+  # known-failures file can't break this job unannounced. To bump it, take a commit from
+  # citation-bench's main, run `CITARE_PATH=<this checkout> mise run bench:citare` in
+  # citation-bench at that commit, and update CITATION_BENCH_REF here (full SHA) in its
+  # own PR.
+  parity:
+    name: Parity (citation-bench)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CITATION_BENCH_REF: e6749c825108fc2e8cf02767a0028c9661f7c917
+      # The deploy key comes from codexpublicus/infra. Until it exists the job skips
+      # rather than failing; a secret can't be tested in `if:` directly.
+      HAS_BENCH_KEY: ${{ secrets.CITATION_BENCH_DEPLOY_KEY != '' }}
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/citation-bench
+    steps:
+      - name: Skip without the citation-bench deploy key
+        if: env.HAS_BENCH_KEY != 'true'
+        run: |
+          msg="CITATION_BENCH_DEPLOY_KEY is not set, so the citation-bench parity check was skipped. codexpublicus/infra provisions it."
+          echo "::notice title=Parity skipped::$msg"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_BENCH_KEY == 'true'
+        with:
+          path: citare
+          submodules: recursive
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.HAS_BENCH_KEY == 'true'
+        with:
+          repository: codexpublicus/citation-bench
+          ref: ${{ env.CITATION_BENCH_REF }}
+          ssh-key: ${{ secrets.CITATION_BENCH_DEPLOY_KEY }}
+          persist-credentials: false
+          path: citation-bench
+
+      # Python, uv and Rust at the versions citation-bench's .mise/config.toml pins.
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        if: env.HAS_BENCH_KEY == 'true'
+        with:
+          working_directory: citation-bench
+
+      - name: Cache cargo
+        if: env.HAS_BENCH_KEY == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            citation-bench/target
+          key: ${{ runner.os }}-parity-${{ env.CITATION_BENCH_REF }}-${{ hashFiles('citare/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-parity-${{ env.CITATION_BENCH_REF }}-
+            ${{ runner.os }}-parity-
+
+      # The adapter's Cargo.toml names citare by its git URL, and cargo fetches that
+      # source even when CITARE_PATH patches it with this checkout. The job's own
+      # read-only token covers the fetch.
+      - name: Run the conformance vectors
+        if: env.HAS_BENCH_KEY == 'true'
+        working-directory: citation-bench
+        env:
+          CITARE_PATH: ${{ github.workspace }}/citare
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/codexpublicus/citare.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/codexpublicus/citare
+        run: |
+          set -o pipefail
+          status=0
+          mise run bench:citare 2>&1 | tee "$RUNNER_TEMP/bench.log" || status=$?
+          {
+            echo "## citation-bench parity"
+            echo
+            echo "citation-bench \`${CITATION_BENCH_REF:0:12}\`: $(grep -m1 'vectors pass' "$RUNNER_TEMP/bench.log" || echo 'no score line')"
+            regressions=$(grep '^REGRESSION: ' "$RUNNER_TEMP/bench.log" || true)
+            fixed=$(sed -n 's/^newly passing (remove from known failures): //p' "$RUNNER_TEMP/bench.log")
+            if [[ -n "$regressions" ]]; then
+              echo
+              echo "### Regressions"
+              echo
+              sed 's/^REGRESSION: /- /' <<<"$regressions"
+            fi
+            if [[ -n "$fixed" ]]; then
+              echo
+              echo "### Newly passing"
+              echo
+              echo "Remove these from citation-bench's \`baselines/citare.known-failures\`:"
+              echo
+              sed 's/^/- `/; s/$/`/' <<<"$fixed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

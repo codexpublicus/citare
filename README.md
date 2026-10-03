@@ -160,6 +160,25 @@ rustup target add wasm32-unknown-unknown
 cargo build --release --target wasm32-unknown-unknown -p citare-wasm
 ```
 
+## Conformance (citation-bench)
+
+CI's `Parity (citation-bench)` job runs the
+[citation-bench](https://github.com/codexpublicus/citation-bench) conformance vectors
+against the PR's checkout. It fails on any vector that isn't listed in citation-bench's
+`baselines/citare.known-failures`, and the job summary lists listed vectors that now pass,
+so they can come off the list. The same run locally, from a citation-bench checkout:
+
+```bash
+CITARE_PATH=../citare mise run bench:citare
+```
+
+citation-bench is pinned by commit (`CITATION_BENCH_REF` in `.github/workflows/ci.yml`), so
+new vectors or a rebaselined known-failures file reach citare only through a PR here. To
+bump it, run the command above in citation-bench at the new commit, then update
+`CITATION_BENCH_REF` to that commit's full SHA in its own PR. The job checks citation-bench
+out with the `CITATION_BENCH_DEPLOY_KEY` secret that codexpublicus/infra provisions, and
+skips with a notice while that secret is missing.
+
 ## License
 
 [Polyform Shield 1.0.0](LICENSE.md)
