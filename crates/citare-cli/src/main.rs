@@ -37,7 +37,7 @@
 //! `markup` object whose spans index the HTML input itself, and `annotate`
 //! inserts its markers into the HTML.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 
 use citare_core::{CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit, UnbalancedTags};
@@ -138,11 +138,11 @@ struct CitationJson {
     /// The same spans in the HTML input, with `--html` only.
     #[serde(skip_serializing_if = "Option::is_none")]
     markup: Option<SpansJson>,
-    groups: HashMap<String, Option<String>>,
+    groups: BTreeMap<String, Option<String>>,
     year: Option<i32>,
     harvard_slug: Option<String>,
     ambiguous: bool,
-    metadata: HashMap<String, Option<String>>,
+    metadata: BTreeMap<String, Option<String>>,
 }
 
 #[derive(Serialize)]
@@ -199,16 +199,17 @@ fn main() {
             let resolutions = citare_core::resolve_citations(&citations);
             let converter = Converter::new(&document, offsets);
 
-            let mut output: Vec<ResolutionJson> = resolutions
+            // Document order of each resource's full citation, the order
+            // eyecite's insertion-ordered dict returns them in.
+            let mut resolutions: Vec<_> = resolutions.into_iter().collect();
+            resolutions.sort_by_key(|(resource, _)| resource.citation.span());
+            let output: Vec<ResolutionJson> = resolutions
                 .into_iter()
                 .map(|(resource, cites)| ResolutionJson {
                     resource: resource.citation.matched_text().to_string(),
                     citations: cites.iter().map(|c| converter.convert(c)).collect(),
                 })
                 .collect();
-
-            // Deterministic ordering.
-            output.sort_by(|a, b| a.resource.cmp(&b.resource));
             print_json(&output);
         }
 
@@ -406,7 +407,7 @@ fn citation_to_json(
         pin_cite_span_start: spans.pin_cite_span_start,
         pin_cite_span_end: spans.pin_cite_span_end,
         markup: None,
-        groups: citation.common().groups.clone(),
+        groups: citation.common().groups.clone().into_iter().collect(),
         year,
         harvard_slug,
         ambiguous: citation.is_ambiguous(),
@@ -415,8 +416,8 @@ fn citation_to_json(
 }
 
 /// Flatten per-variant metadata structs into a uniform string map.
-fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<String>> {
-    let mut map: HashMap<String, Option<String>> = HashMap::new();
+fn extract_metadata(citation: &citare_core::Citation) -> BTreeMap<String, Option<String>> {
+    let mut map: BTreeMap<String, Option<String>> = BTreeMap::new();
 
     match citation {
         citare_core::Citation::FullCase(d) => {
@@ -499,7 +500,7 @@ fn extract_metadata(citation: &citare_core::Citation) -> HashMap<String, Option<
 }
 
 #[inline]
-fn insert_opt(map: &mut HashMap<String, Option<String>>, key: &str, value: &Option<String>) {
+fn insert_opt(map: &mut BTreeMap<String, Option<String>>, key: &str, value: &Option<String>) {
     map.insert(key.to_string(), value.clone());
 }
 
