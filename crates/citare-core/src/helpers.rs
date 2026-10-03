@@ -16,9 +16,9 @@ use crate::models::citation::{
 use crate::models::document::Document;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{
-    POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX, POST_JOURNAL_CITATION_REGEX,
-    POST_LAW_CITATION_REGEX, POST_SHORT_CITATION_REGEX, PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX,
-    YEAR_REGEX,
+    POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX, POST_ID_SECTION_REGEX,
+    POST_JOURNAL_CITATION_REGEX, POST_LAW_CITATION_REGEX, POST_SHORT_CITATION_REGEX,
+    PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX, YEAR_REGEX,
 };
 
 // ---------------------------------------------------------------------------
@@ -459,6 +459,66 @@ pub fn extract_pin_cite(
     } else {
         (None, None, None)
     }
+}
+
+/// A section pin cite taken by an id. citation; see
+/// [`extract_section_pin_cite`].
+pub struct SectionPinCite {
+    pub pin_cite: Option<String>,
+    pub span_end: usize,
+    pub parenthetical: Option<String>,
+    /// Index in `words` of the `§` token the pin cite took.
+    pub section_index: usize,
+}
+
+/// Extract a section pin cite (`§ 5`, `at §§ 5-7`) from the tokens after
+/// the id. token at `index`.
+///
+/// [`extract_pin_cite`] stops at the `§`, which the tokenizer makes a
+/// section token. This scan lets the pin cite run through that one token
+/// when it comes straight after the id. token (past `at` and spaces), and
+/// stops at the next token after it. eyecite has no equivalent (citare #2).
+pub fn extract_section_pin_cite(words: &Tokens, index: usize) -> Option<SectionPinCite> {
+    /// Words allowed between the id. token and the `§`: ` `, `at`, ` `.
+    const MAX_WORDS_BEFORE_SECTION: usize = 3;
+
+    let from_token_end = match &words[index] {
+        TokenOrStr::Token(t) => t.end(),
+        TokenOrStr::Str(_) => return None,
+    };
+
+    let mut text = String::new();
+    let mut section_index = None;
+    for (i, word) in words.iter().enumerate().skip(index + 1) {
+        match word {
+            TokenOrStr::Str(s) => {
+                if section_index.is_none() && i - index > MAX_WORDS_BEFORE_SECTION {
+                    return None;
+                }
+                text.push_str(s);
+            }
+            TokenOrStr::Token(t @ Token::Section(_)) if section_index.is_none() => {
+                section_index = Some(i);
+                text.push_str(t.data());
+            }
+            TokenOrStr::Token(_) => break,
+        }
+        if let Some(cut) = match_cap(&text, true) {
+            text.truncate(cut);
+            break;
+        }
+    }
+    let section_index = section_index?;
+
+    let pattern = anchored_pattern(&POST_ID_SECTION_REGEX, true)?;
+    let captures = pattern.re.captures(&text).ok()??;
+    let pin_cite_raw = captures.name("pin_cite")?.as_str();
+    Some(SectionPinCite {
+        pin_cite: clean_pin_cite(Some(pin_cite_raw)),
+        span_end: from_token_end + pin_cite_raw.trim_end_matches(&[',', ' '][..]).len(),
+        parenthetical: process_parenthetical(captures.name("parenthetical").map(|m| m.as_str())),
+        section_index,
+    })
 }
 
 // ---------------------------------------------------------------------------

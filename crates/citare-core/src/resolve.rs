@@ -278,9 +278,10 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
     };
     let page: i32 = page_str.parse().unwrap_or(0);
 
-    // Extract the numeric portion of the pin cite (e.g. "at 5" → 5).
+    // Extract the leading page number of the pin cite (e.g. "at 5" → 5).
+    // Anchored like eyecite's `re.match`, so "at ¶ 4" and "§ 5" have none.
     static PIN_NUMBER_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"(?:at )?(\d+)").unwrap());
+        LazyLock::new(|| regex::Regex::new(r"^(?:at )?(\d+)").unwrap());
     let pin: i32 = match PIN_NUMBER_RE.captures(pin_cite) {
         Some(caps) => caps[1].parse().unwrap_or(0),
         // Non-numeric pin cite is assumed invalid.
