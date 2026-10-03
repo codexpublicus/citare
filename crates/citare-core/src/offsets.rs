@@ -40,6 +40,7 @@ use std::str::FromStr;
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::annotate::SpanUpdater;
 use crate::models::Citation;
 
 /// The unit a text offset counts in.
@@ -255,6 +256,21 @@ impl CitationSpans {
             full_span: citation.full_span(),
             pin_cite_span_start,
             pin_cite_span_end,
+        }
+    }
+
+    /// Carry these byte spans onto another text with `updater`, e.g. a
+    /// [`Document`](crate::Document)'s `plain_to_markup`, giving byte spans
+    /// into the markup. Starts map with bisect-right and ends with
+    /// bisect-left, the convention
+    /// [`annotate_citations`](crate::annotate_citations) uses.
+    pub fn update(&self, updater: &SpanUpdater) -> Self {
+        let span = |(s, e): (usize, usize)| (updater.update(s, true), updater.update(e, false));
+        CitationSpans {
+            span: span(self.span),
+            full_span: span(self.full_span),
+            pin_cite_span_start: self.pin_cite_span_start.map(|o| updater.update(o, true)),
+            pin_cite_span_end: self.pin_cite_span_end.map(|o| updater.update(o, false)),
         }
     }
 

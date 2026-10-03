@@ -51,13 +51,24 @@ pub fn get_citations(
     markup_text: &str,
     clean_steps: &[CleanStep],
 ) -> Vec<Citation> {
-    // 1. Create Document
     let mut document = Document::new(plain_text, markup_text, clean_steps);
+    get_citations_from_document(&mut document, remove_ambiguous)
+}
 
-    // 2. Tokenize
+/// Extract citations from a [`Document`] built with [`Document::new`].
+///
+/// [`get_citations`] is this plus `Document::new`. Use it when you need the
+/// document afterwards: its `plain_text` is the cleaned text the citation
+/// spans index, and for markup input `plain_to_markup` maps those spans
+/// onto the markup.
+pub fn get_citations_from_document(
+    document: &mut Document,
+    remove_ambiguous: bool,
+) -> Vec<Citation> {
+    // 1. Tokenize
     document.tokenize(&DEFAULT_TOKENIZER);
 
-    // 3. For each citation token, extract citation
+    // 2. For each citation token, extract citation
     let mut citations: Vec<Citation> = Vec::new();
 
     // We need to collect citation_tokens info before processing since we
@@ -71,10 +82,10 @@ pub fn get_citations(
             // CASE 1: Citation token (reporter, law journal, or law)
             Token::Citation(ct) => {
                 if ct.short {
-                    let citation = extract_shortform_citation(&document, i);
+                    let citation = extract_shortform_citation(document, i);
                     citations.push(citation);
                 } else {
-                    let mut citation = extract_full_citation(&document, i);
+                    let mut citation = extract_full_citation(document, i);
 
                     // Check for parallel citations
                     if !citations.is_empty() {
@@ -87,7 +98,7 @@ pub fn get_citations(
 
                     // Check for reference citations that follow a full
                     // citation, using the plaintiff or defendant
-                    let references = extract_reference_citations(&citation, &document);
+                    let references = extract_reference_citations(&citation, document);
                     citations.extend(references);
 
                     citations.push(citation);
@@ -125,7 +136,7 @@ pub fn get_citations(
         }
     }
 
-    // 4. Filter and sort
+    // 3. Filter and sort
     let mut citations = filter_citations(citations);
 
     if remove_ambiguous {
