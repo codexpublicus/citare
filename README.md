@@ -38,6 +38,8 @@ Part of the [stare.pub](https://stare.pub) project family.
 - CLI, native Rust library, and WASM bindings
 - Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 268/278 on
   the v2 set; 278 tests
+- Deliberate differences from eyecite, each with its evidence from real
+  opinions, tests and an upstream issue: [docs/divergences.md](docs/divergences.md)
 
 **Deferred:**
 - npm package publishing
@@ -189,6 +191,13 @@ so they can come off the list. The same run locally, from a citation-bench check
 
 ```bash
 CITARE_PATH=../citare mise run bench:citare
+```
+
+Where citare differs from eyecite on purpose ([docs/divergences.md](docs/divergences.md)),
+the expected output is citare's, in citation-bench's separate `vectors/divergences/` set:
+
+```bash
+CITARE_PATH=../citare mise run bench:divergences citare
 ```
 
 citation-bench is pinned by commit (`CITATION_BENCH_REF` in `.github/workflows/ci.yml`), so
