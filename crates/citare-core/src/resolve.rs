@@ -249,6 +249,14 @@ fn filter_by_matching_antecedent(
     }
 }
 
+/// Whether a pin cite names a section: `§ 5`, `§§ 5-7`, `at § 12(b)`.
+fn is_section_pin(pin_cite: &str) -> bool {
+    pin_cite
+        .strip_prefix("at ")
+        .unwrap_or(pin_cite)
+        .starts_with('§')
+}
+
 /// Return `true` when `id_data`'s pin cite is implausible for `full_cite`.
 fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool {
     // A full case citation without a page can never produce a valid id. cite.
@@ -270,6 +278,14 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
         None => return false,
     };
 
+    // A section pin cite only rules out a case. Statutes at Large, session laws
+    // and other paged law citations are divided into sections, so `Id. § 4(b)`
+    // after `83 Stat. 841` is a pin cite into it, not a page to range-check.
+    // (eyecite never sees these pin cites: its `§` is a separate token.)
+    if !matches!(full_cite, Citation::FullCase(_)) && is_section_pin(pin_cite) {
+        return false;
+    }
+
     // If the full citation's page is not purely numeric, we can't range-check.
     let page_str = match full_cite
         .common()
@@ -282,9 +298,10 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
     };
     let page: i32 = page_str.parse().unwrap_or(0);
 
-    // Extract the numeric portion of the pin cite (e.g. "at 5" → 5).
+    // Extract the leading page number of the pin cite (e.g. "at 5" → 5).
+    // Anchored like eyecite's `re.match`, so "at ¶ 4" and "§ 5" have none.
     static PIN_NUMBER_RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"(?:at )?(\d+)").unwrap());
+        LazyLock::new(|| regex::Regex::new(r"^(?:at )?(\d+)").unwrap());
     let pin: i32 = match PIN_NUMBER_RE.captures(pin_cite) {
         Some(caps) => caps[1].parse().unwrap_or(0),
         // Non-numeric pin cite is assumed invalid.

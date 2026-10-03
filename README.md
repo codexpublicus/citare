@@ -38,6 +38,8 @@ Part of the [stare.pub](https://stare.pub) project family.
 - CLI, native Rust library, and WASM bindings
 - Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 269/278 on
   the v2 set; 278 tests
+- Deliberate differences from eyecite, each with its evidence from real
+  opinions, tests and an upstream issue: [docs/divergences.md](docs/divergences.md)
 
 **Deferred:**
 - npm package publishing
@@ -197,6 +199,13 @@ To bump it, run the command above in citation-bench at the new commit, then put 
 commit's full SHA in the file in its own PR. The job checks citation-bench out with the
 `CITATION_BENCH_DEPLOY_KEY` secret that codexpublicus/infra provisions, and skips with a
 notice while that secret is missing.
+
+Where citare differs from eyecite on purpose ([docs/divergences.md](docs/divergences.md)),
+the expected output is citare's, in citation-bench's separate `vectors/divergences/` set:
+
+```bash
+CITARE_PATH=../citare mise run bench:divergences citare
+```
 
 ### Benchmark reports
 

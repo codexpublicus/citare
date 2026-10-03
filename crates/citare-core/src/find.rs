@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use crate::clean::CleanStep;
 use crate::helpers::{
     add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation,
-    disambiguate_reporters, extract_pin_cite, filter_citations, find_case_name,
-    find_case_name_in_html, find_case_name_in_html_short, find_case_name_short, guess_court,
-    guess_edition,
+    disambiguate_reporters, extract_pin_cite, extract_section_pin_cite, filter_citations,
+    find_case_name, find_case_name_in_html, find_case_name_in_html_short, find_case_name_short,
+    guess_court, guess_edition,
 };
 use crate::models::citation::{
     normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
@@ -76,6 +76,10 @@ pub fn get_citations_from_document(
     // is derived from that same data.
     let citation_token_info: Vec<(usize, Token)> = document.citation_tokens.clone();
 
+    // Section tokens taken as an id. citation's pin cite, which must not
+    // also become unknown citations.
+    let mut section_pins: Vec<usize> = Vec::new();
+
     for (i, token) in &citation_token_info {
         let i = *i;
         match token {
@@ -107,7 +111,8 @@ pub fn get_citations_from_document(
 
             // CASE 2: Id/Ibid citation
             Token::Id(_) => {
-                let citation = extract_id_citation(&document.words, i);
+                let (citation, section_index) = extract_id_citation(&document.words, i);
+                section_pins.extend(section_index);
                 citations.push(citation);
             }
 
@@ -117,7 +122,9 @@ pub fn get_citations_from_document(
                 citations.push(citation);
             }
 
-            // CASE 4: Section marker -> Unknown citation
+            // CASE 4: Section marker -> Unknown citation, unless an id.
+            // citation took it as its pin cite
+            Token::Section(_) if section_pins.contains(&i) => continue,
             Token::Section(_) => {
                 let common = CitationCommon {
                     token: token.clone(),
@@ -451,13 +458,24 @@ fn extract_supra_citation(words: &Tokens, index: usize) -> Citation {
 // Extract id citation
 // ---------------------------------------------------------------------------
 
-fn extract_id_citation(words: &Tokens, index: usize) -> Citation {
+/// Extract an id. citation, and the index of the `§` token its pin cite
+/// took, if it took one.
+fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Option<usize>) {
     let token = match &words[index] {
         TokenOrStr::Token(t) => t.clone(),
         _ => unreachable!("Expected token at id index"),
     };
 
-    let (pin_cite, span_end, parenthetical) = extract_pin_cite(words, index, "");
+    let (mut pin_cite, mut span_end, mut parenthetical) = extract_pin_cite(words, index, "");
+    let mut section_index = None;
+    if pin_cite.is_none() {
+        if let Some(section) = extract_section_pin_cite(words, index) {
+            pin_cite = section.pin_cite;
+            span_end = Some(section.span_end);
+            parenthetical = section.parenthetical;
+            section_index = Some(section.section_index);
+        }
+    }
 
     let common = CitationCommon {
         token: token.clone(),
@@ -469,14 +487,15 @@ fn extract_id_citation(words: &Tokens, index: usize) -> Citation {
         groups: token.groups().clone(),
     };
 
-    Citation::Id(IdCitationData {
+    let citation = Citation::Id(IdCitationData {
         common,
         metadata: IdMetadata {
             pin_cite,
             parenthetical,
             ..Default::default()
         },
-    })
+    });
+    (citation, section_index)
 }
 
 // ---------------------------------------------------------------------------

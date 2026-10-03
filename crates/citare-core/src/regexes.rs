@@ -349,6 +349,36 @@ pub static POST_SHORT_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// A section number with its subsections, optionally running to another
+/// section or subsection: `1983`, `394-ccc(2)-(3)`, `1983-1985`, `12(b)`.
+static SECTION_PIN_ITEM: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r"\d[0-9A-Za-z]*(?:[-.:\u{{2013}}][0-9A-Za-z]+)*{sub}*(?:[-\u{{2013}}]{sub}+)?",
+        sub = LAW_SUBSECTION,
+    )
+});
+
+/// Section pin cite after an id. citation (`Id. § 5`, `Id. at §§ 5-7`).
+///
+/// Not in eyecite, whose pin cite scan stops at the `§` token (citare #2).
+/// Named groups: `pin_cite`, `parenthetical`.
+pub static POST_ID_SECTION_REGEX: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        concat!(
+            r"(?P<pin_cite>",
+            r",? ?(?:at )?\u{{00A7}}{{1,2}} ?{item}",
+            r"(?:(?:, ?|,? and |,? & )(?:{item}|{sub}+))*",
+            r"(?: et seq\.)?",
+            r"(?=[,.;:)\]\\]| ?[(\[]|\s|$)",
+            r")",
+            r" ?{paren}",
+        ),
+        item = *SECTION_PIN_ITEM,
+        sub = LAW_SUBSECTION,
+        paren = PARENTHETICAL_REGEX,
+    )
+});
+
 /// Post-law-citation regex (law pin cite + optional publisher/date/parenthetical).
 pub static POST_LAW_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
