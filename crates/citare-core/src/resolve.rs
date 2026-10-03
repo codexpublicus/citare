@@ -245,6 +245,14 @@ fn filter_by_matching_antecedent(
     }
 }
 
+/// Whether a pin cite names a section: `§ 5`, `§§ 5-7`, `at § 12(b)`.
+fn is_section_pin(pin_cite: &str) -> bool {
+    pin_cite
+        .strip_prefix("at ")
+        .unwrap_or(pin_cite)
+        .starts_with('§')
+}
+
 /// Return `true` when `id_data`'s pin cite is implausible for `full_cite`.
 fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool {
     // A full case citation without a page can never produce a valid id. cite.
@@ -265,6 +273,14 @@ fn has_invalid_pin_cite(full_cite: &Citation, id_data: &IdCitationData) -> bool 
         Some(p) => p,
         None => return false,
     };
+
+    // A section pin cite only rules out a case. Statutes at Large, session laws
+    // and other paged law citations are divided into sections, so `Id. § 4(b)`
+    // after `83 Stat. 841` is a pin cite into it, not a page to range-check.
+    // (eyecite never sees these pin cites: its `§` is a separate token.)
+    if !matches!(full_cite, Citation::FullCase(_)) && is_section_pin(pin_cite) {
+        return false;
+    }
 
     // If the full citation's page is not purely numeric, we can't range-check.
     let page_str = match full_cite

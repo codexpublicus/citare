@@ -136,6 +136,41 @@ fn section_pin_after_statute(#[case] text: &str, #[case] id_text: &str, #[case] 
     check(text, id_text, pin, None, true);
 }
 
+/// Statutes at Large and session laws have a page, but a section pin cite
+/// into them is still valid: the page range check is for case reporters.
+/// Corpus examples: `Pub.L.No.91-184, § 3(2), 83 Stat. 841 ... id. § 4(b)`
+/// and `1980 Haw. Sess. Laws 366 ... Id. § 1, at 367`.
+#[rstest]
+#[case("See 83 Stat. 841. Id. § 4(b).", "Id. § 4(b)", "§ 4(b)")]
+#[case("See 83 Stat. 841. Id. at § 3.", "Id. at § 3", "at § 3")]
+#[case("1980 Haw. Sess. Laws 366. Id. § 1.", "Id. § 1", "§ 1")]
+fn section_pin_after_paged_law(#[case] text: &str, #[case] id_text: &str, #[case] pin: &str) {
+    check(text, id_text, pin, None, true);
+}
+
+/// A paragraph pin cite after a paged law citation keeps eyecite's rule: it
+/// doesn't start with a page number, so the id. citation is unresolved.
+#[test]
+fn paragraph_pin_after_paged_law_is_unresolved() {
+    check("See 83 Stat. 841. Id. ¶ 4.", "Id. ¶ 4", "¶ 4", None, false);
+}
+
+/// Each id. citation resolves to the one before it, so a section pin cite
+/// that resolves keeps the chain going. In eyecite the `§` becomes an
+/// unknown citation between the two, which resets the chain: the second
+/// `Id.` there is unresolved.
+#[test]
+fn id_chain_continues_past_a_section_pin() {
+    let text = "See 42 U.S.C. § 1983. Id. § 1988. Id. at § 1983(b).";
+    let citations = get_citations(text, false, "", &[]);
+    assert_eq!(citations.len(), 3, "citations in {text:?}");
+    assert!(citations[1..].iter().all(|c| matches!(c, Citation::Id(_))));
+    assert_eq!(
+        resolution_groups(&citations),
+        vec![Some(0), Some(0), Some(0)]
+    );
+}
+
 #[test]
 fn section_pin_with_parenthetical() {
     check(
