@@ -209,3 +209,62 @@ fn test_annotate_blank_page() {
     );
     assert_eq!(annotated, "foo <0>1 U.S. ____</0> bar");
 }
+
+/// The CAP slug for the first full case citation in `text`, picked the way
+/// the CLI and WASM bindings pick it.
+fn harvard_slug_of(text: &str) -> Option<String> {
+    let citations = get_citations(text, false, "", &[]);
+    let rc = citations
+        .iter()
+        .find(|c| matches!(c, citare_core::Citation::FullCase(_)))
+        .unwrap_or_else(|| panic!("no full case citation in {text:?}"))
+        .resource_common()?;
+    rc.edition_guess
+        .as_ref()
+        .and_then(|e| e.harvard_slug.clone())
+        .or_else(|| rc.all_editions.first().and_then(|e| e.harvard_slug.clone()))
+}
+
+// Every spelling of a reporter that has a CAP slug gets that slug (#29):
+// spaced forms, reporters-db variations, and editions whose CAP short_name
+// is a reporters-db variation rather than the edition name (CAP's "So.2d",
+// "N.Y. 2d", "Misc.2d" against reporters-db's "So. 2d", "N.Y.2d", "Misc. 2d").
+#[rstest::rstest]
+#[case("1 U. S. 1", "us")]
+#[case("1 U.S. 1", "us")]
+#[case("1 US 1", "us")]
+#[case("1 F. 2d 1", "f2d")]
+#[case("1 F 2d 1", "f2d")]
+#[case("1 S. Ct. 1", "s-ct")]
+#[case("1 S.Ct. 1", "s-ct")]
+#[case("1 Sup.Ct. 1", "s-ct")]
+#[case("12 N. Y. S. 34", "nys")]
+#[case("1 So. 2d 1", "so2d")]
+#[case("1 So.2d 1", "so2d")]
+#[case("1 So. 3d 1", "so3d")]
+#[case("1 N.Y.2d 1", "ny-2d")]
+#[case("1 N. Y. 2d 1", "ny-2d")]
+#[case("1 NY2d 1", "ny-2d")]
+#[case("1 Misc. 2d 1", "misc2d")]
+#[case("1 Misc.2d 1", "misc2d")]
+#[case("1 Misc 3d 1", "misc3d")]
+fn test_harvard_slug_for_every_spelling(#[case] text: &str, #[case] slug: &str) {
+    assert_eq!(harvard_slug_of(text).as_deref(), Some(slug), "{text}");
+}
+
+// CAP has no N.Y.S.2d volumes (static.case.law/nys2d does not exist), so no
+// spelling of it may claim a slug; a guessed "nys2d" would be a dead link.
+#[rstest::rstest]
+#[case("12 N.Y.S.2d 34")]
+#[case("12 N. Y. S. 2d 34")]
+#[case("12 NYS2d 34")]
+fn test_harvard_slug_none_for_nys2d(#[case] text: &str) {
+    assert_eq!(harvard_slug_of(text), None, "{text}");
+}
+
+// CAP's "P.R." (Puerto Rico Reports) is a reporters-db variation of several
+// editions, Pacific Reporter among them, so it must not leak onto any of them.
+#[test]
+fn test_harvard_slug_ambiguous_variation_not_assigned() {
+    assert_ne!(harvard_slug_of("1 P. 1").as_deref(), Some("pr"));
+}
