@@ -28,7 +28,7 @@ no citare version for that reason.
 Rust, with `citare-core` built with `default-features = false`:
 
 ```rust
-let bytes = std::fs::read("citare-data-3415ed94af721530.bin")?;
+let bytes = std::fs::read("citare-data-593428ed852cc00d.bin")?;
 citare_core::data::load(&bytes)?;          // once, before get_citations
 let citations = citare_core::get_citations(text, false, "", &[]);
 ```
