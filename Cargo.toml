@@ -16,8 +16,12 @@ repository = "https://github.com/codexpublicus/citare"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-regex = "1"
-fancy-regex = "0.14"
+# Only the Unicode tables the patterns use: \w, \d, \s and \b
+# (unicode-perl) and (?i) (unicode-case). No pattern uses \p{..} classes,
+# and the other tables (scripts, general categories, ages, segmentation)
+# add about 230 KB to a WASM build (codexpublicus/stare#73).
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
+fancy-regex = { version = "0.14", default-features = false, features = ["std", "perf"] }
 aho-corasick = "1"
 
 # Tests compile thousands of reporter regexes; an unoptimized regex
