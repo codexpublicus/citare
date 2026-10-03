@@ -41,6 +41,11 @@ pub mod utils;
 /// See [`find::get_citations`] for full documentation.
 pub use find::get_citations;
 
+/// Find citations in a prepared [`Document`], keeping the document.
+///
+/// See [`find::get_citations_from_document`] for full documentation.
+pub use find::get_citations_from_document;
+
 /// Resolve a slice of citations to their resources.
 ///
 /// See [`resolve::resolve_citations`] for full documentation.

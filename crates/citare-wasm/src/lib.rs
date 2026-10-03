@@ -1,7 +1,28 @@
 //! WASM bindings for citare-core.
 //!
-//! Exposes `getCitations`, `resolveCitations`, and `annotateCitations` to
-//! JavaScript via wasm-bindgen.
+//! Exposes `getCitations`, `resolveCitations`, `annotateCitations` and
+//! `cleanText` to JavaScript via wasm-bindgen.
+//!
+//! # Input options
+//!
+//! `getCitations(text, removeAmbiguous, options?)` and
+//! `resolveCitations(text, removeAmbiguous, options?)` take an optional
+//! options object:
+//!
+//! ```js
+//! { format: "plain" | "html", cleanSteps: ["html", "all_whitespace", ...] }
+//! ```
+//!
+//! - `format` (default `"plain"`): `"html"` means `text` is HTML or XML
+//!   markup. citare strips it to plain text, finds citations there, and uses
+//!   the markup's `<i>`/`<em>` tags to find case names and reference
+//!   citations, as eyecite does with `markup_text`.
+//! - `cleanSteps` (default `[]`): cleaning steps applied before citations
+//!   are found, by name: `html`, `inline_whitespace`, `all_whitespace`,
+//!   `underscores`, `xml`. With `format: "html"`, `html` is put first if it
+//!   is missing. An unknown name or format throws.
+//!
+//! Omitting `options` behaves as before: plain text, no cleaning.
 //!
 //! # Offsets
 //!
@@ -20,10 +41,26 @@
 //! `utf16` and `chars` are objects `{ span, full_span, pin_cite_span_start,
 //! pin_cite_span_end }` and are `undefined` only if a span does not fall on
 //! a character boundary, which would be a citare bug.
+//!
+//! All of these index the *cleaned* text, which is the input itself unless
+//! `cleanSteps` or `format: "html"` changed it. `cleanText(text, steps)`
+//! returns that text; for HTML input it is `cleanText(markup, ["html",
+//! ...cleanSteps])` (without the extra `"html"` if `cleanSteps` already
+//! starts with it).
+//!
+//! For `format: "html"` every citation also has a `markup` object of the
+//! same shape (`span`, `full_span`, `pin_cite_span_*` in bytes, plus `utf16`
+//! and `chars`) whose spans index the markup string itself, so
+//! `markup.slice(...c.markup.utf16.span)` is the citation inside the HTML.
+//! These come from the diff between the markup and its cleaned text that
+//! citare also uses to find case names in `<i>`/`<em>` tags. A markup span
+//! can start or end next to a tag it only half covers: a case name set in
+//! `<i>` gives a `full_span` that runs from inside the `<i>` past its `</i>`,
+//! and a reference citation can begin at the opening `<i>`.
 
 use std::collections::HashMap;
 
-use citare_core::{CitationSpans, OffsetMap, OffsetUnit};
+use citare_core::{CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -48,11 +85,38 @@ pub struct JsCitation {
     pub utf16: Option<CitationSpans>,
     /// All spans in Unicode code points (eyecite / Python indexes).
     pub chars: Option<CitationSpans>,
+    /// The spans mapped onto the markup, for `format: "html"` input only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markup: Option<JsSpans>,
     pub groups: HashMap<String, Option<String>>,
     pub year: Option<i32>,
     pub harvard_slug: Option<String>,
     pub ambiguous: bool,
     pub metadata: HashMap<String, Option<String>>,
+}
+
+/// One set of citation spans in UTF-8 bytes, UTF-16 units and code points.
+#[derive(Serialize)]
+pub struct JsSpans {
+    pub span: (usize, usize),
+    pub full_span: (usize, usize),
+    pub pin_cite_span_start: Option<usize>,
+    pub pin_cite_span_end: Option<usize>,
+    pub utf16: Option<CitationSpans>,
+    pub chars: Option<CitationSpans>,
+}
+
+impl JsSpans {
+    fn new(bytes: CitationSpans, map: &OffsetMap<'_>) -> Self {
+        JsSpans {
+            span: bytes.span,
+            full_span: bytes.full_span,
+            pin_cite_span_start: bytes.pin_cite_span_start,
+            pin_cite_span_end: bytes.pin_cite_span_end,
+            utf16: bytes.convert(map, OffsetUnit::Utf16).ok(),
+            chars: bytes.convert(map, OffsetUnit::Chars).ok(),
+        }
+    }
 }
 
 /// A resolution group: one resource and all citations that point to it.
@@ -70,6 +134,45 @@ pub struct JsAnnotation {
     pub after: String,
 }
 
+/// What the input text is.
+#[derive(Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InputFormat {
+    /// Plain text.
+    #[default]
+    Plain,
+    /// HTML or XML markup.
+    Html,
+}
+
+/// The `options` argument of `getCitations` and `resolveCitations`.
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FindOptions {
+    #[serde(default)]
+    pub format: InputFormat,
+    #[serde(default)]
+    pub clean_steps: Vec<String>,
+}
+
+#[wasm_bindgen(typescript_custom_section)]
+const FIND_OPTIONS_TS: &str = r#"
+/** Options for `getCitations` and `resolveCitations`. */
+export interface FindOptions {
+    /** `"html"` when the text is HTML or XML markup. Default `"plain"`. */
+    format?: "plain" | "html";
+    /** Clean steps applied before citations are found, in order. */
+    cleanSteps?: Array<"html" | "inline_whitespace" | "all_whitespace" | "underscores" | "xml">;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    /// The JS `FindOptions` object, read with serde.
+    #[wasm_bindgen(typescript_type = "FindOptions")]
+    pub type FindOptionsJs;
+}
+
 // ---------------------------------------------------------------------------
 // Exported functions
 // ---------------------------------------------------------------------------
@@ -78,36 +181,43 @@ pub struct JsAnnotation {
 ///
 /// `remove_ambiguous` — when `true`, drop citations that could not be
 /// unambiguously matched to a reporter edition.
+///
+/// `options` — optional `{ format: "plain" | "html", cleanSteps: [...] }`;
+/// see the module docs. Throws on an unknown format or clean step.
 #[wasm_bindgen(js_name = "getCitations")]
-pub fn get_citations(text: &str, remove_ambiguous: bool) -> JsValue {
-    let citations = citare_core::get_citations(text, remove_ambiguous, "", &[]);
-    let map = OffsetMap::new(text);
-    let js_citations: Vec<JsCitation> = citations.iter().map(|c| citation_to_js(c, &map)).collect();
-    serde_wasm_bindgen::to_value(&js_citations).unwrap_or(JsValue::NULL)
+pub fn get_citations(
+    text: &str,
+    remove_ambiguous: bool,
+    options: Option<FindOptionsJs>,
+) -> Result<JsValue, JsError> {
+    let options = parse_options(options)?;
+    let js_citations = find(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&js_citations).unwrap_or(JsValue::NULL))
 }
 
 /// Find and resolve citations in `text` in one call.
 ///
 /// Returns an array of `{ resource_text, citations }` objects, one per
-/// distinct resource.
+/// distinct resource. `options` is as for `getCitations`.
 #[wasm_bindgen(js_name = "resolveCitations")]
-pub fn resolve_citations(text: &str, remove_ambiguous: bool) -> JsValue {
-    let citations = citare_core::get_citations(text, remove_ambiguous, "", &[]);
-    let resolutions = citare_core::resolve_citations(&citations);
-    let map = OffsetMap::new(text);
+pub fn resolve_citations(
+    text: &str,
+    remove_ambiguous: bool,
+    options: Option<FindOptionsJs>,
+) -> Result<JsValue, JsError> {
+    let options = parse_options(options)?;
+    let js_resolutions = resolve(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
+    Ok(serde_wasm_bindgen::to_value(&js_resolutions).unwrap_or(JsValue::NULL))
+}
 
-    let mut js_resolutions: Vec<JsResolution> = resolutions
-        .into_iter()
-        .map(|(resource, cites)| JsResolution {
-            resource_text: resource.citation.matched_text().to_string(),
-            citations: cites.iter().map(|c| citation_to_js(c, &map)).collect(),
-        })
-        .collect();
-
-    // Sort for deterministic output.
-    js_resolutions.sort_by(|a, b| a.resource_text.cmp(&b.resource_text));
-
-    serde_wasm_bindgen::to_value(&js_resolutions).unwrap_or(JsValue::NULL)
+/// Apply cleaning steps to `text` and return the result.
+///
+/// `steps` is an array of step names: `html`, `inline_whitespace`,
+/// `all_whitespace`, `underscores`, `xml`, applied in order. Throws on an
+/// unknown name.
+#[wasm_bindgen(js_name = "cleanText")]
+pub fn clean_text(text: &str, steps: Vec<String>) -> Result<String, JsError> {
+    clean(text, &steps).map_err(|e| JsError::new(&e))
 }
 
 /// Insert annotation markers around citation spans in `plain_text`.
@@ -145,6 +255,121 @@ pub fn annotate_citations(plain_text: &str, annotations_js: JsValue) -> JsValue 
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline (plain Rust, so native tests can drive it)
+// ---------------------------------------------------------------------------
+
+/// Read the optional `options` argument.
+fn parse_options(options: Option<FindOptionsJs>) -> Result<FindOptions, JsError> {
+    let Some(options) = options.map(JsValue::from).filter(|o| !o.is_null()) else {
+        return Ok(FindOptions::default());
+    };
+    serde_wasm_bindgen::from_value(options)
+        .map_err(|e| JsError::new(&format!("invalid options: {e}")))
+}
+
+/// Look up clean steps by name.
+fn parse_steps(names: &[String]) -> Result<Vec<CleanStep>, String> {
+    names
+        .iter()
+        .map(|name| {
+            CleanStep::from_name(name).ok_or_else(|| {
+                format!(
+                    "unknown clean step {name:?} (expected html, inline_whitespace, \
+                     all_whitespace, underscores or xml)"
+                )
+            })
+        })
+        .collect()
+}
+
+/// Apply named clean steps to `text`.
+fn clean(text: &str, steps: &[String]) -> Result<String, String> {
+    let steps = parse_steps(steps)?;
+    citare_core::clean_text(text, &steps).map_err(|e| e.to_string())
+}
+
+/// Build the document `options` describe and find its citations.
+fn prepare(
+    text: &str,
+    remove_ambiguous: bool,
+    options: &FindOptions,
+) -> Result<(Document, Vec<citare_core::Citation>), String> {
+    let mut steps = parse_steps(&options.clean_steps)?;
+    let mut document = match options.format {
+        InputFormat::Plain => Document::new(text, "", &steps),
+        InputFormat::Html => {
+            if !steps.iter().any(|s| matches!(s, CleanStep::Html)) {
+                steps.insert(0, CleanStep::Html);
+            }
+            Document::new("", text, &steps)
+        }
+    };
+    let citations = citare_core::get_citations_from_document(&mut document, remove_ambiguous);
+    Ok((document, citations))
+}
+
+/// Converts citations from one document to their JS form.
+struct Converter<'a> {
+    plain: OffsetMap<'a>,
+    /// The markup's offset map and the plain -> markup span map.
+    markup: Option<(OffsetMap<'a>, &'a citare_core::SpanUpdater)>,
+}
+
+impl<'a> Converter<'a> {
+    fn new(document: &'a Document) -> Self {
+        let markup = match (&document.markup_text, &document.plain_to_markup) {
+            (Some(text), Some(updater)) => Some((OffsetMap::new(text), updater)),
+            _ => None,
+        };
+        Converter {
+            plain: OffsetMap::new(&document.plain_text),
+            markup,
+        }
+    }
+
+    fn convert(&self, citation: &citare_core::Citation) -> JsCitation {
+        let mut js = citation_to_js(citation, &self.plain);
+        if let Some((map, updater)) = &self.markup {
+            let bytes = CitationSpans::from_citation(citation).update(updater);
+            js.markup = Some(JsSpans::new(bytes, map));
+        }
+        js
+    }
+}
+
+fn find(
+    text: &str,
+    remove_ambiguous: bool,
+    options: &FindOptions,
+) -> Result<Vec<JsCitation>, String> {
+    let (document, citations) = prepare(text, remove_ambiguous, options)?;
+    let converter = Converter::new(&document);
+    Ok(citations.iter().map(|c| converter.convert(c)).collect())
+}
+
+fn resolve(
+    text: &str,
+    remove_ambiguous: bool,
+    options: &FindOptions,
+) -> Result<Vec<JsResolution>, String> {
+    let (document, citations) = prepare(text, remove_ambiguous, options)?;
+    let resolutions = citare_core::resolve_citations(&citations);
+    let converter = Converter::new(&document);
+
+    let mut js_resolutions: Vec<JsResolution> = resolutions
+        .into_iter()
+        .map(|(resource, cites)| JsResolution {
+            resource_text: resource.citation.matched_text().to_string(),
+            citations: cites.iter().map(|c| converter.convert(c)).collect(),
+        })
+        .collect();
+
+    // Sort for deterministic output.
+    js_resolutions.sort_by(|a, b| a.resource_text.cmp(&b.resource_text));
+    Ok(js_resolutions)
+}
+
+// ---------------------------------------------------------------------------
 // Internal conversion helpers
 // ---------------------------------------------------------------------------
 
@@ -178,6 +403,7 @@ fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCi
         pin_cite_span_end: bytes.pin_cite_span_end,
         utf16,
         chars,
+        markup: None,
         groups: citation.common().groups.clone(),
         year,
         harvard_slug,
@@ -280,6 +506,178 @@ fn insert_opt(map: &mut HashMap<String, Option<String>>, key: &str, value: &Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const HTML: &str = "<p>“Quoted” 🎉 In <i>Café v. Bär</i>, 410 U.S. 113, 115 \
+        (1973), the court held. Later, in <i>Bär</i>, the point was settled. \
+        <i>Id.</i> at 116.</p>";
+
+    fn html_options() -> FindOptions {
+        FindOptions {
+            format: InputFormat::Html,
+            clean_steps: vec![],
+        }
+    }
+
+    /// `text` with tags and all whitespace removed, for comparing a markup
+    /// slice against the plain text it became.
+    fn bare(text: &str) -> String {
+        let mut out = String::new();
+        let mut in_tag = false;
+        for ch in text.chars() {
+            match ch {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                c if !in_tag && !c.is_whitespace() => out.push(c),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn utf16_slice(units: &[u16], (s, e): (usize, usize)) -> String {
+        String::from_utf16(&units[s..e]).unwrap()
+    }
+
+    fn char_slice(chars: &[char], (s, e): (usize, usize)) -> String {
+        chars[s..e].iter().collect()
+    }
+
+    #[test]
+    fn options_parse_and_reject_unknowns() {
+        let o: FindOptions =
+            serde_json::from_str(r#"{"format":"html","cleanSteps":["all_whitespace"]}"#).unwrap();
+        assert_eq!(o.format, InputFormat::Html);
+        assert_eq!(o.clean_steps, ["all_whitespace"]);
+        let o: FindOptions = serde_json::from_str("{}").unwrap();
+        assert_eq!(o.format, InputFormat::Plain);
+        assert!(serde_json::from_str::<FindOptions>(r#"{"format":"pdf"}"#).is_err());
+        assert!(serde_json::from_str::<FindOptions>(r#"{"clean_steps":[]}"#).is_err());
+
+        let bad = FindOptions {
+            format: InputFormat::Plain,
+            clean_steps: vec!["html".into(), "bogus".into()],
+        };
+        let err = find("1 U.S. 1", false, &bad).err().unwrap();
+        assert!(err.contains("\"bogus\""), "{err}");
+        assert!(clean("x", &["bogus".into()]).is_err());
+    }
+
+    #[test]
+    fn html_input_finds_emphasis_case_names_and_references() {
+        let citations = find(HTML, false, &html_options()).unwrap();
+        let types: Vec<&str> = citations.iter().map(|c| c.citation_type.as_str()).collect();
+        assert_eq!(
+            types,
+            ["FullCaseCitation", "ReferenceCitation", "IdCitation"]
+        );
+        let case = &citations[0];
+        assert_eq!(case.metadata["plaintiff"].as_deref(), Some("Café"));
+        assert_eq!(case.metadata["defendant"].as_deref(), Some("Bär"));
+        assert_eq!(citations[1].matched_text.trim(), "Bär");
+
+        // Plain input loses the reference: it needs the <i> tags.
+        let plain = clean(HTML, &["html".into()]).unwrap();
+        let plain_types: Vec<String> = find(&plain, false, &FindOptions::default())
+            .unwrap()
+            .into_iter()
+            .map(|c| c.citation_type)
+            .collect();
+        assert!(!plain_types.iter().any(|t| t == "ReferenceCitation"));
+    }
+
+    #[test]
+    fn html_spans_round_trip_into_cleaned_text_and_markup() {
+        let options = html_options();
+        let citations = find(HTML, false, &options).unwrap();
+        let (document, _) = prepare(HTML, false, &options).unwrap();
+        let plain = clean(HTML, &["html".into()]).unwrap();
+        // cleanText reproduces the text the spans index.
+        assert_eq!(plain, document.plain_text);
+
+        let p16: Vec<u16> = plain.encode_utf16().collect();
+        let pch: Vec<char> = plain.chars().collect();
+        let m16: Vec<u16> = HTML.encode_utf16().collect();
+        let mch: Vec<char> = HTML.chars().collect();
+
+        for c in &citations {
+            for (bytes, utf16, chars) in [
+                (c.span, c.utf16.unwrap().span, c.chars.unwrap().span),
+                (
+                    c.full_span,
+                    c.utf16.unwrap().full_span,
+                    c.chars.unwrap().full_span,
+                ),
+            ] {
+                let expected = &plain[bytes.0..bytes.1];
+                assert_eq!(utf16_slice(&p16, utf16), expected);
+                assert_eq!(char_slice(&pch, chars), expected);
+            }
+            assert!(plain[c.span.0..c.span.1].starts_with(&c.matched_text));
+
+            let m = c.markup.as_ref().expect("markup spans for html input");
+            let (mu, mc) = (m.utf16.unwrap(), m.chars.unwrap());
+            for (bytes, utf16, chars, plain_bytes) in [
+                (m.span, mu.span, mc.span, c.span),
+                (m.full_span, mu.full_span, mc.full_span, c.full_span),
+            ] {
+                let in_markup = &HTML[bytes.0..bytes.1];
+                assert_eq!(utf16_slice(&m16, utf16), in_markup);
+                assert_eq!(char_slice(&mch, chars), in_markup);
+                assert_eq!(
+                    bare(in_markup),
+                    bare(&plain[plain_bytes.0..plain_bytes.1]),
+                    "{in_markup:?}"
+                );
+            }
+        }
+
+        let case = &citations[0];
+        let m = case.markup.as_ref().unwrap();
+        assert_eq!(&HTML[m.span.0..m.span.1], "410 U.S. 113");
+        let pin = (m.span.1, m.pin_cite_span_end.unwrap());
+        assert_eq!(&HTML[pin.0..pin.1], ", 115");
+        // Non-ASCII precedes the citation, so every unit differs.
+        assert!(m.chars.unwrap().span.0 < m.utf16.unwrap().span.0);
+        assert!(m.utf16.unwrap().span.0 < m.span.0);
+    }
+
+    #[test]
+    fn clean_steps_apply_to_plain_text() {
+        let text = "Café  v.\tBär,\n\n410 U.S.\u{200b}113 (1973)";
+        let options = FindOptions {
+            format: InputFormat::Plain,
+            clean_steps: vec!["all_whitespace".into()],
+        };
+        let cleaned = clean(text, &options.clean_steps).unwrap();
+        assert_eq!(cleaned, "Café v. Bär, 410 U.S. 113 (1973)");
+        let citations = find(text, false, &options).unwrap();
+        assert_eq!(citations.len(), 1);
+        let c = &citations[0];
+        assert!(c.markup.is_none());
+        assert_eq!(&cleaned[c.span.0..c.span.1], "410 U.S. 113");
+        let units: Vec<u16> = cleaned.encode_utf16().collect();
+        assert_eq!(utf16_slice(&units, c.utf16.unwrap().span), "410 U.S. 113");
+        assert_eq!(
+            &cleaned[c.full_span.0..c.full_span.1],
+            "Café v. Bär, 410 U.S. 113 (1973)"
+        );
+    }
+
+    #[test]
+    fn resolve_accepts_html() {
+        let groups = resolve(HTML, false, &html_options()).unwrap();
+        assert_eq!(groups.len(), 1);
+        let types: Vec<&str> = groups[0]
+            .citations
+            .iter()
+            .map(|c| c.citation_type.as_str())
+            .collect();
+        assert_eq!(
+            types,
+            ["FullCaseCitation", "ReferenceCitation", "IdCitation"]
+        );
+        assert!(groups[0].citations.iter().all(|c| c.markup.is_some()));
+    }
 
     #[test]
     fn js_citation_offsets_index_non_ascii_text() {

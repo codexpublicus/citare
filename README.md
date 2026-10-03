@@ -30,7 +30,8 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Citation resolution (linking short forms to full citations)
 - Text annotation with citation markers
 - Text cleaning (HTML extraction, whitespace normalization)
-- HTML-aware case name and reference extraction (`markup_text` input)
+- HTML-aware case name and reference extraction (`markup_text` input; CLI
+  `--html`, WASM `{ format: "html" }`)
 - Span offsets in UTF-8 bytes, code points or UTF-16 units (CLI `--offsets`,
   WASM `chars`/`utf16`; see [Span offsets](#span-offsets))
 - Harvard CAP slug mapping (366/399 reporters matched)
@@ -61,6 +62,16 @@ citare find --text "1 U.S. 1"
 # Span offsets as UTF-16 units (JavaScript) or code points (eyecite/Python)
 citare find --offsets utf16 --text "“Roe” 410 U.S. 113"
 citare find --offsets chars --text "“Roe” 410 U.S. 113"
+
+# HTML input: case names and references come from <i>/<em> tags, and each
+# citation also gets a `markup` object with spans into the HTML
+citare find --html --offsets utf16 < opinion.html
+citare annotate --html --unbalanced-tags skip < opinion.html
+
+# Clean steps (html, inline_whitespace, all_whitespace, underscores, xml);
+# spans then index the cleaned text, which `clean` prints
+citare find --clean-steps all_whitespace,underscores < opinion.txt
+citare clean --html --clean-steps all_whitespace < opinion.html
 ```
 
 ## Quick Start (Rust)
@@ -91,7 +102,7 @@ let annotated = annotate_citations(text, &mut annotations, "", UnbalancedTags::U
 
 ```javascript
 // Note: npm package not yet published. Build from source with wasm-pack.
-import init, { getCitations, resolveCitations, annotateCitations } from '@lokkju/citare';
+import init, { getCitations, resolveCitations, annotateCitations, cleanText } from '@lokkju/citare';
 
 await init();
 
@@ -102,6 +113,14 @@ console.log(citations);
 const resolutions = resolveCitations("1 U.S. 1 (1999). Id. at 2.", false);
 console.log(resolutions);
 // [{resource_text: "1 U.S. 1", citations: [...]}]
+
+// HTML input. `options` is optional: { format: "plain" | "html", cleanSteps: [...] }
+const html = "<p>In <i>Roe v. Wade</i>, 410 U.S. 113 (1973). Later, in <i>Roe</i>, ...</p>";
+const cites = getCitations(html, false, { format: "html" });
+// utf16/chars/span index the cleaned text; `markup` holds the same spans in the HTML.
+const plain = cleanText(html, ["html"]);
+plain.slice(...cites[0].utf16.span);        // "410 U.S. 113"
+html.slice(...cites[0].markup.utf16.span);  // "410 U.S. 113"
 ```
 
 ## Span offsets

@@ -16,18 +16,32 @@
 //! # Report spans as JavaScript (UTF-16) or Python (code point) offsets
 //! citare find --offsets utf16 --text "“Roe” 410 U.S. 113"
 //! citare find --offsets chars --text "“Roe” 410 U.S. 113"
+//!
+//! # HTML input, and cleaning
+//! citare find --html < opinion.html
+//! citare find --clean-steps all_whitespace,underscores < opinion.txt
+//! citare clean --html --clean-steps all_whitespace < opinion.html
 //! ```
 //!
 //! `--offsets` sets the unit of every span in `find` and `resolve` output:
 //! `bytes` (UTF-8, the default and citare's native unit), `chars` (Unicode
 //! code points, as eyecite and Python count) or `utf16` (UTF-16 code units,
 //! as JavaScript strings count).
+//!
+//! `--clean-steps` cleans the input before citations are found, and the
+//! spans then index the cleaned text, which `citare clean` with the same
+//! flags prints. `--html` marks the input as HTML or XML: citare strips it
+//! to plain text (adding the `html` step first if `--clean-steps` lacks it)
+//! and uses its `<i>`/`<em>` tags to find case names and reference
+//! citations. Each citation from `find` and `resolve` then also has a
+//! `markup` object whose spans index the HTML input itself, and `annotate`
+//! inserts its markers into the HTML.
 
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
-use citare_core::{CitationSpans, OffsetMap, OffsetUnit};
-use clap::{Parser, Subcommand};
+use citare_core::{CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit, UnbalancedTags};
+use clap::{Args, Parser, Subcommand};
 use serde::Serialize;
 
 // ---------------------------------------------------------------------------
@@ -41,13 +55,28 @@ struct Cli {
     command: Command,
 }
 
+/// Where the input comes from and how to prepare it.
+#[derive(Args)]
+struct InputArgs {
+    /// Input text (reads from stdin when omitted).
+    #[arg(long)]
+    text: Option<String>,
+    /// The input is HTML or XML markup. Citations are found in its text,
+    /// using its <i>/<em> tags for case names and references.
+    #[arg(long, default_value_t = false)]
+    html: bool,
+    /// Comma-separated clean steps applied before citations are found:
+    /// html, inline_whitespace, all_whitespace, underscores, xml.
+    #[arg(long, value_delimiter = ',', value_parser = parse_clean_step)]
+    clean_steps: Vec<String>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Extract citations and output as a JSON array.
     Find {
-        /// Input text (reads from stdin when omitted).
-        #[arg(long)]
-        text: Option<String>,
+        #[command(flatten)]
+        input: InputArgs,
         /// Drop citations that could not be unambiguously matched to a
         /// reporter edition.
         #[arg(long, default_value_t = false)]
@@ -60,9 +89,8 @@ enum Command {
     },
     /// Extract and resolve citations; output as a JSON array of resource groups.
     Resolve {
-        /// Input text (reads from stdin when omitted).
-        #[arg(long)]
-        text: Option<String>,
+        #[command(flatten)]
+        input: InputArgs,
         /// Drop citations that could not be unambiguously matched to a
         /// reporter edition.
         #[arg(long, default_value_t = false)]
@@ -74,11 +102,21 @@ enum Command {
         offsets: OffsetUnit,
     },
     /// Extract citations and wrap each in `<cite>…</cite>` markers; output
-    /// the annotated text string.
+    /// the annotated text (the HTML itself with `--html`) as a JSON string.
     Annotate {
-        /// Input text (reads from stdin when omitted).
-        #[arg(long)]
-        text: Option<String>,
+        #[command(flatten)]
+        input: InputArgs,
+        /// What to do when a citation span in HTML input cuts across a tag:
+        /// unchecked (insert markers anyway, the default, as eyecite does),
+        /// skip (widen the span over nearby style tags, else drop it) or
+        /// wrap (put markers around each piece so the HTML stays balanced).
+        #[arg(long, default_value = "unchecked", value_parser = parse_unbalanced_tags)]
+        unbalanced_tags: UnbalancedTags,
+    },
+    /// Print the cleaned text that `find` with the same flags indexes.
+    Clean {
+        #[command(flatten)]
+        input: InputArgs,
     },
 }
 
@@ -91,16 +129,39 @@ struct CitationJson {
     #[serde(rename = "type")]
     citation_type: String,
     matched_text: String,
-    /// Span offsets, in the unit chosen with `--offsets`.
+    /// Span offsets into the (cleaned) text, in the unit chosen with
+    /// `--offsets`.
     span: [usize; 2],
     full_span: [usize; 2],
     pin_cite_span_start: Option<usize>,
     pin_cite_span_end: Option<usize>,
+    /// The same spans in the HTML input, with `--html` only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    markup: Option<SpansJson>,
     groups: HashMap<String, Option<String>>,
     year: Option<i32>,
     harvard_slug: Option<String>,
     ambiguous: bool,
     metadata: HashMap<String, Option<String>>,
+}
+
+#[derive(Serialize)]
+struct SpansJson {
+    span: [usize; 2],
+    full_span: [usize; 2],
+    pin_cite_span_start: Option<usize>,
+    pin_cite_span_end: Option<usize>,
+}
+
+impl From<CitationSpans> for SpansJson {
+    fn from(s: CitationSpans) -> Self {
+        SpansJson {
+            span: [s.span.0, s.span.1],
+            full_span: [s.full_span.0, s.full_span.1],
+            pin_cite_span_start: s.pin_cite_span_start,
+            pin_cite_span_end: s.pin_cite_span_end,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -118,38 +179,31 @@ fn main() {
 
     match cli.command {
         Command::Find {
-            text,
+            input,
             remove_ambiguous,
             offsets,
         } => {
-            let input = resolve_input(text);
-            let citations = citare_core::get_citations(&input, remove_ambiguous, "", &[]);
-            let map = OffsetMap::new(&input);
-            let output: Vec<CitationJson> = citations
-                .iter()
-                .map(|c| citation_to_json(c, &map, offsets))
-                .collect();
+            let (document, citations) = prepare(&input, remove_ambiguous);
+            let converter = Converter::new(&document, offsets);
+            let output: Vec<CitationJson> =
+                citations.iter().map(|c| converter.convert(c)).collect();
             print_json(&output);
         }
 
         Command::Resolve {
-            text,
+            input,
             remove_ambiguous,
             offsets,
         } => {
-            let input = resolve_input(text);
-            let citations = citare_core::get_citations(&input, remove_ambiguous, "", &[]);
+            let (document, citations) = prepare(&input, remove_ambiguous);
             let resolutions = citare_core::resolve_citations(&citations);
-            let map = OffsetMap::new(&input);
+            let converter = Converter::new(&document, offsets);
 
             let mut output: Vec<ResolutionJson> = resolutions
                 .into_iter()
                 .map(|(resource, cites)| ResolutionJson {
                     resource: resource.citation.matched_text().to_string(),
-                    citations: cites
-                        .iter()
-                        .map(|c| citation_to_json(c, &map, offsets))
-                        .collect(),
+                    citations: cites.iter().map(|c| converter.convert(c)).collect(),
                 })
                 .collect();
 
@@ -158,27 +212,22 @@ fn main() {
             print_json(&output);
         }
 
-        Command::Annotate { text } => {
-            let input = resolve_input(text);
-            let citations = citare_core::get_citations(&input, false, "", &[]);
-
-            let mut annotations: Vec<((usize, usize), String, String)> = citations
-                .iter()
-                .map(|c| (c.span(), "<cite>".to_string(), "</cite>".to_string()))
-                .collect();
-
-            let annotated = citare_core::annotate_citations(
-                &input,
-                &mut annotations,
-                "",
-                citare_core::UnbalancedTags::Unchecked,
-                None,
-                None,
-            );
-
+        Command::Annotate {
+            input,
+            unbalanced_tags,
+        } => {
+            let (document, citations) = prepare(&input, false);
+            let annotated = annotate(&document, &citations, unbalanced_tags);
             // Output as a JSON string so the caller always gets valid JSON.
             let json = serde_json::to_string(&annotated).expect("serialisation failed");
             println!("{}", json);
+        }
+
+        Command::Clean { input } => {
+            let document = build_document(&input);
+            io::stdout()
+                .write_all(document.plain_text.as_bytes())
+                .expect("failed to write stdout");
         }
     }
 }
@@ -201,6 +250,121 @@ fn resolve_input(text: Option<String>) -> String {
     }
 }
 
+/// Check a `--clean-steps` entry names a built-in step.
+fn parse_clean_step(s: &str) -> Result<String, String> {
+    match CleanStep::from_name(s) {
+        Some(_) => Ok(s.to_string()),
+        None => Err(format!(
+            "unknown clean step {s:?} (expected html, inline_whitespace, all_whitespace, \
+             underscores or xml)"
+        )),
+    }
+}
+
+/// Parse the `--unbalanced-tags` value.
+fn parse_unbalanced_tags(s: &str) -> Result<UnbalancedTags, String> {
+    match s {
+        "unchecked" => Ok(UnbalancedTags::Unchecked),
+        "skip" => Ok(UnbalancedTags::Skip),
+        "wrap" => Ok(UnbalancedTags::Wrap),
+        _ => Err(format!(
+            "unknown mode {s:?} (expected unchecked, skip or wrap)"
+        )),
+    }
+}
+
+/// Build the document described by `input`: its text, cleaned, and for
+/// `--html` the markup and the maps between the two.
+fn build_document_from(text: &str, input: &InputArgs) -> Document {
+    let mut steps: Vec<CleanStep> = input
+        .clean_steps
+        .iter()
+        .map(|name| CleanStep::from_name(name).expect("validated by clap"))
+        .collect();
+    if input.html {
+        if !steps.iter().any(|s| matches!(s, CleanStep::Html)) {
+            steps.insert(0, CleanStep::Html);
+        }
+        Document::new("", text, &steps)
+    } else {
+        Document::new(text, "", &steps)
+    }
+}
+
+fn build_document(input: &InputArgs) -> Document {
+    let text = resolve_input(input.text.clone());
+    build_document_from(&text, input)
+}
+
+/// Build the document and find its citations.
+fn prepare(input: &InputArgs, remove_ambiguous: bool) -> (Document, Vec<citare_core::Citation>) {
+    let mut document = build_document(input);
+    let citations = citare_core::get_citations_from_document(&mut document, remove_ambiguous);
+    (document, citations)
+}
+
+/// Wrap every citation in `<cite>` markers: in the markup for HTML input,
+/// in the cleaned text otherwise.
+fn annotate(
+    document: &Document,
+    citations: &[citare_core::Citation],
+    unbalanced_tags: UnbalancedTags,
+) -> String {
+    let mut annotations: Vec<((usize, usize), String, String)> = citations
+        .iter()
+        .map(|c| (c.span(), "<cite>".to_string(), "</cite>".to_string()))
+        .collect();
+    citare_core::annotate_citations(
+        &document.plain_text,
+        &mut annotations,
+        document.markup_text.as_deref().unwrap_or(""),
+        unbalanced_tags,
+        None,
+        None,
+    )
+}
+
+/// Converts citations from one document to their JSON form.
+struct Converter<'a> {
+    unit: OffsetUnit,
+    plain: OffsetMap<'a>,
+    /// The markup's offset map and the plain -> markup span map.
+    markup: Option<(OffsetMap<'a>, &'a citare_core::SpanUpdater)>,
+}
+
+impl<'a> Converter<'a> {
+    fn new(document: &'a Document, unit: OffsetUnit) -> Self {
+        let markup = match (&document.markup_text, &document.plain_to_markup) {
+            (Some(text), Some(updater)) => Some((OffsetMap::new(text), updater)),
+            _ => None,
+        };
+        Converter {
+            unit,
+            plain: OffsetMap::new(&document.plain_text),
+            markup,
+        }
+    }
+
+    fn convert(&self, citation: &citare_core::Citation) -> CitationJson {
+        let mut json = citation_to_json(citation, &self.plain, self.unit);
+        if let Some((map, updater)) = &self.markup {
+            let bytes = CitationSpans::from_citation(citation).update(updater);
+            json.markup = Some(convert_spans(bytes, map, self.unit).into());
+        }
+        json
+    }
+}
+
+/// Convert byte spans to `unit`. A span that doesn't fall on a character
+/// boundary would be a citare bug; it aborts with an error rather than
+/// printing a misleading offset.
+fn convert_spans(spans: CitationSpans, map: &OffsetMap<'_>, unit: OffsetUnit) -> CitationSpans {
+    spans.convert(map, unit).unwrap_or_else(|e| {
+        eprintln!("citare: cannot convert span to {unit}: {e}");
+        std::process::exit(1);
+    })
+}
+
 /// Parse the `--offsets` value.
 fn parse_offset_unit(s: &str) -> Result<OffsetUnit, String> {
     s.parse()
@@ -213,22 +377,14 @@ fn print_json<T: Serialize>(value: &T) {
     println!("{}", json);
 }
 
-/// Convert a `citare_core::Citation` to its JSON-friendly representation.
-///
-/// Spans are converted to `unit` through `map`. A span that doesn't fall
-/// on a character boundary would be a citare bug; it aborts with an error
-/// rather than printing a misleading offset.
+/// Convert a `citare_core::Citation` to its JSON-friendly representation,
+/// with spans in `unit` converted through `map`.
 fn citation_to_json(
     citation: &citare_core::Citation,
     map: &OffsetMap<'_>,
     unit: OffsetUnit,
 ) -> CitationJson {
-    let spans = CitationSpans::from_citation(citation)
-        .convert(map, unit)
-        .unwrap_or_else(|e| {
-            eprintln!("citare: cannot convert span to {unit}: {e}");
-            std::process::exit(1);
-        });
+    let spans = convert_spans(CitationSpans::from_citation(citation), map, unit);
     let year = citation.resource_common().and_then(|r| r.year);
     let harvard_slug = citation
         .resource_common()
@@ -249,6 +405,7 @@ fn citation_to_json(
         full_span: [spans.full_span.0, spans.full_span.1],
         pin_cite_span_start: spans.pin_cite_span_start,
         pin_cite_span_end: spans.pin_cite_span_end,
+        markup: None,
         groups: citation.common().groups.clone(),
         year,
         harvard_slug,
@@ -406,5 +563,157 @@ mod tests {
         assert_eq!(&TEXT[pin.0..pin.1], ", 115");
         let pin = (utf16.span[1], utf16.pin_cite_span_end.unwrap());
         assert_eq!(String::from_utf16(&units[pin.0..pin.1]).unwrap(), ", 115");
+    }
+
+    const HTML: &str = "<p>“Quoted” 🎉 In <i>Café v. Bär</i>, 410 U.S. 113, 115 \
+        (1973), the court held. Later, in <i>Bär</i>, the point was settled.</p>";
+
+    fn input(html: bool, steps: &[&str]) -> InputArgs {
+        InputArgs {
+            text: None,
+            html,
+            clean_steps: steps.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn find_in(text: &str, args: &InputArgs, unit: OffsetUnit) -> (Document, Vec<CitationJson>) {
+        let mut document = build_document_from(text, args);
+        let citations = citare_core::get_citations_from_document(&mut document, false);
+        let json = {
+            let converter = Converter::new(&document, unit);
+            citations.iter().map(|c| converter.convert(c)).collect()
+        };
+        (document, json)
+    }
+
+    /// Slice `text` by a span in `unit`.
+    fn slice(text: &str, unit: OffsetUnit, [s, e]: [usize; 2]) -> String {
+        match unit {
+            OffsetUnit::Bytes => text[s..e].to_string(),
+            OffsetUnit::Chars => text.chars().skip(s).take(e - s).collect(),
+            OffsetUnit::Utf16 => {
+                let units: Vec<u16> = text.encode_utf16().collect();
+                String::from_utf16(&units[s..e]).unwrap()
+            }
+        }
+    }
+
+    /// `text` without tags or whitespace.
+    fn bare(text: &str) -> String {
+        let mut out = String::new();
+        let mut in_tag = false;
+        for ch in text.chars() {
+            match ch {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                c if !in_tag && !c.is_whitespace() => out.push(c),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn html_and_clean_steps_flags_parse() {
+        let cli = Cli::try_parse_from([
+            "citare",
+            "find",
+            "--html",
+            "--clean-steps",
+            "html,all_whitespace",
+        ])
+        .unwrap();
+        let Command::Find { input, .. } = cli.command else {
+            panic!("expected find");
+        };
+        assert!(input.html);
+        assert_eq!(input.clean_steps, ["html", "all_whitespace"]);
+
+        for cmd in ["resolve", "annotate", "clean"] {
+            let cli =
+                Cli::try_parse_from(["citare", cmd, "--html", "--clean-steps", "underscores"]);
+            assert!(cli.is_ok(), "{cmd}");
+        }
+        assert!(Cli::try_parse_from(["citare", "find", "--clean-steps", "html,bogus"]).is_err());
+        assert!(Cli::try_parse_from(["citare", "annotate", "--unbalanced-tags", "fix"]).is_err());
+    }
+
+    #[test]
+    fn html_spans_round_trip_into_cleaned_text_and_markup() {
+        let args = input(true, &[]);
+        for unit in [OffsetUnit::Bytes, OffsetUnit::Chars, OffsetUnit::Utf16] {
+            let (document, citations) = find_in(HTML, &args, unit);
+            let types: Vec<&str> = citations.iter().map(|c| c.citation_type.as_str()).collect();
+            assert_eq!(types, ["FullCaseCitation", "ReferenceCitation"], "{unit}");
+            assert_eq!(citations[0].metadata["plaintiff"].as_deref(), Some("Café"));
+
+            for c in &citations {
+                let m = c.markup.as_ref().expect("markup spans");
+                for (plain_span, markup_span) in [(c.span, m.span), (c.full_span, m.full_span)] {
+                    let plain = slice(&document.plain_text, unit, plain_span);
+                    let in_markup = slice(HTML, unit, markup_span);
+                    assert_eq!(bare(&plain), bare(&in_markup), "{unit} {in_markup:?}");
+                }
+            }
+            let case = &citations[0];
+            assert_eq!(slice(&document.plain_text, unit, case.span), "410 U.S. 113");
+            let m = case.markup.as_ref().unwrap();
+            assert_eq!(slice(HTML, unit, m.span), "410 U.S. 113");
+            let pin = [m.span[1], m.pin_cite_span_end.unwrap()];
+            assert_eq!(slice(HTML, unit, pin), ", 115");
+        }
+    }
+
+    #[test]
+    fn clean_steps_change_the_indexed_text() {
+        let text = "Café  v.\tBär,\n\n410 U.S. 113 (1973)";
+        let args = input(false, &["all_whitespace"]);
+        let (document, citations) = find_in(text, &args, OffsetUnit::Utf16);
+        assert_eq!(document.plain_text, "Café v. Bär, 410 U.S. 113 (1973)");
+        assert!(citations[0].markup.is_none());
+        assert_eq!(
+            slice(
+                &document.plain_text,
+                OffsetUnit::Utf16,
+                citations[0].full_span
+            ),
+            "Café v. Bär, 410 U.S. 113 (1973)"
+        );
+
+        // `clean --html` adds the html step and prints what `find` indexes.
+        let cleaned = build_document_from(HTML, &input(true, &["all_whitespace"])).plain_text;
+        assert!(cleaned.starts_with("“Quoted” 🎉 In Café v. Bär , 410 U.S. 113"));
+        assert_eq!(
+            cleaned,
+            citare_core::clean_text(HTML, &[CleanStep::Html, CleanStep::AllWhitespace]).unwrap()
+        );
+    }
+
+    #[test]
+    fn annotate_html_marks_up_the_markup() {
+        let args = input(true, &[]);
+        let mut document = build_document_from(HTML, &args);
+        let citations = citare_core::get_citations_from_document(&mut document, false);
+
+        let out = annotate(&document, &citations, UnbalancedTags::Unchecked);
+        assert!(out.starts_with("<p>“Quoted” 🎉 In <i>Café v. Bär</i>, <cite>410 U.S. 113</cite>"));
+        assert!(out.ends_with("settled.</p>"));
+
+        let out = annotate(&document, &citations, UnbalancedTags::Skip);
+        assert!(
+            out.contains("in <cite><i>Bär</i></cite>, the point"),
+            "{out}"
+        );
+
+        // Plain input annotates the cleaned text.
+        let mut plain = build_document_from(
+            "Café  v.  Bär, 410 U.S. 113",
+            &input(false, &["all_whitespace"]),
+        );
+        let citations = citare_core::get_citations_from_document(&mut plain, false);
+        assert_eq!(
+            annotate(&plain, &citations, UnbalancedTags::Unchecked),
+            "Café v. Bär, <cite>410 U.S. 113</cite>"
+        );
     }
 }
