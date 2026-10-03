@@ -40,7 +40,7 @@ const SEC_EDITIONS: u64 = 4;
 const SEC_TEMPLATES: u64 = 5;
 const SEC_REPORTER_MAP: u64 = 6;
 const SEC_ONEOFFS: u64 = 7;
-const SEC_EDITIONS_LOOKUP: u64 = 8;
+// 8 was the editions lookup in drafts of version 1; not reused.
 const SEC_COURT_KEYS: u64 = 9;
 
 /// A string borrowed from the bundle's bytes when decoded, or owned when
@@ -103,12 +103,61 @@ pub struct DataBundle<'a> {
     pub templates: Vec<Str<'a>>,
     pub reporter_map: Vec<BundleReporterMapEntry<'a>>,
     pub oneoffs: Vec<BundleOneoff<'a>>,
-    /// Reporter string to the editions it may name, in reporters-db order
-    /// (an edition can repeat, once per regex it appears in).
-    pub editions_lookup: Vec<(Str<'a>, Vec<u32>)>,
     /// `(citation_string reduced to lowercase alphanumerics, court id)`, in
     /// courts-db order.
     pub court_keys: Vec<(Str<'a>, Str<'a>)>,
+}
+
+/// The reporter regex citare builds for reporter string `s`: `s` escaped,
+/// with whitespace relaxed after periods and between words (eyecite #305),
+/// cut at the first `)`. Templates hold the rest of a reporter group whose
+/// escaped name contains a parenthesis, so the cut keeps
+/// `template.replace(REPORTER_PLACEHOLDER, reporter_regex(s))` equal to the
+/// original regex.
+pub fn reporter_regex(s: &str) -> String {
+    // One pass and one allocation; the loader runs this for every extractor.
+    // Equal to `relax_ws(&regex::escape(s))` cut at its first `)`, which the
+    // tests check.
+    let mut out = String::with_capacity(s.len() * 2);
+    let mut in_space_run = false;
+    for ch in s.chars() {
+        if ch == ' ' {
+            if !in_space_run {
+                out.push_str(r"\s*");
+                in_space_run = true;
+            }
+            continue;
+        }
+        in_space_run = false;
+        if regex_syntax::is_meta_character(ch) {
+            out.push('\\');
+            if ch == ')' {
+                break;
+            }
+        }
+        out.push(ch);
+        if ch == '.' {
+            out.push_str(r"\s*");
+        }
+    }
+    out
+}
+
+/// The definition [`reporter_regex`] implements.
+#[cfg(test)]
+fn reporter_regex_reference(s: &str) -> String {
+    let mut out = crate::regexes::relax_ws(&regex::escape(s));
+    if let Some(i) = out.find(')') {
+        out.truncate(i);
+    }
+    out
+}
+
+/// Which prefilter string, if any, the entry's reporter regex derives from.
+fn derived_from(e: &BundleReporterMapEntry) -> Option<usize> {
+    e.strings
+        .iter()
+        .position(|s| reporter_regex(s) == e.reporter_string)
 }
 
 /// The placeholder for the reporter in [`DataBundle::templates`].
@@ -207,7 +256,12 @@ impl DataBundle<'_> {
             .flatten()
         });
         let map = self.reporter_map.iter().flat_map(|m| {
-            std::iter::once(m.reporter_string.as_ref()).chain(m.strings.iter().map(AsRef::as_ref))
+            let explicit = derived_from(m)
+                .is_none()
+                .then_some(m.reporter_string.as_ref());
+            explicit
+                .into_iter()
+                .chain(m.strings.iter().map(AsRef::as_ref))
         });
         let oneoffs = self.oneoffs.iter().flat_map(|o| {
             std::iter::once(o.regex.as_ref()).chain(o.strings.iter().map(AsRef::as_ref))
@@ -216,7 +270,6 @@ impl DataBundle<'_> {
             .chain(self.templates.iter().map(AsRef::as_ref))
             .chain(map)
             .chain(oneoffs)
-            .chain(self.editions_lookup.iter().map(|(k, _)| k.as_ref()))
             .chain(
                 self.court_keys
                     .iter()
@@ -331,15 +384,23 @@ impl DataBundle<'_> {
             prev = t;
         }
         for e in m {
-            put_varint(&mut s, strs.id(&e.reporter_string));
-        }
-        for e in m {
             put_varint(&mut s, e.short as u64);
         }
         for e in m {
             put_varint(&mut s, e.strings.len() as u64);
             for x in &e.strings {
                 put_varint(&mut s, strs.id(x));
+            }
+        }
+        // The reporter regex: k + 1 when it is reporter_regex(strings[k]),
+        // else 0 followed by its string id.
+        for e in m {
+            match derived_from(e) {
+                Some(k) => put_varint(&mut s, k as u64 + 1),
+                None => {
+                    put_varint(&mut s, 0);
+                    put_varint(&mut s, strs.id(&e.reporter_string));
+                }
             }
         }
         for e in m {
@@ -368,17 +429,6 @@ impl DataBundle<'_> {
             }
         }
         sections.push((SEC_ONEOFFS, s));
-
-        let mut s = Vec::new();
-        put_varint(&mut s, self.editions_lookup.len() as u64);
-        for (k, idx) in &self.editions_lookup {
-            put_varint(&mut s, strs.id(k));
-            put_varint(&mut s, idx.len() as u64);
-            for &i in idx {
-                put_varint(&mut s, i as u64);
-            }
-        }
-        sections.push((SEC_EDITIONS_LOOKUP, s));
 
         let mut s = Vec::new();
         put_varint(&mut s, self.court_keys.len() as u64);
@@ -635,9 +685,6 @@ impl<'a> DataBundle<'a> {
                 }
             })
             .collect::<Result<_, _>>()?;
-        let rstr: Vec<Str<'a>> = (0..n)
-            .map(|_| strs.string(&mut r))
-            .collect::<Result<_, _>>()?;
         let shortf: Vec<bool> = (0..n)
             .map(|_| r.varint().map(|v| v != 0))
             .collect::<Result<_, _>>()?;
@@ -645,6 +692,16 @@ impl<'a> DataBundle<'a> {
             .map(|_| {
                 let k = r.count()?;
                 (0..k).map(|_| strs.string(&mut r)).collect()
+            })
+            .collect::<Result<_, _>>()?;
+        let rstr: Vec<Str<'a>> = strings
+            .iter()
+            .map(|st| match r.varint()? {
+                0 => strs.string(&mut r),
+                k => st
+                    .get(k as usize - 1)
+                    .map(|x| Cow::Owned(reporter_regex(x)))
+                    .ok_or(BundleError::BadIndex("prefilter string")),
             })
             .collect::<Result<_, _>>()?;
         let eds: Vec<Vec<u32>> = (0..n)
@@ -695,12 +752,6 @@ impl<'a> DataBundle<'a> {
             })
             .collect::<Result<_, BundleError>>()?;
 
-        let mut r = Reader::new(find(SEC_EDITIONS_LOOKUP, "editions lookup")?);
-        let n = r.count()?;
-        let editions_lookup = (0..n)
-            .map(|_| Ok((strs.string(&mut r)?, index_list(&mut r, n_ed, "edition")?)))
-            .collect::<Result<_, BundleError>>()?;
-
         let mut r = Reader::new(find(SEC_COURT_KEYS, "court keys")?);
         let n = r.count()?;
         let court_keys = (0..n)
@@ -713,7 +764,6 @@ impl<'a> DataBundle<'a> {
             templates,
             reporter_map,
             oneoffs,
-            editions_lookup,
             court_keys,
         })
     }
@@ -759,7 +809,6 @@ mod tests {
                 case_insensitive: true,
                 strings: vec!["id.".into()],
             }],
-            editions_lookup: vec![("A.2d".into(), vec![0, 0])],
             court_keys: vec![("pa".into(), "pa".into())],
         }
     }
@@ -771,6 +820,38 @@ mod tests {
         assert_eq!(&bytes[..8], MAGIC);
         assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
         assert_eq!(read_meta(&bytes).unwrap(), b.meta);
+    }
+
+    #[test]
+    fn reporter_regex_matches_its_definition() {
+        for s in [
+            "A.2d",
+            "N.Y.S. 2d",
+            "N. Y. S.  2d",
+            "Dall.(Tex.)",
+            "U.S.C. §",
+            "Ark. App.",
+            "a\\.b",
+            "x+y*z?",
+            "[a]{1}^$#&-~|",
+            " lead",
+            "trail ",
+            "S. Ct.",
+        ] {
+            assert_eq!(reporter_regex(s), reporter_regex_reference(s), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn derives_reporter_regex_from_prefilter_string() {
+        assert_eq!(reporter_regex("N.Y.S. 2d"), r"N\.\s*Y\.\s*S\.\s*\s*2d");
+        assert_eq!(reporter_regex("Dall.(Tex.)"), r"Dall\.\s*\(Tex\.\s*\");
+        let mut b = sample();
+        b.reporter_map[0].reporter_string = reporter_regex("A.2d").into();
+        let derived = b.encode();
+        assert_eq!(DataBundle::decode(&derived).unwrap(), b);
+        // Derived, the reporter regex costs one byte instead of a string.
+        assert!(derived.len() < sample().encode().len());
     }
 
     #[test]

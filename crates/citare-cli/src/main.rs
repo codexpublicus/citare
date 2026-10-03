@@ -224,7 +224,6 @@ fn main() {
                 "editions": b.editions.len(),
                 "templates": b.templates.len(),
                 "extractors": b.reporter_map.len() + b.oneoffs.len(),
-                "editions_lookup": b.editions_lookup.len(),
                 "court_keys": b.court_keys.len(),
             }));
         }

@@ -28,7 +28,7 @@ no citare version for that reason.
 Rust, with `citare-core` built with `default-features = false`:
 
 ```rust
-let bytes = std::fs::read("citare-data-593428ed852cc00d.bin")?;
+let bytes = std::fs::read("citare-data-2166a845e9ece1b1.bin")?;
 citare_core::data::load(&bytes)?;          // once, before get_citations
 let citations = citare_core::get_citations(text, false, "", &[]);
 ```
@@ -81,10 +81,15 @@ A *string id* is an index into the string table (section 2); an *optional string
 | 3 | reporters | count *R*, then four columns of *R* values: short name (string id), full name (string id), cite type (string id), source (0 reporters.json, 1 laws.json, 2 journals.json). |
 | 4 | editions | count *E*, then five columns of *E* values: reporter (index into section 3), edition short name (string id), start date (optional string id), end date (optional string id), Caselaw Access Project slug (optional string id). |
 | 5 | templates | count *T*, then *T* string ids. Each is a citation regex with `__REPORTER__` where the reporter goes. |
-| 6 | reporter map | count *M*, then six columns of *M* values: template index, delta-coded (`d << 1` for a template index `d` above the previous one, or `t << 1 \| 1` for an absolute index `t`); reporter regex (string id); short-form flag (0 or 1); prefilter strings (count, then string ids); exact editions (count, then edition indices); variation editions (count, then edition indices). |
+| 6 | reporter map | count *M*, then six columns of *M* values: template index, delta-coded (`d << 1` for a template index `d` above the previous one, or `t << 1 \| 1` for an absolute index `t`); short-form flag (0 or 1); prefilter strings (count, then string ids); reporter regex (*k* + 1 when it is derived from the row's *k*-th prefilter string, as described below, else 0 followed by its string id); exact editions (count, then edition indices); variation editions (count, then edition indices). |
 | 7 | one-off extractors | count, then per extractor: regex (string id), token type (1 id., 2 supra, 3 stop word, 4 section, 5 paragraph, 6 placeholder), case-insensitive flag, strings (count, then string ids). |
-| 8 | editions lookup | count, then per entry: reporter string (string id), editions (count, then edition indices). |
+| 8 | | Unused (an editions lookup in drafts of version 1). |
 | 9 | court keys | count, then per court: citation string reduced to lowercase alphanumerics (string id), courts-db id (string id), in courts-db order. |
+
+A derived reporter regex is the prefilter string escaped as Rust's `regex::escape` does
+it (a backslash before each of `\.+*?()|[]{}^$#&-~`), then with `\.\s*` in place of
+every `\.` and `\s*` in place of every run of spaces, then cut just before its first
+`)`. Rows whose regex isn't that (custom regexes in reporters-db) store it as a string.
 
 One reporter-map row is one citation extractor: substitute the reporter regex for
 `__REPORTER__` in its template to get the regex citare runs, and run it only on text

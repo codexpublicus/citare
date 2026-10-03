@@ -142,7 +142,6 @@ fn main() {
     // 3. Build editions_by_regex (same logic as tokenizer.rs build_extractors)
     // -----------------------------------------------------------------------
     let mut editions_by_regex: HashMap<String, EditionsByRegexEntry> = HashMap::new();
-    let mut editions_lookup: HashMap<String, Vec<BuildEdition>> = HashMap::new();
 
     // Helper: substitute $edition in a template with escaped edition names,
     // relaxing inter-token whitespace so `N.Y.S.2d` also matches
@@ -161,18 +160,10 @@ fn main() {
 
     // Helper: add a regex for an edition
     let add_regex = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                     editions_lookup: &mut HashMap<String, Vec<BuildEdition>>,
                      kind: &str,
                      reporter_strings: &[&str],
                      edition: &BuildEdition,
                      regex: &str| {
-        for &reporter in reporter_strings {
-            editions_lookup
-                .entry(reporter.to_string())
-                .or_default()
-                .push(edition.clone());
-        }
-
         let entry = editions_by_regex.entry(regex.to_string()).or_default();
         match kind {
             "editions" => entry.editions.push(edition.clone()),
@@ -209,7 +200,6 @@ fn main() {
 
     // Helper: expand regex templates for an edition
     let add_regexes = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                       editions_lookup: &mut HashMap<String, Vec<BuildEdition>>,
                        regex_templates: &[String],
                        edition_name: &str,
                        edition: &BuildEdition,
@@ -233,7 +223,6 @@ fn main() {
             if !resolved.contains("$edition") && !resolved.contains("${edition}") {
                 add_regex(
                     editions_by_regex,
-                    editions_lookup,
                     "editions",
                     &[edition_name],
                     edition,
@@ -246,7 +235,6 @@ fn main() {
             let regex = substitute_edition(&resolved, &[edition_name]);
             add_regex(
                 editions_by_regex,
-                editions_lookup,
                 "editions",
                 &[edition_name],
                 edition,
@@ -258,7 +246,6 @@ fn main() {
                 let var_regex = substitute_edition(&resolved, &[var_name.as_str()]);
                 add_regex(
                     editions_by_regex,
-                    editions_lookup,
                     "variations",
                     &[var_name.as_str()],
                     edition,
@@ -299,7 +286,6 @@ fn main() {
 
                 add_regexes(
                     &mut editions_by_regex,
-                    &mut editions_lookup,
                     &regex_templates,
                     edition_name,
                     &edition,
@@ -338,7 +324,6 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
-                &mut editions_lookup,
                 &regex_templates,
                 source_key,
                 &edition,
@@ -372,7 +357,6 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
-                &mut editions_lookup,
                 &regex_templates,
                 source_key,
                 &edition,
@@ -621,21 +605,6 @@ fn main() {
     });
 
     // -----------------------------------------------------------------------
-    // 7. Also generate the editions_lookup data
-    // -----------------------------------------------------------------------
-    // editions_lookup maps reporter string -> list of edition indices
-    let mut gen_editions_lookup: Vec<(String, Vec<usize>)> = Vec::new();
-    for (key, editions) in &editions_lookup {
-        let indices: Vec<usize> = editions
-            .iter()
-            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-            .collect();
-        gen_editions_lookup.push((key.clone(), indices));
-    }
-    // Sort for deterministic output
-    gen_editions_lookup.sort_by(|a, b| a.0.cmp(&b.0));
-
-    // -----------------------------------------------------------------------
     // 8. Canonicalize and write the data bundle
     // -----------------------------------------------------------------------
     // The tables above are built from HashMaps, so template and edition
@@ -751,10 +720,6 @@ fn main() {
                 case_insensitive: o.case_insensitive,
                 strings: o.strings.iter().cloned().map(Into::into).collect(),
             })
-            .collect(),
-        editions_lookup: gen_editions_lookup
-            .iter()
-            .map(|(k, v)| (k.clone().into(), remap_eds(v)))
             .collect(),
         court_keys,
     };

@@ -196,7 +196,8 @@ pub static EXTRACTORS: LazyLock<Vec<TokenExtractor>> = LazyLock::new(build_extra
 pub static DEFAULT_TOKENIZER: LazyLock<AhocorasickTokenizer> =
     LazyLock::new(AhocorasickTokenizer::new);
 
-/// Global lazily-initialised editions lookup (reporter string -> editions).
+/// Global lazily-initialised editions lookup (reporter string -> editions),
+/// derived from the reporter map. Only tests use it.
 pub static EDITIONS_LOOKUP: LazyLock<HashMap<String, Vec<Edition>>> =
     LazyLock::new(build_editions_lookup);
 
@@ -270,16 +271,22 @@ pub fn build_extractors() -> Vec<TokenExtractor> {
     extractors
 }
 
-/// Build the editions lookup table from the loaded data bundle.
+/// Build the editions lookup from the loaded data bundle: each prefilter
+/// string mapped to the editions (exact, then variations) of every citation
+/// extractor that lists it, in registry order and without repeats.
 fn build_editions_lookup() -> HashMap<String, Vec<Edition>> {
     let data = crate::data::get();
-    let mut lookup = HashMap::with_capacity(data.bundle.editions_lookup.len());
-    for (key, indices) in &data.bundle.editions_lookup {
-        let editions: Vec<Edition> = indices
-            .iter()
-            .map(|&i| data.editions[i as usize].clone())
-            .collect();
-        lookup.insert(key.to_string(), editions);
+    let mut lookup: HashMap<String, Vec<Edition>> = HashMap::new();
+    for entry in &data.bundle.reporter_map {
+        for s in &entry.strings {
+            let editions = lookup.entry(s.to_string()).or_default();
+            for &i in entry.edition_indices.iter().chain(&entry.variation_indices) {
+                let e = &data.editions[i as usize];
+                if !editions.contains(e) {
+                    editions.push(e.clone());
+                }
+            }
+        }
     }
     lookup
 }
