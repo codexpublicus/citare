@@ -323,3 +323,16 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@body.md > /dev/null
             echo "posted a new comment"
           fi
+
+  # TEMPORARY: exercises bench-release.yml on an existing tag without publishing.
+  # Removed before merge.
+  release-bench-test:
+    name: Release benchmark (test)
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/bench-release.yml
+    with:
+      tag: v0.4.1
+      publish: false
+    secrets: inherit
