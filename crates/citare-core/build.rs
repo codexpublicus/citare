@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::Path;
 
 use citare_data_build::courts::parse_courts;
+use citare_data_build::harvard::{parse_harvard, slugs_by_edition};
 use citare_data_build::regexes::{
     id_regex, nonalphanum_boundaries_re, placeholder_citations_regex, relax_ws, short_cite_re,
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
@@ -124,18 +125,13 @@ fn main() {
     let courts = parse_courts(courts_json).expect("Failed to parse courts.json");
     println!("cargo::warning=Loaded {} courts", courts.len());
 
-    // Load Harvard CAP reporter slug map: short_name -> slug
+    // Harvard CAP reporter slugs, keyed by reporters-db edition name (CAP
+    // short names that are reporters-db variations are moved to their edition).
     let harvard_json = include_str!("../../data/harvard_reporters.json");
-    let harvard_entries: Vec<serde_json::Value> =
-        serde_json::from_str(harvard_json).expect("Failed to parse harvard_reporters.json");
-    let harvard_slug_map: HashMap<String, String> = harvard_entries
-        .into_iter()
-        .filter_map(|entry| {
-            let short_name = entry.get("short_name")?.as_str()?.to_string();
-            let slug = entry.get("slug")?.as_str()?.to_string();
-            Some((short_name, slug))
-        })
-        .collect();
+    let harvard_slug_map = slugs_by_edition(
+        &parse_harvard(harvard_json).expect("Failed to parse harvard_reporters.json"),
+        &reporters,
+    );
     println!(
         "cargo::warning=Loaded {} Harvard CAP slug mappings",
         harvard_slug_map.len()
