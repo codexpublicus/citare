@@ -36,7 +36,7 @@ Part of the [stare.pub](https://stare.pub) project family.
   WASM `chars`/`utf16`; see [Span offsets](#span-offsets))
 - Harvard CAP slug mapping (366/399 reporters matched)
 - CLI, native Rust library, and WASM bindings
-- Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 268/278 on
+- Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 269/278 on
   the v2 set; 278 tests
 - Deliberate differences from eyecite, each with its evidence from real
   opinions, tests and an upstream issue: [docs/divergences.md](docs/divergences.md)
@@ -193,6 +193,13 @@ so they can come off the list. The same run locally, from a citation-bench check
 CITARE_PATH=../citare mise run bench:citare
 ```
 
+citation-bench is pinned by commit (`.github/citation-bench-ref`), so new vectors, a
+rebaselined known-failures file or a changed report reach citare only through a PR here.
+To bump it, run the command above in citation-bench at the new commit, then put that
+commit's full SHA in the file in its own PR. The job checks citation-bench out with the
+`CITATION_BENCH_DEPLOY_KEY` secret that codexpublicus/infra provisions, and skips with a
+notice while that secret is missing.
+
 Where citare differs from eyecite on purpose ([docs/divergences.md](docs/divergences.md)),
 the expected output is citare's, in citation-bench's separate `vectors/divergences/` set:
 
@@ -200,12 +207,27 @@ the expected output is citare's, in citation-bench's separate `vectors/divergenc
 CITARE_PATH=../citare mise run bench:divergences citare
 ```
 
-citation-bench is pinned by commit (`CITATION_BENCH_REF` in `.github/workflows/ci.yml`), so
-new vectors or a rebaselined known-failures file reach citare only through a PR here. To
-bump it, run the command above in citation-bench at the new commit, then update
-`CITATION_BENCH_REF` to that commit's full SHA in its own PR. The job checks citation-bench
-out with the `CITATION_BENCH_DEPLOY_KEY` secret that codexpublicus/infra provisions, and
-skips with a notice while that secret is missing.
+### Benchmark reports
+
+After the ratchet, the same job runs citare over the one-percent CourtListener sample
+(779 opinions) and writes a report: vector scores per request kind, speed (ms/vector,
+ms/KB, median and slowest opinion, cold start), and the citations gained, lost and
+changed against eyecite 2.7.8 and against the last release. eyecite's side is
+citation-bench's stored run, keyed by eyecite's version and the harness files, so eyecite
+only runs here when that key misses. The report goes to the job summary, the
+`bench-report` artifact (with the CSVs and the saved runs) and one PR comment that later
+pushes edit in place. It never fails the build; the ratchet does.
+
+Each release gets the same report on the ten-percent sample (7,632 opinions):
+`release-plz.yml` calls `bench-release.yml` once it cuts the tag, which attaches
+`bench-report.md`, `bench-summary.json` and the saved runs to the GitHub release and
+adds the headline numbers to its notes. PR reports compare against the latest release's
+attached one-percent run. To backfill a release, or rerun one:
+
+```bash
+gh workflow run bench-release.yml -f tag=v0.4.1                # attach to the release
+gh workflow run bench-release.yml -f tag=v0.4.1 -f publish=false  # report only
+```
 
 ## License
 

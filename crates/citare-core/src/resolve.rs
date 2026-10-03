@@ -28,6 +28,10 @@ type ResolvedFullCite = (Citation, Resource);
 type ResolvedFullCites = Vec<ResolvedFullCite>;
 
 /// Maps each resolved [`Resource`] to all [`Citation`]s that point to it.
+///
+/// Iteration order is a `HashMap`'s, so it varies per process. Sort by
+/// `resource.citation.span()` for document order, which is the order
+/// eyecite's dict returns resources in.
 pub type Resolutions = HashMap<Resource, Vec<Citation>>;
 
 // ---------------------------------------------------------------------------
