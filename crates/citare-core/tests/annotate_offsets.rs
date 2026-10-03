@@ -59,7 +59,7 @@ fn markup_styles(citation: &str) -> Vec<String> {
 /// One filler paragraph, distinct per `i`, full of multibyte characters.
 fn filler(i: usize, markup: bool) -> String {
     let body = format!(
-        "Paragraph {i}: “Bär” and Peña met in 東京 on day {i} 🎉; the court’s note {i} \
+        "Paragraph {i} (ref{i}x): “Bär” and Peña met in 東京 on day {i} 🎉; the court’s note {i} \
          cites nothing at all. "
     );
     if markup {
@@ -77,6 +77,11 @@ fn padding(start: usize, count: usize, markup: bool) -> String {
 /// Paragraph counts for documents well under, just under and over the
 /// 16 KB anchored-diff threshold (plain and markup together).
 const PAD: &[usize] = &[0, 30, 120];
+
+/// Padded markup documents are slow to build in a debug test run, so they
+/// take every `PADDED_STRIDE`th combination of pieces. It is coprime with
+/// the number of separators, so every separator still meets every size.
+const PADDED_STRIDE: usize = 5;
 
 fn plain_corpus() -> Vec<String> {
     let mut out = Vec::new();
@@ -107,12 +112,17 @@ const SEPARATORS: &[(&str, &str)] = &[
 
 fn markup_corpus() -> Vec<String> {
     let mut out = Vec::new();
+    let mut n = 0;
     for &pad in PAD {
         for before in BEFORE {
             for citation in CITATIONS {
                 for styled in markup_styles(citation) {
                     for after in AFTER {
-                        let (lead, trail) = SEPARATORS[out.len() % SEPARATORS.len()];
+                        n += 1;
+                        if pad > 0 && n % PADDED_STRIDE != 0 {
+                            continue;
+                        }
+                        let (lead, trail) = SEPARATORS[n % SEPARATORS.len()];
                         out.push(format!(
                             "<html><body>\n{}<p>{before}{lead}{styled}{trail}{after}</p>\n{}\
                              </body></html>",
