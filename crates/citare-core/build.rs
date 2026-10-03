@@ -710,6 +710,8 @@ fn main() {
         .collect();
 
     let bundle = DataBundle {
+        // No citare version here: a bundle's bytes, and so its content hash
+        // and cache lifetime, should change only when the data does.
         meta: vec![
             (
                 "reporters_db_commit".into(),
@@ -718,14 +720,6 @@ fn main() {
             (
                 "courts_db_commit".into(),
                 submodule_commit("courts-db").into(),
-            ),
-            (
-                "generator".into(),
-                format!(
-                    "citare {}",
-                    std::env::var("CARGO_PKG_VERSION").unwrap_or_default()
-                )
-                .into(),
             ),
         ],
         editions: ed_order

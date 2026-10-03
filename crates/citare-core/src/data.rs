@@ -65,6 +65,17 @@ impl Data {
     }
 }
 
+/// The lowercase hex SHA-256 of a bundle's bytes. Published bundles are
+/// named `citare-data-<first 16 hex digits>.bin`, so a name never refers to
+/// two different files and can be cached forever.
+pub fn content_hash(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 static DATA: OnceLock<Data> = OnceLock::new();
 
 /// Why [`load`] failed.

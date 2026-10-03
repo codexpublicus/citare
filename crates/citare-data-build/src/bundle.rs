@@ -96,8 +96,7 @@ pub struct BundleOneoff<'a> {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "'de: 'a"))]
 pub struct DataBundle<'a> {
-    /// Free-form provenance: `reporters_db_commit`, `courts_db_commit`,
-    /// `generator` (the citare version that wrote the bundle).
+    /// Free-form provenance: `reporters_db_commit`, `courts_db_commit`.
     pub meta: Vec<(Str<'a>, Str<'a>)>,
     pub editions: Vec<BundleEdition<'a>>,
     /// Citation regex templates containing [`REPORTER_PLACEHOLDER`].
