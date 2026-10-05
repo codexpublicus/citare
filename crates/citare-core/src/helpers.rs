@@ -461,38 +461,64 @@ pub struct SectionPinCite {
     pub pin_cite: Option<String>,
     pub span_end: usize,
     pub parenthetical: Option<String>,
-    /// Index in `words` of the `§` token the pin cite took.
-    pub section_index: usize,
+    /// Indexes in `words` of the `§` tokens the pin cite took: the first,
+    /// and any later ones in a list (`§ 457 and § 459`).
+    pub section_indexes: Vec<usize>,
 }
 
 /// Extract a section pin cite (`§ 5`, `at §§ 5-7`) from the tokens after
 /// the id. token at `index`.
 ///
 /// [`extract_pin_cite`] stops at the `§`, which the tokenizer makes a
-/// section token. This scan lets the pin cite run through that one token
-/// when it comes straight after the id. token (past `at` and spaces), and
-/// stops at the next token after it. eyecite has no equivalent (citare #2).
+/// section token. This scan lets the pin cite run through that token when
+/// it comes straight after the id. token (past `at` and whitespace), and
+/// through line breaks and later section tokens in a list of sections. It
+/// stops at any other token. eyecite has no equivalent (citare #2).
+///
+/// A line break between a capitalized `Id.` or `Ibid.` and the `§` ends the
+/// citation: CAP's digests end a paragraph with `Id.` and start the next
+/// with `§ 12 makes ...`. After a lowercase `id.` or after `at`, the `§` on
+/// the next line is the pin cite (`see id.\n§ 7407(d)(1)`) (#48).
 pub fn extract_section_pin_cite(words: &Tokens, index: usize) -> Option<SectionPinCite> {
     /// Words allowed between the id. token and the `§`: ` `, `at`, ` `.
     const MAX_WORDS_BEFORE_SECTION: usize = 3;
+    /// Line breaks allowed between them, which are paragraph tokens.
+    const MAX_BREAKS_BEFORE_SECTION: usize = 4;
 
-    let from_token_end = match &words[index] {
-        TokenOrStr::Token(t) => t.end(),
+    let id_token = match &words[index] {
+        TokenOrStr::Token(t) => t,
         TokenOrStr::Str(_) => return None,
     };
+    let from_token_end = id_token.end();
 
     let mut text = String::new();
-    let mut section_index = None;
+    // Each section token taken into `text`: its index in `words` and where
+    // it starts in `text`.
+    let mut sections: Vec<(usize, usize)> = Vec::new();
+    let (mut words_before, mut breaks_before) = (0, 0);
     for (i, word) in words.iter().enumerate().skip(index + 1) {
         match word {
             TokenOrStr::Str(s) => {
-                if section_index.is_none() && i - index > MAX_WORDS_BEFORE_SECTION {
-                    return None;
+                if sections.is_empty() {
+                    words_before += 1;
+                    if words_before > MAX_WORDS_BEFORE_SECTION {
+                        return None;
+                    }
                 }
                 text.push_str(s);
             }
-            TokenOrStr::Token(t @ Token::Section(_)) if section_index.is_none() => {
-                section_index = Some(i);
+            TokenOrStr::Token(t @ Token::Section(_)) => {
+                sections.push((i, text.len()));
+                text.push_str(t.data());
+            }
+            // A line break is a paragraph token.
+            TokenOrStr::Token(t @ Token::Paragraph(_)) => {
+                if sections.is_empty() {
+                    breaks_before += 1;
+                    if breaks_before > MAX_BREAKS_BEFORE_SECTION {
+                        return None;
+                    }
+                }
                 text.push_str(t.data());
             }
             TokenOrStr::Token(_) => break,
@@ -502,16 +528,32 @@ pub fn extract_section_pin_cite(words: &Tokens, index: usize) -> Option<SectionP
             break;
         }
     }
-    let section_index = section_index?;
+    if sections.is_empty() {
+        return None;
+    }
 
     let pattern = anchored_pattern(&POST_ID_SECTION_REGEX, true)?;
     let captures = pattern.re.captures(&text).ok()??;
-    let pin_cite_raw = captures.name("pin_cite")?.as_str();
+    let pin = captures.name("pin_cite")?;
+    let gap = captures.name("gap").map_or("", |m| m.as_str());
+    let capitalized = id_token.data().starts_with(|c: char| c.is_uppercase());
+    if capitalized && captures.name("at").is_none() && gap.contains(['\n', '\r']) {
+        return None;
+    }
+
+    let pin_cite_raw = pin.as_str();
+    let pin_cite = pin_cite_raw
+        .trim_start_matches(|c: char| c == ',' || c.is_whitespace())
+        .trim_end_matches(&[',', ' '][..]);
     Some(SectionPinCite {
-        pin_cite: clean_pin_cite(Some(pin_cite_raw)),
+        pin_cite: (!pin_cite.is_empty()).then(|| pin_cite.to_string()),
         span_end: from_token_end + pin_cite_raw.trim_end_matches(&[',', ' '][..]).len(),
         parenthetical: process_parenthetical(captures.name("parenthetical").map(|m| m.as_str())),
-        section_index,
+        section_indexes: sections
+            .iter()
+            .filter(|&&(_, start)| start < pin.end())
+            .map(|&(i, _)| i)
+            .collect(),
     })
 }
 

@@ -60,10 +60,18 @@ jobs:
     secrets: inherit
 
   # Opens or refreshes the release PR: the workspace version bump and the
-  # CHANGELOG.md entry. GitHub refuses the PR unless the repo allows
-  # Actions to create pull requests, which codexpublicus/infra sets
-  # (`release_bot: true`). A PR opened with GITHUB_TOKEN triggers no
-  # workflows, so CI doesn't run on the release PR itself.
+  # CHANGELOG.md entry. It pushes the branch and opens the PR with the yeet
+  # GitHub App's token, so CI runs on the release PR like any other; GitHub
+  # holds the checks on a PR that GITHUB_TOKEN opens until someone approves
+  # them. YEET_APP_ID (a variable, the App's client ID) and
+  # YEET_APP_PRIVATE_KEY (a secret) are pushed by codexpublicus/infra
+  # (yeet.py), and the App's installation must list this repo. While either
+  # value is missing, the job uses GITHUB_TOKEN as before, with a warning on
+  # the run; that path needs the repo to allow Actions to create pull
+  # requests, which codexpublicus/infra sets (`release_bot: true`). With the
+  # values set, a token that won't mint (the App not installed here) fails
+  # the job. The release job keeps GITHUB_TOKEN: its tag and release start
+  # no workflows, and the bench job above is chained to it instead.
   release-pr:
     name: Release PR
     runs-on: homelab
@@ -74,14 +82,45 @@ jobs:
       group: release-pr-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      - name: Is the yeet App configured?
+        id: yeet
+        env:
+          APP_ID: ${{ vars.YEET_APP_ID }}
+          HAS_KEY: ${{ secrets.YEET_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ -n "$APP_ID" ] && [ "$HAS_KEY" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=yeet App not configured::YEET_APP_ID or YEET_APP_PRIVATE_KEY is missing (codexpublicus/infra, yeet.py). Opening the release PR with GITHUB_TOKEN, so its CI waits for approval."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Generate the yeet App token
+        id: app-token
+        if: steps.yeet.outputs.configured == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.YEET_APP_ID }}
+          private-key: ${{ secrets.YEET_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Explain a token that wouldn't mint
+        if: failure() && steps.app-token.outcome == 'failure'
+        run: |
+          echo "::error title=yeet App token::The yeet App's values are set, but no token minted. Add ${GITHUB_REPOSITORY} under Repository access in the App's settings, or check that YEET_APP_PRIVATE_KEY matches the App."
+          exit 1
+      # Any git push release-plz makes goes out with the checkout's
+      # credentials, so the checkout takes the same token.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           submodules: recursive
+          token: ${{ steps.app-token.outputs.token || github.token }}
       - uses: ./.github/actions/homelab-setup
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         with:
           command: release-pr
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}

@@ -18,7 +18,8 @@ A new divergence goes in this file before it's merged, with all four.
 
 | Entry | Since | eyecite issue |
 |---|---|---|
-| [`§` pin cites on `Id.` and `Ibid.`](#id-section-pin) | #41 | [freelawproject/eyecite#299](https://github.com/freelawproject/eyecite/issues/299); follow-up drafted in [`id-section-pin.md`](eyecite-issue-drafts/id-section-pin.md) |
+| [`§` pin cites on `Id.` and `Ibid.`](#id-section-pin) | #41, #48 | [freelawproject/eyecite#299](https://github.com/freelawproject/eyecite/issues/299); follow-up drafted in [`id-section-pin.md`](eyecite-issue-drafts/id-section-pin.md) |
+| [Statute section numbers with letters or Unicode hyphens](#law-section) | #48 | drafted in [`law-section.md`](eyecite-issue-drafts/law-section.md) (reporters-db) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -39,6 +40,23 @@ The same holds for `Id. §1988`, `Id. §§ 1983-1985`, `Id. at § 1983(a)`, `Id.
 `Ibid. § 1983(c)`, `Id. § 1983 et seq.`, `Id. § 1983(a), (b)` and `Id. § 1983 (explaining)`
 (the parenthetical stays a parenthetical).
 
+**The longer forms (#48).** The pin cite runs on through what real opinions put after the
+section number, where eyecite still returns a bare `Id.` and an unknown `§`:
+
+| Input after `Id.` | citare's pin cite |
+|---|---|
+| `§ 5304, subd. (a)`, `§ 3, subd. 6` | the subdivision |
+| `§ 2B1.1, cmt. (n.2)`, `§ 2L1.2 cmt. n. 1(B)(iii)`, `§ 381, comment a`, `§ 2L1.2 application n. 5`, `§ 199, illus. 1`, `§ 2, cl. 1` | the comment, note, illustration or clause |
+| `§ 41.02[4]`, `§ 261[1][a]`, `§ 6105(a.1)(1)`, `§ 16.012(d-1)`, `§ 1677(7)(C) (iii)` | bracketed, dotted and spaced subsections |
+| `§§ 216.103 to 216.111`, `§§ 58 through 61` | the range |
+| `§§ 2007.023(b), .024(a)`, `§§ 22-501, -3202`, `§§ 23-602(A)(8); 23-603(A)(4)`, `§ 457 and § 459` | the whole list; the second `§` is not an unknown citation |
+| `§\n401`, `§` and a non-breaking space, `§ 76‐9‐101` (U+2010), `§ IV(B)(6)(j)` | the section |
+| `id.\n§ 7407(d)(1)`, `Id. at\n\n§ 2149(c)` | the section on the next line |
+
+A semicolon continues a list only when the next item ends at punctuation, so `Id. § 5; 28
+U.S.C. § 1331` stops at `§ 5`, and a list stops before a number followed by a capitalized word,
+which is the next citation's volume (`Id., §501 (b), 17 P.S. §211.501 (b)`).
+
 **After a case.** A pin cite that doesn't start with a page number can't be checked against a
 case's pages, and eyecite's `_has_invalid_pin_cite` treats it as invalid: `Id. ¶ 4` after
 `1 U.S. 1` is unresolved in both engines. citare applies the same rule to a section pin cite.
@@ -55,8 +73,8 @@ the chain, and the next `Id.` is unresolved. In citare the section is part of th
 citation, so the chain continues.
 
 Unchanged, and the same as eyecite: `Id. at 5`, `Id. ¶ 4`, `Id. at ¶ 4`, a bare `Id.`, a `§`
-that doesn't directly follow the id. citation (`Id. The rule in § 5 applies.`), and `Id.`
-at the end of a line with the `§` on the next one. Neither engine finds an `Id.` that directly
+that doesn't directly follow the id. citation (`Id. The rule in § 5 applies.`), and a
+capitalized `Id.` at the end of a line with the `§` on the next one. Neither engine finds an `Id.` that directly
 follows an opening parenthesis or bracket (`(Id. § 2441)`); that is a separate gap.
 
 ### Evidence
@@ -143,22 +161,31 @@ Where the engines resolve differently, citare is right in 168 and eyecite in 18:
   then carries the two wrong ones on through 4 more citations, which #41 as first opened left
   unresolved; that is the general cost of the chain, counted in the previous item.
 
-citare's pin cite stops early in 117 of the 1,268 pin cites: it reads the section number and
-its parenthesized subsections, and leaves out what follows a comma or a space, such as
-`, subd. (a)`, `, comment (d)`, `, cmt. (n.2)`, `[4]`, `, -3202` and ` to 216.111`. It misses
-the pin cite entirely in 46, where its answer is eyecite's: 27 have a line break between `Id.`
-and the section number (`id.\n§ 7407(d)(1)`, `Id. §\n401`), 3 a non-breaking space after the
-`§`, others Unicode hyphens (`§ 76‐9‐101`), roman numerals (`§ IV(B)(6)(j)`) or OCR damage
-(`§l(h)`). Line breaks are deliberate for now: in the CAP digests a `§` on the next line starts
-a new paragraph. All of these are follow-ups to the pin cite grammar, not reasons to drop it.
+As #41 first merged it, citare's pin cite stopped early in 117 of the 1,268 pin cites: it read
+the section number and its parenthesized subsections, and left out what follows a comma or a
+space, such as `, subd. (a)`, `, comment (d)`, `, cmt. (n.2)`, `[4]`, `, -3202` and
+` to 216.111`. It missed the pin cite entirely in 46, where its answer was eyecite's: 28 have
+a line break before or after the `§` (`id.\n§ 7407(d)(1)`, `Id. §\n401`), 4 a non-breaking
+space, others Unicode hyphens (`§ 76‐9‐101`), roman numerals (`§ IV(B)(6)(j)`) or OCR damage
+(`§l(h)`). #48 extended the grammar. On the same opinions, 93 of the 117 and 33 of the 46 are
+now right, 27 still stop early (mostly OCR damage, and lists whose items carry their own
+parentheticals), 9 are still missed and 1 is wrong (a page number after `§\n\n`). No pin cite
+that was right before got worse, and resolution changed in 10 matches, each to the right answer.
+6 of the 9 still missed are a capitalized `Id.` with the `§` on the next line, which citare
+keeps as a stop: in the CAP digests that layout starts a new paragraph, and none of the 10 CAP
+matches like it is a pin cite. After a lowercase `id.` or after `at`, the next line's `§` is
+the pin cite. The rows, before and after, are in
+[`evidence/section-pin-forms.md`](evidence/section-pin-forms.md).
 
 ### Tests
 
 - `crates/citare-core/tests/id_section_pin.rs`: every row above, with the span, pin cite,
   parenthetical and resolution of each, plus the `¶` and page pin cite cases that match eyecite.
-- citation-bench `vectors/divergences/`: the same 18 inputs as `find` and `resolve` vectors
-  (`mise run bench:divergences citare`). eyecite's misses are listed in
-  `baselines/eyecite.known-differences`.
+  `section_pin_forms`, `more_section_pin_forms`, `section_pin_stops` and
+  `capitalized_id_before_a_line_break_is_not_a_pin` cover #48's forms and where they stop.
+- citation-bench `vectors/divergences/`: 34 inputs as `find` and `resolve` vectors, the 18
+  from #41 and 16 of #48's forms (`section_pin_forms`) (`mise run bench:divergences citare`).
+  eyecite's misses are listed in `baselines/eyecite.known-differences`.
 
 ### Upstream
 
@@ -168,3 +195,52 @@ draft follow-up in [`eyecite-issue-drafts/id-section-pin.md`](eyecite-issue-draf
 adds the resolution side and the corpus evidence: #343 resolves the same way citare does
 after a case and in the id. chain, but leaves `Id. § 4(b)` after `83 Stat. 841` unresolved
 and drops the subsection from `§ 4(b)`.
+
+<a id="law-section"></a>
+## Statute section numbers with letters or Unicode hyphens
+
+reporters-db's `law_section` regex, which eyecite and citare both build their statute
+citations from, takes digits joined by ASCII hyphens, dots and colons
+(`\d+(?:[\-.:]\d+){,3}`). A section number with a letter in it stops at the part before the
+letter, and one with U+2010 or U+2011 for its hyphens stops at the first hyphen. citare
+overrides the variable in `crates/citare-core/build.rs`: a part may end in up to two lowercase
+letters or one capital, a hyphen may introduce up to three letters, and U+2010 and U+2011
+separate parts like a hyphen.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `See Mich. Comp. Laws § 600.2912a.` | `Mich. Comp. Laws § 600`, section `600` | `Mich. Comp. Laws § 600.2912a`, section `600.2912a` |
+| `See 42 U.S.C. § 2000e-5(f).` | no law citation; unknown citation `§` | `42 U.S.C. § 2000e-5`, section `2000e-5`, pin cite `(f)` |
+| `See 17 C.F.R. § 240.10b-5.` | `17 C.F.R. § 240`, section `240` | `17 C.F.R. § 240.10b-5`, section `240.10b-5` |
+| `See Utah Code Ann. § 76‐9‐101.` (U+2010) | `Utah Code Ann. § 76`, section `76` | `Utah Code Ann. § 76‐9‐101`, section `76‐9‐101` |
+| `See N.Y. Gen. Bus. Law § 394-ccc(1).` | `N.Y. Gen. Bus. Law § 394`, section `394` | `N.Y. Gen. Bus. Law § 394-ccc`, section `394-ccc`, pin cite `(1)` |
+
+Unchanged: sections without letters or Unicode hyphens (`§ 76-9-101`, `§ 1170.12`,
+`§ 161.001(b)(1)(D)`), and reporters-db's second form, a number with parenthesized parts
+(`81(a)(2)`).
+
+### Evidence
+
+The CourtListener samples from the `id-section-pin` study (8,409 opinions), run through citare
+with and without the override. With it, citare finds 793 statute citations it didn't find
+before and extends 85 it cut short, in 231 opinions. It loses none, and none of the statute
+citations it already read to the end changes. Most of the 793 have a letter straight after the
+first number, where the old regex can't end the section at all, so the citation isn't found:
+`42 U.S.C. § 2000e-5` (250 of them in 42 U.S.C.), `15 U.S.C. § 78j(b)`, `19 U.S.C. § 1677b`,
+`8 U.S.C. § 1229b`, `Minn.Stat. § 253B.03`, `N.C. Gen.Stat. § 7A-450`. The 85 extended ones
+include `17 C.F.R. § 240.10b-5`, `38 C.F.R. § 4.71a`, `Treas.Reg. § 1.170A-1`,
+`Conn. Gen. Stat. § 42-110b`, and Utah and Nebraska sections written with U+2010 or U+2011.
+I read a random 40 of the new ones in context and all 85 extended ones: each section is the
+whole section number and nothing after it.
+
+### Tests
+
+- `crates/citare-core/tests/law_section.rs`: each row above, and sections the override leaves
+  alone.
+- citation-bench `vectors/divergences/`: the five inputs above as `find` vectors
+  (`law_section`). eyecite's misses are listed in `baselines/eyecite.known-differences`.
+
+### Upstream
+
+The regex is reporters-db's, so the fix belongs there; a draft issue is in
+[`eyecite-issue-drafts/law-section.md`](eyecite-issue-drafts/law-section.md).
