@@ -111,8 +111,8 @@ pub fn get_citations_from_document(
 
             // CASE 2: Id/Ibid citation
             Token::Id(_) => {
-                let (citation, section_index) = extract_id_citation(&document.words, i);
-                section_pins.extend(section_index);
+                let (citation, section_indexes) = extract_id_citation(&document.words, i);
+                section_pins.extend(section_indexes);
                 citations.push(citation);
             }
 
@@ -458,22 +458,22 @@ fn extract_supra_citation(words: &Tokens, index: usize) -> Citation {
 // Extract id citation
 // ---------------------------------------------------------------------------
 
-/// Extract an id. citation, and the index of the `§` token its pin cite
-/// took, if it took one.
-fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Option<usize>) {
+/// Extract an id. citation, and the indexes of the `§` tokens its pin cite
+/// took, if it took any.
+fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Vec<usize>) {
     let token = match &words[index] {
         TokenOrStr::Token(t) => t.clone(),
         _ => unreachable!("Expected token at id index"),
     };
 
     let (mut pin_cite, mut span_end, mut parenthetical) = extract_pin_cite(words, index, "");
-    let mut section_index = None;
+    let mut section_indexes = Vec::new();
     if pin_cite.is_none() {
         if let Some(section) = extract_section_pin_cite(words, index) {
             pin_cite = section.pin_cite;
             span_end = Some(section.span_end);
             parenthetical = section.parenthetical;
-            section_index = Some(section.section_index);
+            section_indexes = section.section_indexes;
         }
     }
 
@@ -495,7 +495,7 @@ fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Option<usize>
             ..Default::default()
         },
     });
-    (citation, section_index)
+    (citation, section_indexes)
 }
 
 // ---------------------------------------------------------------------------

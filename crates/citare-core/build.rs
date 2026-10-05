@@ -56,6 +56,19 @@ const TOKEN_TYPE_PLACEHOLDER: u8 = 6;
 
 // (GenExtractor struct removed — replaced by template + reporter map approach)
 
+/// The `law_section` regex variable, overriding reporters-db's
+/// `\d+(?:[\-.:]\d+){,3}` (see the override in `main`). A part is digits
+/// with an optional suffix of up to two lowercase letters or one capital
+/// (`2912a`, `2000ee`, `314A`), or, after a hyphen, up to three letters
+/// (`394-ccc`). The second branch, a section with parenthesized parts
+/// (`81(a)(2)`), is reporters-db's.
+const LAW_SECTION_REGEX: &str = concat!(
+    r"(?P<section>",
+    r"(?:\d+(?:[a-z]{1,2}|[A-Z])?",
+    "(?:[\\-.:\u{2010}\u{2011}]\\d+(?:[a-z]{1,2}|[A-Z])?|[\\-\u{2010}\u{2011}][a-zA-Z]{1,3}){,3})",
+    r"|(?:\d+(?:\((?:[a-zA-Z]{1}|\d{1,2})\))+))",
+);
+
 fn main() {
     println!("cargo::rerun-if-changed=../../data/");
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
@@ -89,6 +102,18 @@ fn main() {
                     serde_json::Value::String(format!("(?P<page>{})", page_number_regex)),
                 );
             }
+        }
+        // citare's own override, not eyecite's: a statute section number may
+        // end in a letter (`Mich. Comp. Laws § 600.2912a`, `42 U.S.C.
+        // § 2000e`), have a letter part after a hyphen (`N.Y. Gen. Bus. Law
+        // § 394-ccc`), and use the Unicode hyphens U+2010 and U+2011
+        // (`Utah Code Ann. § 76‐9‐101`). reporters-db's `law_section` allows
+        // none of these, and the citation stops at the first part (#48).
+        if let Some(law) = obj.get_mut("law").and_then(|l| l.as_object_mut()) {
+            law.insert(
+                "section".to_string(),
+                serde_json::Value::String(LAW_SECTION_REGEX.to_string()),
+            );
         }
     }
 
