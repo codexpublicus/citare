@@ -32,7 +32,10 @@ fn law(text: &str) -> (String, String) {
 #[case("See Mich. Comp. Laws § 600.2912a.", "600.2912a")]
 #[case("See Mich. Comp. Laws § 600.2912a(1).", "600.2912a")]
 #[case("See Mich. Comp. Laws § 600.2912b and more.", "600.2912b")]
-// A letter after the section number, then more parts.
+// A letter after the section number, then more parts. eyecite finds no
+// law citation in `42 U.S.C. § 2000e-5`.
+#[case("See 42 U.S.C. § 2000e-5(f).", "2000e-5")]
+#[case("See 17 C.F.R. § 240.10b-5.", "240.10b-5")]
 #[case("See Mich. Comp. Laws § 750.520b.", "750.520b")]
 // Unicode hyphens.
 #[case(
