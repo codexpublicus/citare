@@ -4,6 +4,16 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.5.2 - 2026-10-05
+
+### Fixes
+
+- *(core)* Extend section pins and statutes ([#58](https://github.com/codexpublicus/citare/pull/58))
+
+### Performance
+
+- *(core)* Make citation finding linear ([#59](https://github.com/codexpublicus/citare/pull/59))
+
 ## v0.5.1 - 2026-10-05
 
 ### Features
