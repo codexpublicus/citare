@@ -15,7 +15,7 @@ jobs:
   # A no-op on any push that isn't a merged release PR.
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: homelab
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     permissions:
@@ -28,6 +28,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+      - uses: ./.github/actions/homelab-setup
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         id: release-plz
@@ -65,7 +66,7 @@ jobs:
   # workflows, so CI doesn't run on the release PR itself.
   release-pr:
     name: Release PR
-    runs-on: ubuntu-latest
+    runs-on: homelab
     permissions:
       contents: write
       pull-requests: write
@@ -77,6 +78,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+      - uses: ./.github/actions/homelab-setup
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         with:
