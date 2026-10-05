@@ -109,6 +109,10 @@ jobs:
       - name: Build WASM
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm
 
+      # The small module that loads the data bundle at runtime (docs/data-bundle.md).
+      - name: Build WASM without embedded data
+        run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm --no-default-features
+
   # Conformance ratchet (#12) and benchmark report (#35). The ratchet runs
   # citation-bench's vectors against this checkout and fails on any vector that isn't in
   # citation-bench's baselines/citare.known-failures, listing the listed ones that now

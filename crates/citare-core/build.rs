@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write as FmtWrite;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
+use citare_data_build::bundle::{
+    BundleEdition, BundleOneoff, BundleReporterMapEntry, DataBundle, Str,
+};
 use citare_data_build::courts::parse_courts;
 use citare_data_build::harvard::{parse_harvard, slugs_by_edition};
 use citare_data_build::regexes::{
@@ -17,7 +18,7 @@ use citare_data_build::template::process_variables;
 // Edition representation for build-time deduplication
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct BuildEdition {
     reporter_short_name: String,
     reporter_name: String,
@@ -58,9 +59,9 @@ const TOKEN_TYPE_PLACEHOLDER: u8 = 6;
 fn main() {
     println!("cargo::rerun-if-changed=../../data/");
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
+    println!("cargo::rerun-if-env-changed=CITARE_DUMP_BUNDLE_JSON");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
-    let out_path = Path::new(&out_dir).join("generated_extractors.rs");
 
     // -----------------------------------------------------------------------
     // 1. Load and process regex variables with overrides
@@ -141,7 +142,6 @@ fn main() {
     // 3. Build editions_by_regex (same logic as tokenizer.rs build_extractors)
     // -----------------------------------------------------------------------
     let mut editions_by_regex: HashMap<String, EditionsByRegexEntry> = HashMap::new();
-    let mut editions_lookup: HashMap<String, Vec<BuildEdition>> = HashMap::new();
 
     // Helper: substitute $edition in a template with escaped edition names,
     // relaxing inter-token whitespace so `N.Y.S.2d` also matches
@@ -160,18 +160,10 @@ fn main() {
 
     // Helper: add a regex for an edition
     let add_regex = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                     editions_lookup: &mut HashMap<String, Vec<BuildEdition>>,
                      kind: &str,
                      reporter_strings: &[&str],
                      edition: &BuildEdition,
                      regex: &str| {
-        for &reporter in reporter_strings {
-            editions_lookup
-                .entry(reporter.to_string())
-                .or_default()
-                .push(edition.clone());
-        }
-
         let entry = editions_by_regex.entry(regex.to_string()).or_default();
         match kind {
             "editions" => entry.editions.push(edition.clone()),
@@ -208,7 +200,6 @@ fn main() {
 
     // Helper: expand regex templates for an edition
     let add_regexes = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
-                       editions_lookup: &mut HashMap<String, Vec<BuildEdition>>,
                        regex_templates: &[String],
                        edition_name: &str,
                        edition: &BuildEdition,
@@ -232,7 +223,6 @@ fn main() {
             if !resolved.contains("$edition") && !resolved.contains("${edition}") {
                 add_regex(
                     editions_by_regex,
-                    editions_lookup,
                     "editions",
                     &[edition_name],
                     edition,
@@ -245,7 +235,6 @@ fn main() {
             let regex = substitute_edition(&resolved, &[edition_name]);
             add_regex(
                 editions_by_regex,
-                editions_lookup,
                 "editions",
                 &[edition_name],
                 edition,
@@ -257,7 +246,6 @@ fn main() {
                 let var_regex = substitute_edition(&resolved, &[var_name.as_str()]);
                 add_regex(
                     editions_by_regex,
-                    editions_lookup,
                     "variations",
                     &[var_name.as_str()],
                     edition,
@@ -298,7 +286,6 @@ fn main() {
 
                 add_regexes(
                     &mut editions_by_regex,
-                    &mut editions_lookup,
                     &regex_templates,
                     edition_name,
                     &edition,
@@ -337,7 +324,6 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
-                &mut editions_lookup,
                 &regex_templates,
                 source_key,
                 &edition,
@@ -371,7 +357,6 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
-                &mut editions_lookup,
                 &regex_templates,
                 source_key,
                 &edition,
@@ -620,316 +605,157 @@ fn main() {
     });
 
     // -----------------------------------------------------------------------
-    // 7. Also generate the editions_lookup data
+    // 8. Canonicalize and write the data bundle
     // -----------------------------------------------------------------------
-    // editions_lookup maps reporter string -> list of edition indices
-    let mut gen_editions_lookup: Vec<(String, Vec<usize>)> = Vec::new();
-    for (key, editions) in &editions_lookup {
-        let indices: Vec<usize> = editions
+    // The tables above are built from HashMaps, so template and edition
+    // numbering vary from build to build. Sort them so the same reporters-db
+    // and courts-db always give a byte-identical bundle (and so the same
+    // content hash, which is what keeps a published bundle cached).
+    let mut ed_order: Vec<usize> = (0..all_editions.len()).collect();
+    ed_order.sort_by(|&a, &b| all_editions[a].cmp(&all_editions[b]));
+    let mut ed_new = vec![0u32; all_editions.len()];
+    for (new, &old) in ed_order.iter().enumerate() {
+        ed_new[old] = new as u32;
+    }
+    let remap_eds = |v: &[usize]| -> Vec<u32> {
+        let mut out: Vec<u32> = v.iter().map(|&i| ed_new[i]).collect();
+        out.sort_unstable();
+        out
+    };
+
+    let mut tmpl_order: Vec<usize> = (0..templates.len()).collect();
+    tmpl_order.sort_by(|&a, &b| templates[a].cmp(&templates[b]));
+    let mut tmpl_new = vec![0u32; templates.len()];
+    for (new, &old) in tmpl_order.iter().enumerate() {
+        tmpl_new[old] = new as u32;
+    }
+
+    let mut reporter_map: Vec<BundleReporterMapEntry> = reporter_map_entries
+        .iter()
+        .map(|e| {
+            let mut strings = e.strings.clone();
+            strings.sort();
+            BundleReporterMapEntry {
+                template_idx: tmpl_new[e.template_idx],
+                reporter_string: e.reporter_string.clone().into(),
+                strings: strings.into_iter().map(Into::into).collect(),
+                short: e.short,
+                edition_indices: remap_eds(&e.edition_indices),
+                variation_indices: remap_eds(&e.variation_indices),
+            }
+        })
+        .collect();
+    reporter_map.sort_by(|a, b| {
+        (
+            a.template_idx,
+            &a.reporter_string,
+            a.short,
+            &a.edition_indices,
+            &a.variation_indices,
+        )
+            .cmp(&(
+                b.template_idx,
+                &b.reporter_string,
+                b.short,
+                &b.edition_indices,
+                &b.variation_indices,
+            ))
+    });
+
+    let court_keys: Vec<(Str, Str)> = courts
+        .iter()
+        .map(|court| {
+            // get_court_by_paren matches a parenthetical against each court's
+            // citation_string reduced to lowercase alphanumerics; precompute
+            // that form so the runtime never parses courts.json.
+            let key: String = court
+                .citation_string
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase();
+            (key.into(), court.id.clone().into())
+        })
+        .collect();
+
+    let bundle = DataBundle {
+        // No citare version here: a bundle's bytes, and so its content hash
+        // and cache lifetime, should change only when the data does.
+        meta: vec![
+            (
+                "reporters_db_commit".into(),
+                submodule_commit("reporters-db").into(),
+            ),
+            (
+                "courts_db_commit".into(),
+                submodule_commit("courts-db").into(),
+            ),
+        ],
+        editions: ed_order
             .iter()
-            .map(|e| intern_edition(e, &mut all_editions, &mut edition_index_map))
-            .collect();
-        gen_editions_lookup.push((key.clone(), indices));
-    }
-    // Sort for deterministic output
-    gen_editions_lookup.sort_by(|a, b| a.0.cmp(&b.0));
-
-    // -----------------------------------------------------------------------
-    // 8. Write generated Rust source file
-    // -----------------------------------------------------------------------
-    let mut output = String::with_capacity(1024 * 1024); // ~1MB initial
-
-    writeln!(output, "/// Auto-generated extractor data. Do not edit.").unwrap();
-    writeln!(
-        output,
-        "/// Generated from reporters-db and courts-db data at build time."
-    )
-    .unwrap();
-    writeln!(output).unwrap();
-
-    // -- Edition struct and array --
-    writeln!(output, "#[derive(Debug, Clone)]").unwrap();
-    writeln!(output, "pub struct GeneratedEdition {{").unwrap();
-    writeln!(output, "    pub reporter_short_name: &'static str,").unwrap();
-    writeln!(output, "    pub reporter_name: &'static str,").unwrap();
-    writeln!(output, "    pub reporter_cite_type: &'static str,").unwrap();
-    writeln!(output, "    pub reporter_source: u8,").unwrap();
-    writeln!(output, "    pub short_name: &'static str,").unwrap();
-    writeln!(output, "    pub start: Option<&'static str>,").unwrap();
-    writeln!(output, "    pub end: Option<&'static str>,").unwrap();
-    writeln!(output, "    pub harvard_slug: Option<&'static str>,").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
-
-    writeln!(
-        output,
-        "pub static GENERATED_EDITIONS: &[GeneratedEdition] = &["
-    )
-    .unwrap();
-    for ed in &all_editions {
-        writeln!(output, "    GeneratedEdition {{").unwrap();
-        writeln!(
-            output,
-            "        reporter_short_name: {},",
-            rust_str_literal(&ed.reporter_short_name)
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        reporter_name: {},",
-            rust_str_literal(&ed.reporter_name)
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        reporter_cite_type: {},",
-            rust_str_literal(&ed.reporter_cite_type)
-        )
-        .unwrap();
-        writeln!(output, "        reporter_source: {},", ed.reporter_source).unwrap();
-        writeln!(
-            output,
-            "        short_name: {},",
-            rust_str_literal(&ed.short_name)
-        )
-        .unwrap();
-        writeln!(output, "        start: {},", rust_option_str(&ed.start)).unwrap();
-        writeln!(output, "        end: {},", rust_option_str(&ed.end)).unwrap();
-        writeln!(
-            output,
-            "        harvard_slug: {},",
-            rust_option_str(&ed.harvard_slug)
-        )
-        .unwrap();
-        writeln!(output, "    }},").unwrap();
-    }
-    writeln!(output, "];").unwrap();
-    writeln!(output).unwrap();
-
-    // -- Template array --
-    writeln!(
-        output,
-        "/// A regex template with `{}` where the reporter name goes.",
-        REPORTER_PLACEHOLDER
-    )
-    .unwrap();
-    writeln!(output, "pub static GENERATED_TEMPLATES: &[&str] = &[").unwrap();
-    for tmpl in &templates {
-        writeln!(output, "    {},", rust_str_literal(tmpl)).unwrap();
-    }
-    writeln!(output, "];").unwrap();
-    writeln!(output).unwrap();
-
-    // -- Reporter placeholder constant --
-    writeln!(
-        output,
-        "pub const REPORTER_PLACEHOLDER: &str = {:?};",
-        REPORTER_PLACEHOLDER
-    )
-    .unwrap();
-    writeln!(output).unwrap();
-
-    // -- Reporter map entry struct and array --
-    writeln!(output, "#[derive(Debug, Clone)]").unwrap();
-    writeln!(output, "pub struct GeneratedReporterMapEntry {{").unwrap();
-    writeln!(output, "    pub template_idx: usize,").unwrap();
-    writeln!(output, "    pub reporter_string: &'static str,").unwrap();
-    writeln!(output, "    pub strings: &'static [&'static str],").unwrap();
-    writeln!(output, "    pub short: bool,").unwrap();
-    writeln!(output, "    pub edition_indices: &'static [usize],").unwrap();
-    writeln!(output, "    pub variation_indices: &'static [usize],").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
-
-    writeln!(
-        output,
-        "pub static GENERATED_REPORTER_MAP: &[GeneratedReporterMapEntry] = &["
-    )
-    .unwrap();
-    for entry in &reporter_map_entries {
-        writeln!(output, "    GeneratedReporterMapEntry {{").unwrap();
-        writeln!(output, "        template_idx: {},", entry.template_idx).unwrap();
-        writeln!(
-            output,
-            "        reporter_string: {},",
-            rust_str_literal(&entry.reporter_string)
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        strings: &[{}],",
-            entry
-                .strings
-                .iter()
-                .map(|s| rust_str_literal(s))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(output, "        short: {},", entry.short).unwrap();
-        writeln!(
-            output,
-            "        edition_indices: &[{}],",
-            entry
-                .edition_indices
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        variation_indices: &[{}],",
-            entry
-                .variation_indices
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(output, "    }},").unwrap();
-    }
-    writeln!(output, "];").unwrap();
-    writeln!(output).unwrap();
-
-    // -- One-off extractor struct and array --
-    writeln!(output, "#[derive(Debug, Clone)]").unwrap();
-    writeln!(output, "pub struct GeneratedExtractor {{").unwrap();
-    writeln!(output, "    pub regex: &'static str,").unwrap();
-    writeln!(output, "    pub token_type: u8,").unwrap();
-    writeln!(output, "    pub case_insensitive: bool,").unwrap();
-    writeln!(output, "    pub strings: &'static [&'static str],").unwrap();
-    writeln!(output, "}}").unwrap();
-    writeln!(output).unwrap();
-
-    writeln!(
-        output,
-        "pub static GENERATED_ONEOFF_EXTRACTORS: &[GeneratedExtractor] = &["
-    )
-    .unwrap();
-    for ext in &oneoff_extractors {
-        writeln!(output, "    GeneratedExtractor {{").unwrap();
-        writeln!(output, "        regex: {},", rust_str_literal(&ext.regex)).unwrap();
-        writeln!(output, "        token_type: {},", ext.token_type).unwrap();
-        writeln!(
-            output,
-            "        case_insensitive: {},",
-            ext.case_insensitive
-        )
-        .unwrap();
-        writeln!(
-            output,
-            "        strings: &[{}],",
-            ext.strings
-                .iter()
-                .map(|s| rust_str_literal(s))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-        writeln!(output, "    }},").unwrap();
-    }
-    writeln!(output, "];").unwrap();
-    writeln!(output).unwrap();
-
-    // -- Editions lookup --
-    writeln!(
-        output,
-        "pub static GENERATED_EDITIONS_LOOKUP: &[(&str, &[usize])] = &["
-    )
-    .unwrap();
-    for (key, indices) in &gen_editions_lookup {
-        writeln!(
-            output,
-            "    ({}, &[{}]),",
-            rust_str_literal(key),
-            indices
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-        .unwrap();
-    }
-    writeln!(output, "];").unwrap();
-
-    // Write to file
-    let mut file = fs::File::create(&out_path).expect("Failed to create generated_extractors.rs");
-    file.write_all(output.as_bytes())
-        .expect("Failed to write generated_extractors.rs");
-
-    println!(
-        "cargo::warning=Wrote {} bytes to {}",
-        output.len(),
-        out_path.display()
+            .map(|&i| {
+                let e = &all_editions[i];
+                BundleEdition {
+                    reporter_short_name: e.reporter_short_name.clone().into(),
+                    reporter_name: e.reporter_name.clone().into(),
+                    reporter_cite_type: e.reporter_cite_type.clone().into(),
+                    reporter_source: e.reporter_source,
+                    short_name: e.short_name.clone().into(),
+                    start: e.start.clone().map(Into::into),
+                    end: e.end.clone().map(Into::into),
+                    harvard_slug: e.harvard_slug.clone().map(Into::into),
+                }
+            })
+            .collect(),
+        templates: tmpl_order
+            .iter()
+            .map(|&i| templates[i].clone().into())
+            .collect(),
+        reporter_map,
+        oneoffs: oneoff_extractors
+            .iter()
+            .map(|o| BundleOneoff {
+                regex: o.regex.clone().into(),
+                token_type: o.token_type,
+                case_insensitive: o.case_insensitive,
+                strings: o.strings.iter().cloned().map(Into::into).collect(),
+            })
+            .collect(),
+        court_keys,
+    };
+    assert_eq!(
+        REPORTER_PLACEHOLDER,
+        citare_data_build::bundle::REPORTER_PLACEHOLDER
     );
 
-    // -----------------------------------------------------------------------
-    // Court lookup keys
-    // -----------------------------------------------------------------------
-    // get_court_by_paren matches a parenthetical against each court's
-    // citation_string reduced to lowercase alphanumerics. Precompute that
-    // form here so the runtime neither embeds nor parses courts.json.
-    let mut courts_out = String::new();
-    writeln!(
-        courts_out,
-        "/// `(normalized citation_string, court id)` in courts-db order.\n\
-         pub static GENERATED_COURT_KEYS: &[(&str, &str)] = &["
-    )
-    .unwrap();
-    for court in &courts {
-        let key: String = court
-            .citation_string
-            .chars()
-            .filter(|c| c.is_alphanumeric())
-            .collect::<String>()
-            .to_lowercase();
-        writeln!(
-            courts_out,
-            "    ({}, {}),",
-            rust_str_literal(&key),
-            rust_str_literal(&court.id)
-        )
-        .unwrap();
+    let bytes = bundle.encode();
+    assert_eq!(
+        DataBundle::decode(&bytes).as_ref(),
+        Ok(&bundle),
+        "data bundle does not round-trip"
+    );
+    let bundle_path = Path::new(&out_dir).join("citare-data.bin");
+    fs::write(&bundle_path, &bytes).expect("Failed to write citare-data.bin");
+    println!(
+        "cargo::warning=Wrote {} byte data bundle to {}",
+        bytes.len(),
+        bundle_path.display()
+    );
+    if std::env::var_os("CITARE_DUMP_BUNDLE_JSON").is_some() {
+        let json_path = Path::new(&out_dir).join("citare-data.json");
+        fs::write(&json_path, serde_json::to_vec(&bundle).unwrap()).unwrap();
+        println!("cargo::warning=Wrote {}", json_path.display());
     }
-    writeln!(courts_out, "];").unwrap();
-    let courts_path = Path::new(&out_dir).join("generated_courts.rs");
-    fs::write(&courts_path, courts_out).expect("Failed to write generated_courts.rs");
 }
 
-// ---------------------------------------------------------------------------
-// String literal helpers
-// ---------------------------------------------------------------------------
-
-/// Produce a Rust string literal from a string, properly escaping special characters.
-fn rust_str_literal(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() + 2);
-    result.push('"');
-    for ch in s.chars() {
-        match ch {
-            '\\' => result.push_str("\\\\"),
-            '"' => result.push_str("\\\""),
-            '\n' => result.push_str("\\n"),
-            '\r' => result.push_str("\\r"),
-            '\t' => result.push_str("\\t"),
-            '\0' => result.push_str("\\0"),
-            c if c.is_ascii_graphic() || c == ' ' => result.push(c),
-            c => {
-                // Use unicode escape for non-ASCII
-                write!(result, "\\u{{{:04x}}}", c as u32).unwrap();
-            }
-        }
-    }
-    result.push('"');
-    result
-}
-
-/// Produce a Rust `Option<&'static str>` literal.
-fn rust_option_str(opt: &Option<String>) -> String {
-    match opt {
-        Some(s) => format!("Some({})", rust_str_literal(s)),
-        None => "None".to_string(),
-    }
+/// The commit a data submodule is checked out at, or "unknown" outside a git
+/// checkout. Recorded in the bundle's metadata for provenance only.
+fn submodule_commit(name: &str) -> String {
+    std::process::Command::new("git")
+        .args(["-C", &format!("../../data/{name}"), "rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }

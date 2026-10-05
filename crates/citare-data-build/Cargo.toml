@@ -9,3 +9,5 @@ description = "Build-time data compilation for citare"
 serde = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
+# For is_meta_character, matching regex::escape (bundle.rs).
+regex-syntax = { version = "0.8", default-features = false }

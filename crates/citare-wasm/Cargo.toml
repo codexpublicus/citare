@@ -12,8 +12,15 @@ categories = ["text-processing", "wasm"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["embedded-data"]
+# Compile the data bundle into the module. Build with
+# `--no-default-features` for a smaller module that loads the bundle at
+# runtime with `initData(bytes)`.
+embedded-data = ["citare-core/embedded-data"]
+
 [dependencies]
-citare-core = { path = "../citare-core" }
+citare-core = { path = "../citare-core", default-features = false }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 serde = { workspace = true }

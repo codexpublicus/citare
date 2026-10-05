@@ -51,6 +51,10 @@ use serde::Serialize;
 #[derive(Parser)]
 #[command(name = "citare", about = "Legal citation extraction CLI")]
 struct Cli {
+    /// Load reporter and court data from this data bundle instead of the
+    /// one built in (see `citare data export` and docs/data-bundle.md).
+    #[arg(long, global = true, value_name = "FILE")]
+    data: Option<std::path::PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -118,6 +122,23 @@ enum Command {
         #[command(flatten)]
         input: InputArgs,
     },
+    /// Inspect or export the reporter and court data bundle.
+    #[command(subcommand)]
+    Data(DataCommand),
+}
+
+#[derive(Subcommand)]
+enum DataCommand {
+    /// Print the bundle's format version, provenance and table sizes as JSON
+    /// (the built-in bundle, or the one given with --data).
+    Info,
+    /// Write the built-in data bundle to a file, named
+    /// `citare-data-<first 16 hex digits of its SHA-256>.bin` inside DIR.
+    Export {
+        /// Directory to write into.
+        #[arg(long, default_value = ".")]
+        dir: std::path::PathBuf,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +198,50 @@ struct ResolutionJson {
 fn main() {
     let cli = Cli::parse();
 
+    if let Some(path) = &cli.data {
+        let bytes = std::fs::read(path).unwrap_or_else(|e| {
+            eprintln!("error: reading {}: {e}", path.display());
+            std::process::exit(2);
+        });
+        if let Err(e) = citare_core::data::load(&bytes) {
+            eprintln!("error: {}: {e}", path.display());
+            std::process::exit(2);
+        }
+    }
+
     match cli.command {
+        Command::Data(DataCommand::Info) => {
+            let data = citare_core::data::get();
+            let b = &data.bundle;
+            let meta: serde_json::Map<String, serde_json::Value> = b
+                .meta
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string().into()))
+                .collect();
+            print_json(&serde_json::json!({
+                "format_version": citare_core::data::FORMAT_VERSION,
+                "meta": meta,
+                "editions": b.editions.len(),
+                "templates": b.templates.len(),
+                "extractors": b.reporter_map.len() + b.oneoffs.len(),
+                "court_keys": b.court_keys.len(),
+            }));
+        }
+
+        Command::Data(DataCommand::Export { dir }) => {
+            let bytes = citare_core::data::EMBEDDED_BUNDLE;
+            let name = format!(
+                "citare-data-{}.bin",
+                &citare_core::data::content_hash(bytes)[..16]
+            );
+            let path = dir.join(name);
+            std::fs::write(&path, bytes).unwrap_or_else(|e| {
+                eprintln!("error: writing {}: {e}", path.display());
+                std::process::exit(2);
+            });
+            println!("{}", path.display());
+        }
+
         Command::Find {
             input,
             remove_ambiguous,
