@@ -349,32 +349,121 @@ pub static POST_SHORT_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// A subsection in a section pin cite: `(a)`, `(viii)`, a dotted or
+/// hyphenated one (`(a.1)`, `(1.3)`, `(d-1)`), one with OCR spaces inside
+/// (`( 1 )`), or a bracketed one (`[4]`, `[a]`).
+const SECTION_PIN_SUB: &str = concat!(
+    r"(?:\( ?[0-9a-zA-Z]{1,4}(?:[.\-\u{2010}\u{2011}\u{2013}\u{2014}][0-9a-zA-Z]{1,4})? ?\)",
+    r"|\[[0-9a-zA-Z]{1,4}\])",
+);
+
+/// A subsection after a space (`§ 1677(7)(C) (iii)`, `§ 26-516 [a]`).
+/// Narrower than [`SECTION_PIN_SUB`], so that a parenthetical such as
+/// `(1990)` or `(West)` after the section stays a parenthetical.
+const SECTION_PIN_SPACED_SUB: &str =
+    r"(?:\ (?:\((?:\d{1,3}|[A-Za-z]|[ivxIVX]{2,5}|[a-z]{2})\)|\[[0-9a-zA-Z]{1,4}\]))";
+
+/// A separator inside a section number: hyphen, dot, colon, the Unicode
+/// hyphens U+2010 and U+2011, and the en dash. Two in a row (`75.-316`)
+/// come from OCR.
+const SECTION_PIN_SEP: &str = r"[-.:\u{2010}\u{2011}\u{2013}\u{2014}]{1,2}";
+
+/// A section number: `1983`, `394-ccc`, `76‐9‐101`, `600.2912a`, `2B1.1`,
+/// a roman numeral (`IV`), OCR's `l` for `1` (`§ l-618.3(a)`), or OCR's
+/// spaced dash before a digit (`§ 14 — 501(b)(5)`).
+static SECTION_PIN_NUMBER: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        concat!(
+            r"(?:(?:\d|l(?=[-.\d(]))[0-9A-Za-z]*",
+            r"(?:{sep}[0-9A-Za-z]+|\ [\u{{2013}}\u{{2014}}]\ \d[0-9A-Za-z]*)*",
+            r"|[IVXL]{{1,6}}(?![A-Za-z]))",
+        ),
+        sep = SECTION_PIN_SEP,
+    )
+});
+
+/// A designation that follows a section in a pin cite: `, subd. (a)`,
+/// `, subd. 6`, `, cmt. (n.2)`, ` cmt. n. 1(B)(iii)`, `, comment a`,
+/// ` application n. 5`, `, illus. 1`, `, cl. 1`, `, art. 2`. A value that is
+/// a single letter must end there, so `comment by` isn't one.
+static SECTION_PIN_DESIGNATION: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        concat!(
+            r"(?:subds?\.|cmt\.|[Cc]omment|illus\.|cl\.|art\.|application\ n\.)",
+            r"\ ?(?:n\.\ ?)?",
+            r"(?:{sub}+",
+            r"|\d+(?:\.\d+)*[A-Za-z]?{sub}*",
+            r"|\((?:[^()\n]|\([^()\n]*\)){{1,40}}\)",
+            r"|[a-zA-Z](?![A-Za-z]))",
+        ),
+        sub = SECTION_PIN_SUB,
+    )
+});
+
 /// A section number with its subsections, optionally running to another
-/// section or subsection: `1983`, `394-ccc(2)-(3)`, `1983-1985`, `12(b)`.
+/// section or subsection, and its designations: `1983`, `394-ccc(2)-(3)`,
+/// `1983-1985`, `12(b)`, `216.103 to 216.111`, `5304, subd. (a)`.
 static SECTION_PIN_ITEM: LazyLock<String> = LazyLock::new(|| {
     format!(
-        r"\d[0-9A-Za-z]*(?:[-.:\u{{2013}}][0-9A-Za-z]+)*{sub}*(?:[-\u{{2013}}]{sub}+)?",
-        sub = LAW_SUBSECTION,
+        concat!(
+            r"(?:{num}{sub}*(?:[-\u{{2010}}\u{{2011}}]\d[0-9A-Za-z]*{sub}*)?|{sub}+)",
+            r"(?:\ ?[-\u{{2010}}\u{{2011}}\u{{2013}}\u{{2014}}]\ ?{sub}+)?",
+            r"(?:{spaced}(?:\ ?[-\u{{2013}}\u{{2014}}]\ ?{sub}+)?)*",
+            r"(?:\ (?:to|through)\ (?:{num}|\.\d[0-9A-Za-z]*(?:{sep}[0-9A-Za-z]+)*){sub}*)?",
+            r"(?:,?\ {designation})*",
+        ),
+        num = *SECTION_PIN_NUMBER,
+        sub = SECTION_PIN_SUB,
+        spaced = SECTION_PIN_SPACED_SUB,
+        sep = SECTION_PIN_SEP,
+        designation = *SECTION_PIN_DESIGNATION,
+    )
+});
+
+/// An item after the first in a list of section pin cites: another section,
+/// optionally with its own `§` (`§ 780.4, § 780.5`), a section that repeats
+/// only the end of the one before (`, -3202`, `, .024(a)`), more
+/// subsections (`, (3)-(7)`), or a designation (`and Comment a`).
+static SECTION_PIN_LIST_ITEM: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        concat!(
+            r"(?:(?:\u{{00A7}}{{1,2}}\s*)?{item}",
+            r"|[-.\u{{2010}}\u{{2011}}]\d[0-9A-Za-z]*(?:{sep}[0-9A-Za-z]+)*{sub}*",
+            r"|{sub}+(?:[-\u{{2013}}]{sub}+)?",
+            r"|{designation})",
+        ),
+        item = *SECTION_PIN_ITEM,
+        sep = SECTION_PIN_SEP,
+        sub = SECTION_PIN_SUB,
+        designation = *SECTION_PIN_DESIGNATION,
     )
 });
 
 /// Section pin cite after an id. citation (`Id. § 5`, `Id. at §§ 5-7`).
 ///
 /// Not in eyecite, whose pin cite scan stops at the `§` token (citare #2).
-/// Named groups: `pin_cite`, `parenthetical`.
+/// Any whitespace may follow the `§`, including a line break. Whitespace
+/// before it is captured as `gap`, and `at` as `at`, so the caller can
+/// refuse a line break between a capitalized `Id.` and the `§` (#48).
+/// A semicolon continues the list only when the next item ends at
+/// punctuation, so `Id. § 5; 28 U.S.C. § 1331` stops at `§ 5`, and a list
+/// item followed by a capitalized word is the volume of the next citation
+/// (`Id., §501 (b), 17 P.S. §211.501 (b)`), so the list stops before it.
+/// Named groups: `pin_cite`, `gap`, `at`, `parenthetical`.
 pub static POST_ID_SECTION_REGEX: LazyLock<String> = LazyLock::new(|| {
     format!(
         concat!(
             r"(?P<pin_cite>",
-            r",? ?(?:at )?\u{{00A7}}{{1,2}} ?{item}",
-            r"(?:(?:, ?|,? and |,? & )(?:{item}|{sub}+))*",
+            r",?(?P<gap>\s*)(?P<at>at\s+)?\u{{00A7}}{{1,2}}\s*{item}",
+            r"(?:(?:,\s?|,? and |,? & ){list_item}(?!\ [A-Z])",
+            r"|; ?(?:\u{{00A7}}{{1,2}}\s*)?{item}(?=[,.;:)\]]|$))*",
             r"(?: et seq\.)?",
             r"(?=[,.;:)\]\\]| ?[(\[]|\s|$)",
             r")",
             r" ?{paren}",
         ),
         item = *SECTION_PIN_ITEM,
-        sub = LAW_SUBSECTION,
+        list_item = *SECTION_PIN_LIST_ITEM,
         paren = PARENTHETICAL_REGEX,
     )
 });
