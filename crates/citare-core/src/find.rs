@@ -80,6 +80,10 @@ pub fn get_citations_from_document(
     // also become unknown citations.
     let mut section_pins: Vec<usize> = Vec::new();
 
+    // Positions in `citations` of full case citations to look for
+    // references to.
+    let mut reference_sources: Vec<usize> = Vec::new();
+
     for (i, token) in &citation_token_info {
         let i = *i;
         match token {
@@ -100,10 +104,14 @@ pub fn get_citations_from_document(
                         }
                     }
 
-                    // Check for reference citations that follow a full
-                    // citation, using the plaintiff or defendant
-                    let references = extract_reference_citations(&citation, document);
-                    citations.extend(references);
+                    // Reference citations that follow a full case
+                    // citation, by its plaintiff or defendant, go just
+                    // before it. They are found once every full citation
+                    // is known, so the text is searched for all names in
+                    // one pass (see `ReferenceFinder`).
+                    if matches!(citation, Citation::FullCase(_)) {
+                        reference_sources.push(citations.len());
+                    }
 
                     citations.push(citation);
                 }
@@ -142,6 +150,8 @@ pub fn get_citations_from_document(
             _ => continue,
         }
     }
+
+    let citations = insert_reference_citations(citations, &reference_sources, document);
 
     // 3. Filter and sort
     let mut citations = filter_citations(citations);
@@ -577,166 +587,306 @@ fn make_reference(
     })
 }
 
-/// Extract reference citations that follow a full case citation, from the
-/// plain text and, when the document came from markup, from emphasis tags.
-fn extract_reference_citations(citation: &Citation, document: &Document) -> Vec<Citation> {
-    let Citation::FullCase(data) = citation else {
-        return Vec::new();
-    };
-    if document.plain_text.len() <= citation.span().1 {
-        return Vec::new();
+/// Put each full case citation's reference citations just before it in
+/// `citations`, where eyecite's loop adds them. `sources` are the positions
+/// of the full case citations, in increasing order.
+fn insert_reference_citations(
+    citations: Vec<Citation>,
+    sources: &[usize],
+    document: &Document,
+) -> Vec<Citation> {
+    if sources.is_empty() {
+        return citations;
     }
-    let mut references = extract_pincited_reference_citations(citation, &document.plain_text);
-    if document.markup_text.is_some() {
-        references.extend(find_reference_citations_from_markup(
-            document, citation, data,
-        ));
+    let mut finder = ReferenceFinder::new(document, sources.iter().map(|&i| &citations[i]));
+    let mut found: Vec<Vec<Citation>> = sources
+        .iter()
+        .map(|&i| finder.references(&citations[i]))
+        .collect();
+    if found.iter().all(Vec::is_empty) {
+        return citations;
     }
-    references
+    let mut out = Vec::with_capacity(citations.len() + found.iter().map(Vec::len).sum::<usize>());
+    let mut next = sources.iter().zip(found.iter_mut()).peekable();
+    for (i, citation) in citations.into_iter().enumerate() {
+        if let Some((_, references)) = next.next_if(|(&source, _)| source == i) {
+            out.append(references);
+        }
+        out.push(citation);
+    }
+    out
 }
 
-/// Extract reference citations with the name-pincite pattern
-/// ("Foo at 123").
-fn extract_pincited_reference_citations(citation: &Citation, plain_text: &str) -> Vec<Citation> {
-    let Citation::FullCase(data) = citation else {
-        return Vec::new();
-    };
+/// Finds the reference citations that follow full case citations.
+///
+/// eyecite searches the whole text after each full citation for its party
+/// names, which costs the text length times the number of citations (#44).
+/// A reference match starts with one of the names, so this finds where every
+/// name occurs in one Aho-Corasick pass, and tries the reference pattern
+/// only there, over a window that holds any match that can start there.
+/// For markup, the pattern starts with an `<em>` or `<i>` tag, so it is
+/// tried only where one opens. The matches are the ones eyecite finds.
+struct ReferenceFinder<'d> {
+    document: &'d Document,
+    /// Start offsets in the plain text of each name, in increasing order.
+    occurrences: HashMap<String, Vec<usize>>,
+    /// Name-pincite patterns by pattern text; `None` if it didn't compile.
+    pin_cite_regexes: HashMap<String, Option<fancy_regex::Regex>>,
+    /// Emphasis patterns, anchored, by pattern text.
+    markup_regexes: HashMap<String, Option<regex::Regex>>,
+    /// Offsets in the markup where an `<em>` or `<i>` tag opens, in order.
+    emphasis_starts: Vec<usize>,
+}
 
-    let (_, span_end) = citation.span();
-    if span_end >= plain_text.len() {
-        return Vec::new();
-    }
-
-    let names = reference_names(data);
-    if names.is_empty() {
-        return Vec::new();
-    }
-
-    // A reference match must contain one of the names verbatim (they are
-    // escaped and matched case-sensitively). Skip compiling the
-    // per-citation regex when none appears after the citation, which is
-    // the common case.
-    let remaining_text = &plain_text[span_end..];
-    if !names.iter().any(|(_, name)| remaining_text.contains(name)) {
-        return Vec::new();
-    }
-
-    let regexes: Vec<String> = names
-        .iter()
-        .map(|(key, value)| format!("(?P<{key}>{})", regex::escape(value)))
-        .collect();
-    let pin_cite_re = crate::regexes::reference_pin_cite_re(
-        &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-    );
-    let Ok(re) = fancy_regex::Regex::new(&pin_cite_re) else {
-        return Vec::new();
-    };
-
-    // Like eyecite's `match.groupdict()`, the metadata holds only the groups
-    // that took part in the match: the matched name and the pin cite.
-    let mut references = Vec::new();
-    let mut pos = 0;
-    while pos <= remaining_text.len() {
-        let caps = match re.captures_from_pos(remaining_text, pos) {
-            Ok(Some(caps)) => caps,
-            _ => break,
-        };
-        let m = caps.get(0).expect("group 0 is always present");
-        let span = (span_end + m.start(), span_end + m.end());
-        references.push(make_reference(m.as_str().to_string(), span, span, |name| {
-            caps.name(name).map(|g| g.as_str().to_string())
-        }));
-
-        pos = if m.end() > m.start() {
-            m.end()
-        } else {
-            // Step past an empty match without splitting a UTF-8 character.
-            match remaining_text[m.end()..].chars().next() {
-                Some(c) => m.end() + c.len_utf8(),
-                None => break,
+impl<'d> ReferenceFinder<'d> {
+    fn new<'c>(document: &'d Document, sources: impl Iterator<Item = &'c Citation>) -> Self {
+        let plain_text = document.plain_text.as_str();
+        let mut names: Vec<&str> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for citation in sources {
+            let Citation::FullCase(data) = citation else {
+                continue;
+            };
+            if citation.span().1 >= plain_text.len() {
+                continue;
             }
-        };
+            for (_, name) in reference_names(data) {
+                if seen.insert(name) {
+                    names.push(name);
+                }
+            }
+        }
+        let mut occurrences: HashMap<String, Vec<usize>> = HashMap::new();
+        if !names.is_empty() {
+            let ac = aho_corasick::AhoCorasick::builder()
+                .match_kind(aho_corasick::MatchKind::Standard)
+                .build(&names)
+                .expect("names make a valid automaton");
+            let mut starts: Vec<Vec<usize>> = vec![Vec::new(); names.len()];
+            // Overlapping matches come in order of their end, and every
+            // match of one name has the same length, so each list is sorted.
+            for m in ac.find_overlapping_iter(plain_text) {
+                starts[m.pattern().as_usize()].push(m.start());
+            }
+            occurrences = names.iter().map(|n| n.to_string()).zip(starts).collect();
+        }
+
+        let mut emphasis_starts = Vec::new();
+        if let Some(markup) = document.markup_text.as_deref() {
+            for tag in ["<em>", "<i>"] {
+                emphasis_starts.extend(markup.match_indices(tag).map(|(i, _)| i));
+            }
+            emphasis_starts.sort_unstable();
+        }
+
+        Self {
+            document,
+            occurrences,
+            pin_cite_regexes: HashMap::new(),
+            markup_regexes: HashMap::new(),
+            emphasis_starts,
+        }
     }
-    references
+
+    /// Reference citations of `citation`, from the plain text and, when the
+    /// document came from markup, from emphasis tags.
+    fn references(&mut self, citation: &Citation) -> Vec<Citation> {
+        let Citation::FullCase(data) = citation else {
+            return Vec::new();
+        };
+        if self.document.plain_text.len() <= citation.span().1 {
+            return Vec::new();
+        }
+        let mut references = self.pincited_references(citation, data);
+        if self.document.markup_text.is_some() {
+            references.extend(self.markup_references(citation, data));
+        }
+        references
+    }
+
+    /// References with the name-pincite pattern ("Foo at 123").
+    fn pincited_references(
+        &mut self,
+        citation: &Citation,
+        data: &FullCaseCitationData,
+    ) -> Vec<Citation> {
+        let plain_text = self.document.plain_text.as_str();
+        let (_, span_end) = citation.span();
+        let names = reference_names(data);
+
+        // A match starts with one of the names (escaped and matched
+        // case-sensitively) at or after the end of the citation.
+        let mut candidates: Vec<usize> = names
+            .iter()
+            .filter_map(|(_, name)| self.occurrences.get(*name))
+            .flat_map(|starts| {
+                let first = starts.partition_point(|&s| s < span_end);
+                starts[first..].iter().copied()
+            })
+            .collect();
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+
+        let regexes: Vec<String> = names
+            .iter()
+            .map(|(key, value)| format!("(?P<{key}>{})", regex::escape(value)))
+            .collect();
+        let pin_cite_re = crate::regexes::reference_pin_cite_re(
+            &regexes.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        );
+        let re = self
+            .pin_cite_regexes
+            .entry(pin_cite_re)
+            .or_insert_with_key(|pattern| fancy_regex::Regex::new(pattern).ok());
+        let Some(re) = re.as_ref() else {
+            return Vec::new();
+        };
+
+        // eyecite matches in the text after the citation, so a word
+        // boundary at its very start sees no character before it.
+        let remaining_text = &plain_text[span_end..];
+        let mut references = Vec::new();
+        let mut pos = span_end;
+        for start in candidates {
+            if start < pos {
+                continue;
+            }
+            let window_end = names
+                .iter()
+                .filter(|(_, name)| plain_text[start..].starts_with(name))
+                .map(|(_, name)| pin_cite_window_end(plain_text, start + name.len()))
+                .max()
+                .unwrap_or(start);
+            let haystack = &remaining_text[..window_end - span_end];
+            let caps = match re.captures_from_pos(haystack, start - span_end) {
+                Ok(Some(caps)) => caps,
+                _ => continue,
+            };
+            let m = caps.get(0).expect("group 0 is always present");
+            if m.start() != start - span_end {
+                continue;
+            }
+            let span = (span_end + m.start(), span_end + m.end());
+            references.push(make_reference(m.as_str().to_string(), span, span, |name| {
+                caps.name(name).map(|g| g.as_str().to_string())
+            }));
+            pos = span.1;
+        }
+        references
+    }
+
+    /// References in `<em>`/`<i>` tags holding one of the citation's party
+    /// names (eyecite `find_reference_citations_from_markup`). Spans are
+    /// mapped back to the plain text, like every other citation's.
+    fn markup_references(
+        &mut self,
+        citation: &Citation,
+        data: &FullCaseCitationData,
+    ) -> Vec<Citation> {
+        let document = self.document;
+        let (Some(to_markup), Some(to_plain), Some(markup)) = (
+            document.plain_to_markup.as_ref(),
+            document.markup_to_plain.as_ref(),
+            document.markup_text.as_deref(),
+        ) else {
+            return Vec::new();
+        };
+
+        let regexes: Vec<String> = reference_names(data)
+            .into_iter()
+            .map(|(key, value)| {
+                let value = value
+                    .split_whitespace()
+                    .map(regex::escape)
+                    .collect::<Vec<_>>()
+                    .join(r"\s+");
+                format!("(?P<{key}>{value})")
+            })
+            .collect();
+        if regexes.is_empty() {
+            return Vec::new();
+        }
+
+        // Include punctuation and spaces around the party name so the match
+        // is contiguous with the style tags. Every match starts at an
+        // emphasis tag, so it is anchored and tried at each one in turn.
+        let pattern = format!(r"^<(?:em|i)>\s*({})[:;.,\s]*</(?:em|i)>", regexes.join("|"));
+        let re = self
+            .markup_regexes
+            .entry(pattern)
+            .or_insert_with_key(|pattern| regex::Regex::new(pattern).ok());
+        let Some(re) = re.as_ref() else {
+            return Vec::new();
+        };
+
+        let start_in_markup = to_markup.update(citation.span().0, true);
+        if markup.get(start_in_markup..).is_none() {
+            return Vec::new();
+        }
+
+        let first = self
+            .emphasis_starts
+            .partition_point(|&s| s < start_in_markup);
+        let mut references = Vec::new();
+        let mut pos = start_in_markup;
+        for &tag_start in &self.emphasis_starts[first..] {
+            if tag_start < pos {
+                continue;
+            }
+            let Some(caps) = re.captures(&markup[tag_start..]) else {
+                continue;
+            };
+            let whole = caps.get(0).unwrap();
+            let name = caps.get(1).unwrap();
+            pos = tag_start + whole.end();
+            let full_start = to_plain.update(tag_start + whole.start(), false);
+            let full_end = to_plain.update(tag_start + whole.end(), true);
+            let start = to_plain.update(tag_start + name.start(), false);
+            let end = to_plain.update(tag_start + name.end(), true);
+
+            // `<i>Foo</i> v. <i>Bar, supra</i>`: <i>Foo</i> is not a reference.
+            let after = document.plain_text.get(full_end..).unwrap_or("");
+            if re_after_markup_reference().is_match(after) {
+                continue;
+            }
+
+            let text = document
+                .plain_text
+                .get(start..end)
+                .unwrap_or("")
+                .to_string();
+            references.push(make_reference(
+                text,
+                (start, end),
+                (full_start, full_end),
+                |group| caps.name(group).map(|g| g.as_str().to_string()),
+            ));
+        }
+        references
+    }
+}
+
+/// End of the text a name-pincite match can see when its name ends at
+/// `after_name`: past the first character that no part of the pattern after
+/// the name can match (whitespace, ", at", "note", "n.", "fn.", "¶", "§",
+/// "*", "pg.", "pp.", digits, ":" and "-"). The pattern's lookahead reads
+/// that character, so it is included; with no such character, the window
+/// runs to the end of the text, where the lookahead's `$` matches.
+fn pin_cite_window_end(text: &str, after_name: usize) -> usize {
+    let can_continue =
+        |c: char| c.is_whitespace() || c.is_numeric() || ",.:-&*\u{B6}\u{A7}atnoefpg".contains(c);
+    text[after_name..]
+        .char_indices()
+        .find(|&(_, c)| !can_continue(c))
+        .map_or(text.len(), |(i, c)| after_name + i + c.len_utf8())
 }
 
 fn re_after_markup_reference() -> &'static regex::Regex {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| regex::Regex::new(r"^\s*(v[.s]|supra)\s").unwrap())
-}
-
-/// Use `<em>`/`<i>` style tags and the citation's party names to find
-/// reference citations in the markup (eyecite
-/// `find_reference_citations_from_markup`). Spans are mapped back to the
-/// plain text, like every other citation's.
-fn find_reference_citations_from_markup(
-    document: &Document,
-    citation: &Citation,
-    data: &FullCaseCitationData,
-) -> Vec<Citation> {
-    let (Some(to_markup), Some(to_plain), Some(markup)) = (
-        document.plain_to_markup.as_ref(),
-        document.markup_to_plain.as_ref(),
-        document.markup_text.as_deref(),
-    ) else {
-        return Vec::new();
-    };
-
-    let regexes: Vec<String> = reference_names(data)
-        .into_iter()
-        .map(|(key, value)| {
-            let value = value
-                .split_whitespace()
-                .map(regex::escape)
-                .collect::<Vec<_>>()
-                .join(r"\s+");
-            format!("(?P<{key}>{value})")
-        })
-        .collect();
-    if regexes.is_empty() {
-        return Vec::new();
-    }
-
-    // Include punctuation and spaces around the party name so the match is
-    // contiguous with the style tags.
-    let pattern = format!(r"<(?:em|i)>\s*({})[:;.,\s]*</(?:em|i)>", regexes.join("|"));
-    let Ok(re) = regex::Regex::new(&pattern) else {
-        return Vec::new();
-    };
-
-    let start_in_markup = to_markup.update(citation.span().0, true);
-    let Some(haystack) = markup.get(start_in_markup..) else {
-        return Vec::new();
-    };
-
-    let mut references = Vec::new();
-    for caps in re.captures_iter(haystack) {
-        let whole = caps.get(0).unwrap();
-        let name = caps.get(1).unwrap();
-        let full_start = to_plain.update(start_in_markup + whole.start(), false);
-        let full_end = to_plain.update(start_in_markup + whole.end(), true);
-        let start = to_plain.update(start_in_markup + name.start(), false);
-        let end = to_plain.update(start_in_markup + name.end(), true);
-
-        // `<i>Foo</i> v. <i>Bar, supra</i>`: <i>Foo</i> is not a reference.
-        let after = document.plain_text.get(full_end..).unwrap_or("");
-        if re_after_markup_reference().is_match(after) {
-            continue;
-        }
-
-        let text = document
-            .plain_text
-            .get(start..end)
-            .unwrap_or("")
-            .to_string();
-        references.push(make_reference(
-            text,
-            (start, end),
-            (full_start, full_end),
-            |group| caps.name(group).map(|g| g.as_str().to_string()),
-        ));
-    }
-    references
 }
 
 // ---------------------------------------------------------------------------
@@ -1270,7 +1420,9 @@ mod tests {
         } else {
             panic!("expected FullCase, got {:?}", cites[0]);
         }
-        let refs = extract_pincited_reference_citations(&cites[0], text);
+        let document = Document::new(text, "", &[]);
+        let refs =
+            ReferenceFinder::new(&document, std::iter::once(&cites[0])).references(&cites[0]);
         assert_eq!(refs.len(), 1, "{:?}", refs);
         assert_eq!(refs[0].matched_text(), "State v. Wingler at 175");
         if let Citation::Reference(r) = &refs[0] {

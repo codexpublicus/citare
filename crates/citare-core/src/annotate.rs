@@ -192,6 +192,12 @@ fn diff_anchors(text_a: &str, text_b: &str) -> Vec<(usize, usize)> {
 /// The longest in-order chain of `(a, b)` starts of words that occur once
 /// in `text_a` and once in `text_b`. A word at the very start of either
 /// text is left out, so every anchor splits the range it was found in.
+///
+/// A long range with no such word (a passage repeated over and over, so
+/// that every word occurs more than once) would go to Myers whole and take
+/// quadratic time (#44). There the pairs are drawn instead from words that
+/// occur equally often in both texts, the k-th occurrence in one paired
+/// with the k-th in the other.
 fn unique_word_chain(text_a: &str, text_b: &str) -> Vec<(usize, usize)> {
     use std::collections::HashMap;
 
@@ -199,24 +205,71 @@ fn unique_word_chain(text_a: &str, text_b: &str) -> Vec<(usize, usize)> {
         return Vec::new();
     }
 
-    // word -> (count in a, start in a, count in b, start in b)
-    let mut words: HashMap<&str, (u32, usize, u32, usize)> = HashMap::new();
-    for (start, word) in alphanumeric_words(text_a) {
-        let entry = words.entry(word).or_insert((0, start, 0, 0));
-        entry.0 += 1;
-    }
-    for (start, word) in alphanumeric_words(text_b) {
-        if let Some(entry) = words.get_mut(word) {
-            entry.2 += 1;
-            entry.3 = start;
+    // Each word of `text_a` gets an id; `text_b`'s words not in `text_a`
+    // can't pair and are skipped.
+    let mut ids: HashMap<&str, usize> = HashMap::new();
+    let (mut count_a, mut count_b): (Vec<u32>, Vec<u32>) = (Vec::new(), Vec::new());
+    let words_a: Vec<(usize, usize)> = alphanumeric_words(text_a)
+        .map(|(start, word)| {
+            let next = ids.len();
+            let id = *ids.entry(word).or_insert(next);
+            if id == count_a.len() {
+                count_a.push(0);
+                count_b.push(0);
+            }
+            count_a[id] += 1;
+            (id, start)
+        })
+        .collect();
+    let words_b: Vec<(usize, usize)> = alphanumeric_words(text_b)
+        .filter_map(|(start, word)| {
+            let id = *ids.get(word)?;
+            count_b[id] += 1;
+            Some((id, start))
+        })
+        .collect();
+
+    let mut start_b = vec![0; ids.len()];
+    for &(id, start) in &words_b {
+        if count_b[id] == 1 {
+            start_b[id] = start;
         }
     }
-
-    let mut pairs: Vec<(usize, usize)> = words
-        .into_values()
-        .filter(|&(count_a, a, count_b, b)| count_a == 1 && count_b == 1 && a > 0 && b > 0)
-        .map(|(_, a, _, b)| (a, b))
+    let mut pairs: Vec<(usize, usize)> = words_a
+        .iter()
+        .filter(|&&(id, _)| count_a[id] == 1 && count_b[id] == 1)
+        .map(|&(id, a)| (a, start_b[id]))
+        .filter(|&(a, b)| a > 0 && b > 0)
         .collect();
+
+    if pairs.is_empty() && text_a.len() + text_b.len() > WHOLE_DIFF_MAX {
+        // The occurrences in `text_b` grouped by word, each group in text
+        // order, so the k-th occurrence of word `id` is at
+        // `by_word[first[id] + k]`.
+        let mut first = Vec::with_capacity(ids.len());
+        let mut total = 0;
+        for &count in &count_b {
+            first.push(total);
+            total += count as usize;
+        }
+        let mut filled = first.clone();
+        let mut by_word = vec![0; total];
+        for &(id, start) in &words_b {
+            by_word[filled[id]] = start;
+            filled[id] += 1;
+        }
+        let mut seen = vec![0; ids.len()];
+        pairs = words_a
+            .iter()
+            .filter(|&&(id, _)| count_a[id] == count_b[id])
+            .map(|&(id, a)| {
+                let b = by_word[first[id] + seen[id]];
+                seen[id] += 1;
+                (a, b)
+            })
+            .filter(|&(a, b)| a > 0 && b > 0)
+            .collect();
+    }
     pairs.sort_unstable();
 
     // Longest chain increasing in b (patience sorting, O(n log n)).

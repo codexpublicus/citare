@@ -24,15 +24,88 @@ const MAX_OPINION_PAGE_COUNT: i32 = 150;
 // Type aliases
 // ---------------------------------------------------------------------------
 
-type ResolvedFullCite = (Citation, Resource);
-type ResolvedFullCites = Vec<ResolvedFullCite>;
-
 /// Maps each resolved [`Resource`] to all [`Citation`]s that point to it.
 ///
 /// Iteration order is a `HashMap`'s, so it varies per process. Sort by
 /// `resource.citation.span()` for document order, which is the order
 /// eyecite's dict returns resources in.
 pub type Resolutions = HashMap<Resource, Vec<Citation>>;
+
+/// A full citation seen so far, with what the later citations match on.
+struct ResolvedFullCite {
+    citation: Citation,
+    resource: Resource,
+    /// Equal for equal resources (see [`resource_key`]).
+    key: u64,
+}
+
+/// The full citations before the citation being resolved, in document
+/// order, indexed by what short and reference citations look up.
+///
+/// eyecite compares each short, supra and reference citation with every
+/// earlier full citation. Looked up here by reporter and volume, or by
+/// party name, short and reference citations cost the same however long the
+/// document is (#44).
+#[derive(Default)]
+struct ResolvedFullCites {
+    cites: Vec<ResolvedFullCite>,
+    /// Full case citations by (corrected reporter, volume).
+    by_reporter_volume: HashMap<(Option<String>, Option<String>), Vec<usize>>,
+    /// Full citations by each of their metadata values (see
+    /// [`get_metadata_values`]).
+    by_metadata_value: HashMap<String, Vec<usize>>,
+}
+
+impl ResolvedFullCites {
+    fn push(&mut self, citation: &Citation, resource: Resource) {
+        let index = self.cites.len();
+        if let Citation::FullCase(_) = citation {
+            self.by_reporter_volume
+                .entry(reporter_volume(citation))
+                .or_default()
+                .push(index);
+        }
+        for value in get_metadata_values(citation) {
+            self.by_metadata_value.entry(value).or_default().push(index);
+        }
+        self.cites.push(ResolvedFullCite {
+            citation: citation.clone(),
+            key: resource_key(&resource),
+            resource,
+        });
+    }
+}
+
+/// A hash equal for equal resources, as [`Resource`]'s `PartialEq` compares
+/// them.
+fn resource_key(resource: &Resource) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    resource.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// What a short case citation must share with its full citation.
+fn reporter_volume(citation: &Citation) -> (Option<String>, Option<String>) {
+    let volume = citation
+        .common()
+        .groups
+        .get("volume")
+        .and_then(|v| v.clone());
+    (citation.corrected_reporter(), volume)
+}
+
+/// The resource of the matched full citations, if they are all one
+/// resource. eyecite resolves only when exactly one resource matches.
+fn single_resource(
+    resolved: &ResolvedFullCites,
+    mut matches: impl Iterator<Item = usize>,
+) -> Option<&Resource> {
+    let first = &resolved.cites[matches.next()?];
+    matches
+        .all(|i| resolved.cites[i].key == first.key)
+        .then_some(&first.resource)
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -51,7 +124,7 @@ pub fn resolve_full_citation(citation: &Citation) -> Resource {
 /// that were resolved to it.
 pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
     let mut resolutions: Resolutions = HashMap::new();
-    let mut resolved_full_cites: ResolvedFullCites = Vec::new();
+    let mut resolved_full_cites = ResolvedFullCites::default();
     let mut last_resolution: Option<Resource> = None;
 
     for citation in citations {
@@ -59,7 +132,7 @@ pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
             // Full citations create new resources.
             Citation::FullCase(_) | Citation::FullLaw(_) | Citation::FullJournal(_) => {
                 let resource = resolve_full_citation(citation);
-                resolved_full_cites.push((citation.clone(), resource.clone()));
+                resolved_full_cites.push(citation, resource.clone());
                 Some(resource)
             }
 
@@ -102,39 +175,23 @@ fn resolve_shortcase_citation(
     data: &ShortCaseCitationData,
     resolved_full_cites: &ResolvedFullCites,
 ) -> Option<Resource> {
-    let short_reporter = citation.corrected_reporter();
-    let short_volume = citation
-        .common()
-        .groups
-        .get("volume")
-        .and_then(|v| v.as_ref());
-
-    let mut candidates: ResolvedFullCites = Vec::new();
-
-    for (full_cite, resource) in resolved_full_cites {
-        if let Citation::FullCase(_) = full_cite {
-            let full_reporter = full_cite.corrected_reporter();
-            let full_volume = full_cite
-                .common()
-                .groups
-                .get("volume")
-                .and_then(|v| v.as_ref());
-
-            if short_reporter == full_reporter && short_volume == full_volume {
-                candidates.push((full_cite.clone(), resource.clone()));
-            }
-        }
-    }
+    let candidates: &[usize] = resolved_full_cites
+        .by_reporter_volume
+        .get(&reporter_volume(citation))
+        .map_or(&[], Vec::as_slice);
 
     // Unique resource — return immediately.
-    let unique_resources: HashSet<&Resource> = candidates.iter().map(|(_, r)| r).collect();
-    if unique_resources.len() == 1 {
-        return Some(candidates[0].1.clone());
+    if let Some(resource) = single_resource(resolved_full_cites, candidates.iter().copied()) {
+        return Some(resource.clone());
     }
 
     // Attempt antecedent refinement.
     if let Some(ref antecedent) = data.metadata.antecedent_guess {
-        return filter_by_matching_antecedent(&candidates, antecedent);
+        return filter_by_matching_antecedent(
+            resolved_full_cites,
+            candidates.iter().copied(),
+            antecedent,
+        );
     }
 
     None
@@ -145,7 +202,11 @@ fn resolve_supra_citation(
     resolved_full_cites: &ResolvedFullCites,
 ) -> Option<Resource> {
     let antecedent = data.metadata.antecedent_guess.as_ref()?;
-    filter_by_matching_antecedent(resolved_full_cites, antecedent)
+    filter_by_matching_antecedent(
+        resolved_full_cites,
+        0..resolved_full_cites.cites.len(),
+        antecedent,
+    )
 }
 
 fn resolve_id_citation(
@@ -170,83 +231,58 @@ fn resolve_reference_citation(
     data: &ReferenceCitationData,
     resolved_full_cites: &ResolvedFullCites,
 ) -> Option<Resource> {
-    // Collect all non-None reference values for this citation.
-    let ref_values: HashSet<String> = [
+    // Full citations whose metadata holds any of this citation's values.
+    let mut matches: Vec<usize> = [
         &data.metadata.defendant,
         &data.metadata.plaintiff,
         &data.metadata.resolved_case_name_short,
         &data.metadata.resolved_case_name,
     ]
-    .iter()
-    .filter_map(|v| v.as_ref().cloned())
+    .into_iter()
+    .flatten()
+    .filter_map(|value| resolved_full_cites.by_metadata_value.get(value))
+    .flatten()
+    .copied()
     .collect();
-
-    if ref_values.is_empty() {
-        return None;
-    }
-
-    let mut matches: Vec<Resource> = Vec::new();
-
-    for (full_cite, resource) in resolved_full_cites {
-        let full_values = get_metadata_values(full_cite);
-        if ref_values.iter().any(|rv| full_values.contains(rv)) {
-            matches.push(resource.clone());
-        }
-    }
-
-    matches.sort_by_key(|r| format!("{:?}", r));
+    matches.sort_unstable();
     matches.dedup();
 
-    if matches.len() == 1 {
-        Some(matches[0].clone())
-    } else {
-        None
-    }
+    single_resource(resolved_full_cites, matches.into_iter()).cloned()
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Filter `resolved_full_cites` by whether the full citation's defendant or
-/// plaintiff contains `antecedent_guess`.  Returns the resource only when
-/// exactly one unique resource matches.
+/// Filter the full citations at `candidates` by whether the full case
+/// citation's defendant or plaintiff contains `antecedent_guess`. Returns
+/// the resource only when exactly one unique resource matches.
 fn filter_by_matching_antecedent(
     resolved_full_cites: &ResolvedFullCites,
+    candidates: impl Iterator<Item = usize>,
     antecedent_guess: &str,
 ) -> Option<Resource> {
     use crate::utils::strip_punct;
 
     let ag = strip_punct(antecedent_guess);
-    let mut matches: Vec<Resource> = Vec::new();
+    let matches = candidates.filter(|&i| {
+        let Citation::FullCase(data) = &resolved_full_cites.cites[i].citation else {
+            return false;
+        };
+        let defendant_match = data
+            .metadata
+            .defendant
+            .as_ref()
+            .is_some_and(|d| d.contains(&ag));
+        let plaintiff_match = data
+            .metadata
+            .plaintiff
+            .as_ref()
+            .is_some_and(|p| p.contains(&ag));
+        defendant_match || plaintiff_match
+    });
 
-    for (full_cite, resource) in resolved_full_cites {
-        if let Citation::FullCase(data) = full_cite {
-            let defendant_match = data
-                .metadata
-                .defendant
-                .as_ref()
-                .is_some_and(|d| d.contains(&ag));
-            let plaintiff_match = data
-                .metadata
-                .plaintiff
-                .as_ref()
-                .is_some_and(|p| p.contains(&ag));
-
-            if defendant_match || plaintiff_match {
-                matches.push(resource.clone());
-            }
-        }
-    }
-
-    matches.sort_by_key(|r| format!("{:?}", r));
-    matches.dedup();
-
-    if matches.len() == 1 {
-        Some(matches[0].clone())
-    } else {
-        None
-    }
+    single_resource(resolved_full_cites, matches).cloned()
 }
 
 /// Whether a pin cite names a section: `§ 5`, `§§ 5-7`, `at § 12(b)`.
