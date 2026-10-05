@@ -149,7 +149,7 @@ jobs:
             --previous-note "$PREVIOUS_NOTE" --link "$RUN_URL" --out reports/release
           # Speed depends on the machine. Name it, since the stored eyecite runs weren't timed on it.
           cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1)
-          runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs, and release runs attached before CI moved to the homelab runners, were timed on GitHub-hosted runners, so speed comparisons with them cross machine types."
+          runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs are timed on homelab too. Release runs attached before v0.5.1 were timed on GitHub-hosted runners, so speed comparisons with those cross machine types."
           for f in bench-report.md; do printf '\n%s\n' "$runner" >> "reports/release/$f"; done
           echo "ten-percent report: $(( SECONDS - start )) s" >> "$RUNNER_TEMP/timing.txt"
           cat reports/release/bench-report.md >> "$GITHUB_STEP_SUMMARY"

@@ -279,7 +279,7 @@ jobs:
             --previous-note "$PREVIOUS_NOTE" --link "$RUN_URL" --out reports/citare
           # Speed depends on the machine. Name it, since the stored eyecite runs weren't timed on it.
           cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1)
-          runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs, and release runs attached before CI moved to the homelab runners, were timed on GitHub-hosted runners, so speed comparisons with them cross machine types."
+          runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs are timed on homelab too. Release runs attached before v0.5.1 were timed on GitHub-hosted runners, so speed comparisons with those cross machine types."
           for f in bench-report.md comment.md; do printf '\n%s\n' "$runner" >> "reports/citare/$f"; done
           echo "Report: $(( SECONDS - start )) s, from the eyecite restore to the Markdown." >> reports/citare/timing.txt
           cat reports/citare/bench-report.md >> "$GITHUB_STEP_SUMMARY"
