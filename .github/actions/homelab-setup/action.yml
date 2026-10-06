@@ -1,9 +1,11 @@
 name: Homelab runner setup
 description: >-
-  Installs what the homelab runner image lacks for a Rust build: a C toolchain
-  (cargo links with cc, and build scripts compile with it) and pkg-config. The image
-  is actions-runner plus gh, git, curl and jq; rustup, mise and uv come from their
-  own actions.
+  Checks for what a Rust build needs from the homelab runner image: a C toolchain
+  (cargo links with cc, and build scripts compile with it) and pkg-config, plus any
+  extra packages a job names. The image has build-essential and pkg-config
+  (lokkju/infra#81) but no passwordless sudo (lokkju/infra#105), so this only tries
+  `sudo -n apt-get` for missing packages and fails naming them if it can't. rustup,
+  mise and uv come from their own actions.
 
 inputs:
   packages:
@@ -14,27 +16,45 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install build packages
+    - name: Check build packages
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
       run: |
         set -euo pipefail
+
+        # A package counts as present if dpkg has it or, for the image's build
+        # tools, if the commands it provides are on PATH.
+        present() {
+          dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed' && return 0
+          case "$1" in
+            build-essential) command -v cc && command -v c++ && command -v make ;;
+            pkg-config) command -v pkg-config ;;
+            openssh-client) command -v ssh ;;
+            poppler-utils) command -v pdftoppm ;;
+            *) false ;;
+          esac >/dev/null
+        }
+
         missing=()
+        # word splitting is intended: one package per word
+        # shellcheck disable=SC2086
         for p in build-essential pkg-config $PACKAGES; do
-          dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed' || missing+=("$p")
+          present "$p" || missing+=("$p")
         done
         if (( ${#missing[@]} == 0 )); then
-          echo "build packages already installed"
+          echo "already installed: build-essential pkg-config${PACKAGES:+ $PACKAGES}"
           exit 0
         fi
+
         if [[ "$(id -u)" == 0 ]]; then
           sudo=()
         elif sudo -n true 2>/dev/null; then
           sudo=(sudo -n)
         else
-          echo "::error::the runner user can't sudo without a password, so ${missing[*]} can't be installed; add them to the runner image"
+          echo "::error::the runner image lacks ${missing[*]} and has no passwordless sudo to install them (lokkju/infra#105); add them to homelab/images/garm-runner/Dockerfile in lokkju/infra"
           exit 1
         fi
+        echo "installing ${missing[*]}"
         "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update -q
         "${sudo[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends "${missing[@]}"

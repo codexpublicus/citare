@@ -232,9 +232,11 @@ gh workflow run bench-release.yml -f tag=v0.4.1 -f publish=false  # report only
 ## CI runners
 
 Every workflow job runs on the org's self-hosted `homelab` runners (`runs-on: homelab`,
-from lokkju/infra's GARM setup): one ephemeral pod per job, on a bare actions-runner
-image with gh, git, curl and jq. `.github/actions/homelab-setup` installs the C toolchain
-and pkg-config the Rust jobs need; rustup, mise and uv come from their own actions.
+from lokkju/infra's GARM setup): one ephemeral pod per job, on an actions-runner image
+with gh, git, curl, jq, build-essential and pkg-config and no passwordless sudo.
+`.github/actions/homelab-setup` checks for the C toolchain and pkg-config the Rust jobs
+need and fails, naming what's missing, if the image lacks them and sudo doesn't work;
+rustup, mise and uv come from their own actions.
 Benchmark speeds depend on the machine, so each report names the runner it ran on.
 eyecite's stored runs in citation-bench were timed on GitHub-hosted runners, so ms/KB
 comparisons with eyecite cross machine types until those runs are re-baselined on homelab.
