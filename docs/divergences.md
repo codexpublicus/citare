@@ -20,6 +20,7 @@ A new divergence goes in this file before it's merged, with all four.
 |---|---|---|
 | [`§` pin cites on `Id.` and `Ibid.`](#id-section-pin) | #41, #48 | [freelawproject/eyecite#299](https://github.com/freelawproject/eyecite/issues/299); follow-up drafted in [`id-section-pin.md`](eyecite-issue-drafts/id-section-pin.md) |
 | [Statute section numbers with letters or Unicode hyphens](#law-section) | #48 | drafted in [`law-section.md`](eyecite-issue-drafts/law-section.md) (reporters-db) |
+| [Supra after parallel citations](#supra-after-parallel) | #60 | drafted in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -244,3 +245,75 @@ whole section number and nothing after it.
 
 The regex is reporters-db's, so the fix belongs there; a draft issue is in
 [`eyecite-issue-drafts/law-section.md`](eyecite-issue-drafts/law-section.md).
+
+<a id="supra-after-parallel"></a>
+## Supra after parallel citations
+
+A decision cited in parallel is one full citation per reporter: `Smith v. Jones, 275 Conn. 38,
+881 A.2d 194 (2005)` is two, and both carry the case name. eyecite resolves a supra by finding
+the earlier full citations whose plaintiff or defendant contains its antecedent, and resolves
+only when they are all one resource. Here they are two resources, so the supra resolves to
+nothing, and so does every id. citation after it. A short cite (`Smith, 881 A.2d at 199`) is
+matched by reporter and volume first, so it finds one citation and isn't affected.
+
+citare records which full case citations are cited in parallel: adjacent full case citations
+with the same full span start and case name, the pairs eyecite and citare already copy the case
+name and year across. When a supra's or short cite's matches are different resources and one
+parallel citation covers all of them, citare resolves to the match in the short form's reporter,
+or else the first match. Matches from two different decisions with the same name still leave
+it unresolved.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). … Smith, supra, at 46. Id. at 47.` | supra and `Id.` **unresolved** | both resolve to `275 Conn. 38` |
+| `Roe v. Wade, 410 U.S. 113, 93 S. Ct. 705, 35 L. Ed. 2d 147 (1973). … Roe, supra, at 120.` | **unresolved** | `410 U.S. 113` |
+| `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … Haynes v. Middletown, supra, at 312, 101 A.3d 249. … Haynes, supra, at 313.` | both supras **unresolved** | both resolve to `314 Conn. 303` |
+| `Smith v. Jones, 881 A.2d 194 (Conn. 2005). … Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). Smith, supra, at 46.` | **unresolved** | `881 A.2d 194` |
+| `Smith v. Jones, 1 U.S. 1 (1990). … See also Smith v. Jones, 410 U.S. 113 (1999). Smith, supra, at 3.` | unresolved | unresolved (two decisions) |
+
+The third row is how Connecticut opinions cite: after the first full citation, each supra
+repeats the regional cite (`Haynes v. Middletown, supra, 314 Conn. at 312, 101 A.3d 249`). The
+repeated `101 A.3d 249` is a full citation on its own, the same resource as the first one, so a
+later supra matches three citations of two resources, which the first parallel citation covers.
+Each parallel citation counts only as itself: two of them that share a resource aren't merged.
+In one CourtListener opinion, citare reads `(citing Celotex, 477 U.S. at 321-25, 106 S.Ct.
+2548; Anderson, 477 U.S. at 255-57, 106 S.Ct. 2505)` as if both S. Ct. cites were parallel
+citations of one case named Celotex.
+Merged with the earlier `Anderson v. Liberty Lobby, Inc., 477 U.S. 242, 106 S.Ct. 2505`, that
+pair would make Celotex and Anderson one decision, and `477 U.S. at 255` would resolve to
+Celotex.
+
+### Evidence
+
+138 A.3d 1012 (Brooks v. Powers, Conn. App. 2016) has 52 supras, and eyecite and citare both
+left all 52 unresolved: every case it cites by supra was first cited in Conn. and A.2d or A.3d.
+With this change 45 resolve. The other 7 are `Cotto v. Board of Education, supra` and `Swanson
+v. Groton, supra`, whose antecedent guess is the defendant (`Education`, `Groton`), which two
+other cases in the opinion share; that ambiguity is real and is left alone. In a sample of 38
+recent opinions from A.3d, P.3d, N.E.3d, So. 3d, S.E.2d, S.W.3d and N.W.2d, eyecite and citare
+both resolved 13 of 49 supras; citare now resolves 35.
+
+On the CourtListener ten-percent sample (7,632 opinions, citation-bench's
+`courtlistener-10pct`), the citare CLI's `resolve` resolves 2,263 of 5,140 supras, up from
+1,227, and 9,880 id. citations, up from 9,825 (the ones after a newly resolved supra). Short
+and reference citations are unchanged, and no citation that resolved before resolves to a
+different resource. I read 23 of the 1,036 newly resolved supras, picked at random, in
+context: each names the decision it resolves to (`First Nat. Bank in Albuquerque v. Rowe,
+supra` to `52 N.M. 366`, `Gannett Co., Inc. v. DePasquale, supra` to `443 U.S. 368`, `In re
+Murchison, supra` to `349 U.S. 133`).
+
+### Tests
+
+- `crates/citare-core/src/resolve.rs`: the Conn. and A.2d supra with an id. citation after it,
+  a supra after U.S., S. Ct. and L. Ed. 2d cites, the Connecticut repeated cite, a decision
+  cited alone and then in parallel, a short cite in the parallel reporter (which still resolves
+  to its own citation, as in eyecite), and two decisions with one name, cited singly and in
+  parallel, whose supra stays unresolved.
+- citation-bench `vectors/divergences/`: the first four rows of the table as `resolve` vectors
+  (`supra_after_parallel`). eyecite's misses are listed in
+  `baselines/eyecite.known-differences`.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md).
