@@ -37,6 +37,8 @@ struct ResolvedFullCite {
     resource: Resource,
     /// Equal for equal resources (see [`resource_key`]).
     key: u64,
+    /// The corrected reporter, for choosing among parallel citations.
+    reporter: Option<String>,
 }
 
 /// The full citations before the citation being resolved, in document
@@ -54,11 +56,27 @@ struct ResolvedFullCites {
     /// Full citations by each of their metadata values (see
     /// [`get_metadata_values`]).
     by_metadata_value: HashMap<String, Vec<usize>>,
+    /// The resources of the last full citation and those cited in
+    /// parallel just before it (see [`is_parallel`]), by [`resource_key`],
+    /// sorted.
+    current_decision: Vec<u64>,
+    /// Each distinct set of resources cited in parallel, as
+    /// `current_decision` was after each parallel citation.
+    decisions: Vec<Vec<u64>>,
+    decision_ids: HashMap<Vec<u64>, usize>,
+    /// The `decisions` each resource is in.
+    decisions_by_key: HashMap<u64, Vec<usize>>,
+    /// The most resources in one of `decisions`.
+    max_decision_len: usize,
 }
 
 impl ResolvedFullCites {
-    fn push(&mut self, citation: &Citation, resource: Resource) {
+    /// Add a full citation. `parallel` says it is cited in parallel with
+    /// the last one added.
+    fn push(&mut self, citation: &Citation, resource: Resource, parallel: bool) {
         let index = self.cites.len();
+        let key = resource_key(&resource);
+        let (reporter, _) = reporter_volume(citation);
         if let Citation::FullCase(_) = citation {
             self.by_reporter_volume
                 .entry(reporter_volume(citation))
@@ -70,9 +88,39 @@ impl ResolvedFullCites {
         }
         self.cites.push(ResolvedFullCite {
             citation: citation.clone(),
-            key: resource_key(&resource),
+            key,
             resource,
+            reporter,
         });
+
+        if !parallel {
+            self.current_decision.clear();
+        }
+        if let Err(at) = self.current_decision.binary_search(&key) {
+            self.current_decision.insert(at, key);
+        }
+        if self.current_decision.len() > 1
+            && !self.decision_ids.contains_key(&self.current_decision)
+        {
+            let id = self.decisions.len();
+            for &key in &self.current_decision {
+                self.decisions_by_key.entry(key).or_default().push(id);
+            }
+            self.max_decision_len = self.max_decision_len.max(self.current_decision.len());
+            self.decision_ids.insert(self.current_decision.clone(), id);
+            self.decisions.push(self.current_decision.clone());
+        }
+    }
+
+    /// Whether some parallel citation of the resource `key` also cited every
+    /// resource in `keys`.
+    fn one_decision(&self, key: u64, keys: &[u64]) -> bool {
+        self.decisions_by_key.get(&key).is_some_and(|ids| {
+            ids.iter().any(|&id| {
+                let decision = &self.decisions[id];
+                keys.iter().all(|k| decision.binary_search(k).is_ok())
+            })
+        })
     }
 }
 
@@ -107,6 +155,59 @@ fn single_resource(
         .then_some(&first.resource)
 }
 
+/// Whether `citation` is cited in parallel with `previous`, the citation
+/// just before it: both are full case citations under one case name, as
+/// in "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005)". These are the
+/// pairs `find` copies the case name and year across.
+fn is_parallel(previous: &Citation, citation: &Citation) -> bool {
+    let (Citation::FullCase(previous), Citation::FullCase(current)) = (previous, citation) else {
+        return false;
+    };
+    let start = current.resource.common.full_span_start;
+    start.is_some()
+        && start == previous.resource.common.full_span_start
+        && current.metadata.plaintiff == previous.metadata.plaintiff
+        && current.metadata.defendant == previous.metadata.defendant
+}
+
+/// The resource a short or supra citation names, given the full citations
+/// it matched.
+///
+/// When they are all one resource, that resource, as eyecite resolves.
+/// When they are different resources but all one decision cited in
+/// parallel, the matched citation in `reporter` (the short form's), or
+/// else the first one. Otherwise none: the citation is ambiguous.
+fn decision_resource<'a>(
+    resolved: &'a ResolvedFullCites,
+    mut matches: impl Iterator<Item = usize>,
+    reporter: Option<&str>,
+) -> Option<&'a Resource> {
+    let first = &resolved.cites[matches.next()?];
+    let mut keys = vec![first.key];
+    let mut in_reporter =
+        (reporter.is_some() && first.reporter.as_deref() == reporter).then_some(first);
+    for i in matches {
+        let cite = &resolved.cites[i];
+        if !keys.contains(&cite.key) {
+            // More resources than any one decision was cited in.
+            if keys.len() == resolved.max_decision_len.max(1) {
+                return None;
+            }
+            keys.push(cite.key);
+        }
+        if in_reporter.is_none() && reporter.is_some() && cite.reporter.as_deref() == reporter {
+            in_reporter = Some(cite);
+        }
+    }
+    if keys.len() == 1 {
+        Some(&first.resource)
+    } else if resolved.one_decision(first.key, &keys) {
+        Some(&in_reporter.unwrap_or(first).resource)
+    } else {
+        None
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -126,13 +227,15 @@ pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
     let mut resolutions: Resolutions = HashMap::new();
     let mut resolved_full_cites = ResolvedFullCites::default();
     let mut last_resolution: Option<Resource> = None;
+    let mut previous: Option<&Citation> = None;
 
     for citation in citations {
         let resolution = match citation {
             // Full citations create new resources.
             Citation::FullCase(_) | Citation::FullLaw(_) | Citation::FullJournal(_) => {
                 let resource = resolve_full_citation(citation);
-                resolved_full_cites.push(citation, resource.clone());
+                let parallel = previous.is_some_and(|p| is_parallel(p, citation));
+                resolved_full_cites.push(citation, resource.clone(), parallel);
                 Some(resource)
             }
 
@@ -153,6 +256,7 @@ pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
             // Unknown: skip.
             Citation::Unknown(_) => None,
         };
+        previous = Some(citation);
 
         last_resolution = resolution.clone();
         if let Some(resource) = resolution {
@@ -180,8 +284,13 @@ fn resolve_shortcase_citation(
         .get(&reporter_volume(citation))
         .map_or(&[], Vec::as_slice);
 
-    // Unique resource — return immediately.
-    if let Some(resource) = single_resource(resolved_full_cites, candidates.iter().copied()) {
+    let reporter = citation.corrected_reporter();
+    let reporter = reporter.as_deref();
+
+    // Unique decision — return immediately.
+    if let Some(resource) =
+        decision_resource(resolved_full_cites, candidates.iter().copied(), reporter)
+    {
         return Some(resource.clone());
     }
 
@@ -191,6 +300,7 @@ fn resolve_shortcase_citation(
             resolved_full_cites,
             candidates.iter().copied(),
             antecedent,
+            reporter,
         );
     }
 
@@ -206,6 +316,7 @@ fn resolve_supra_citation(
         resolved_full_cites,
         0..resolved_full_cites.cites.len(),
         antecedent,
+        None,
     )
 }
 
@@ -256,11 +367,13 @@ fn resolve_reference_citation(
 
 /// Filter the full citations at `candidates` by whether the full case
 /// citation's defendant or plaintiff contains `antecedent_guess`. Returns
-/// the resource only when exactly one unique resource matches.
+/// a resource only when the matches are one decision (see
+/// [`decision_resource`]), preferring a citation in `reporter`.
 fn filter_by_matching_antecedent(
     resolved_full_cites: &ResolvedFullCites,
     candidates: impl Iterator<Item = usize>,
     antecedent_guess: &str,
+    reporter: Option<&str>,
 ) -> Option<Resource> {
     use crate::utils::strip_punct;
 
@@ -282,7 +395,7 @@ fn filter_by_matching_antecedent(
         defendant_match || plaintiff_match
     });
 
-    single_resource(resolved_full_cites, matches).cloned()
+    decision_resource(resolved_full_cites, matches, reporter).cloned()
 }
 
 /// Whether a pin cite names a section: `§ 5`, `§§ 5-7`, `at § 12(b)`.
@@ -526,5 +639,124 @@ mod tests {
         assert_eq!(resolutions.len(), 1);
         let (_, cites) = resolutions.iter().next().unwrap();
         assert_eq!(cites.len(), 2);
+    }
+
+    /// Each citation's type and the matched text of the full citation it
+    /// resolves to, in document order.
+    fn resolved(text: &str) -> Vec<(&'static str, Option<String>)> {
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        let resolutions = resolve_citations(&citations);
+        citations
+            .iter()
+            .map(|citation| {
+                let resource = resolutions
+                    .iter()
+                    .find(|(_, cites)| cites.iter().any(|c| c.span() == citation.span()))
+                    .map(|(resource, _)| resource.citation.matched_text().to_string());
+                (citation.type_name(), resource)
+            })
+            .collect()
+    }
+
+    fn to(text: &str) -> Option<String> {
+        Some(text.to_string())
+    }
+
+    // #60: a supra whose case name matches a decision cited in parallel
+    // resolves to its first citation, and an id. after it follows.
+    #[test]
+    fn test_supra_after_parallel_state_cites() {
+        let text = "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). The court agreed. \
+                    Smith, supra, at 46. Id. at 47.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("275 Conn. 38")),
+                ("FullCaseCitation", to("881 A.2d 194")),
+                ("SupraCitation", to("275 Conn. 38")),
+                ("IdCitation", to("275 Conn. 38")),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_supra_after_parallel_federal_cites() {
+        let text = "Roe v. Wade, 410 U.S. 113, 93 S. Ct. 705, 35 L. Ed. 2d 147 (1973). \
+                    The court agreed. Roe, supra, at 120.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("410 U.S. 113")),
+                ("FullCaseCitation", to("93 S. Ct. 705")),
+                ("FullCaseCitation", to("35 L. Ed. 2d 147")),
+                ("SupraCitation", to("410 U.S. 113")),
+            ]
+        );
+    }
+
+    // A short cite in the parallel reporter still resolves to its own
+    // citation, as in eyecite.
+    #[test]
+    fn test_short_cite_after_parallel_cites_keeps_its_reporter() {
+        let text = "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). The court agreed. \
+                    Smith, 881 A.2d at 199.";
+        assert_eq!(resolved(text)[2], ("ShortCaseCitation", to("881 A.2d 194")));
+    }
+
+    // Connecticut opinions repeat the regional cite after each supra
+    // ("Haynes v. Middletown, supra, 314 Conn. at 312, 101 A.3d 249"). The
+    // repeated citation is the same decision as the first pair, so a later
+    // supra still has one antecedent.
+    #[test]
+    fn test_supra_after_repeated_parallel_cite() {
+        let text = "Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). The court \
+                    agreed. Haynes v. Middletown, supra, 314 Conn. at 312, 101 A.3d 249. \
+                    The court agreed again. Haynes, supra, at 313.";
+        let resolved = resolved(text);
+        assert_eq!(
+            resolved.last(),
+            Some(&("SupraCitation", to("314 Conn. 303"))),
+            "{resolved:?}"
+        );
+        assert!(
+            resolved.iter().all(|(_, resource)| resource.is_some()),
+            "{resolved:?}"
+        );
+    }
+
+    // A decision first cited in one reporter and later in parallel is still
+    // one decision.
+    #[test]
+    fn test_supra_after_single_then_parallel_cite() {
+        let text = "Smith v. Jones, 881 A.2d 194 (Conn. 2005). The court agreed. \
+                    Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). Smith, supra, at 46.";
+        assert_eq!(
+            resolved(text).last(),
+            Some(&("SupraCitation", to("881 A.2d 194")))
+        );
+    }
+
+    // Two decisions with the same name leave a supra ambiguous.
+    #[test]
+    fn test_supra_after_two_cases_with_one_name_is_unresolved() {
+        let text = "Smith v. Jones, 1 U.S. 1 (1990). The court agreed. See also \
+                    Smith v. Jones, 410 U.S. 113 (1999). Smith, supra, at 3.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("1 U.S. 1")),
+                ("FullCaseCitation", to("410 U.S. 113")),
+                ("SupraCitation", None),
+            ]
+        );
+    }
+
+    // The same, when each decision is cited in parallel.
+    #[test]
+    fn test_supra_after_two_parallel_cases_with_one_name_is_unresolved() {
+        let text = "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). The court agreed. \
+                    See also Smith v. Jones, 280 Conn. 1, 900 A.2d 1 (2006). \
+                    Smith, supra, at 46.";
+        assert_eq!(resolved(text).last(), Some(&("SupraCitation", None)));
     }
 }
