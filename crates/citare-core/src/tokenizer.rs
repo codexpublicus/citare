@@ -74,6 +74,17 @@ impl std::fmt::Debug for TokenExtractor {
 }
 
 impl TokenExtractor {
+    /// Whether every edition this extractor finds is a law (laws.json).
+    fn is_law(&self) -> bool {
+        let mut eds = self
+            .extra
+            .exact_editions
+            .iter()
+            .chain(&self.extra.variation_editions)
+            .peekable();
+        eds.peek().is_some() && eds.all(|e| e.reporter.source == ReporterSource::Laws)
+    }
+
     /// Get the compiled regex, compiling on first access.
     fn compiled_regex(&self) -> Option<&Regex> {
         self.compiled_regex
@@ -137,6 +148,17 @@ impl TokenExtractor {
             end: inner_end,
             groups,
         };
+
+        let mut token_data = token_data;
+        if self.token_type == TokenType::Citation && self.is_law() {
+            // A reporter regex ends in `\s*` (whitespace is relaxed after its
+            // periods), so a statute regex with optional space after the
+            // reporter (`G. L. c. 6`, `12 O.S. 2011`) can capture it.
+            if let Some(Some(r)) = token_data.groups.get_mut("reporter") {
+                let trimmed = r.trim_end().len();
+                r.truncate(trimmed);
+            }
+        }
 
         match self.token_type {
             TokenType::Citation => Some(Token::Citation(CitationTokenData {

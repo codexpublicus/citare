@@ -298,6 +298,16 @@ fn statute_fields(
     assert_eq!(f.section.as_deref(), Some(section), "{text:?}");
 }
 
+/// The reporter group stops at the reporter, though the regex lets a space
+/// follow it.
+#[rstest]
+#[case("As required by G. L. c. 6, § 178K (1), the board", "G. L.")]
+#[case("(62 O.S. 2011, § 3103 (5))", "O.S.")]
+fn reporter_group_has_no_trailing_space(#[case] text: &str, #[case] reporter: &str) {
+    let c = law(text);
+    assert_eq!(c.common().groups["reporter"].as_deref(), Some(reporter));
+}
+
 #[test]
 fn chapter_is_its_own_field() {
     let f = fields("G.L.c. 94C, § 32E (a)(2)");
