@@ -93,6 +93,10 @@ pub struct JsCitation {
     pub harvard_slug: Option<String>,
     pub ambiguous: bool,
     pub metadata: BTreeMap<String, Option<String>>,
+    /// A statute citation's jurisdiction, code, title or chapter, and
+    /// section, each in its own field; absent for other citations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub law: Option<citare_core::models::LawFields>,
 }
 
 /// One set of citation spans in UTF-8 bytes, UTF-16 units and code points.
@@ -439,6 +443,7 @@ fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCi
         harvard_slug,
         ambiguous: citation.is_ambiguous(),
         metadata,
+        law: citation.law(),
     }
 }
 

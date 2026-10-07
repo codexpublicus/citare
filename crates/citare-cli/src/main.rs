@@ -164,6 +164,10 @@ struct CitationJson {
     harvard_slug: Option<String>,
     ambiguous: bool,
     metadata: BTreeMap<String, Option<String>>,
+    /// A statute citation's jurisdiction, code, title or chapter, and
+    /// section, each in its own field; absent for other citations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    law: Option<citare_core::models::LawFields>,
 }
 
 #[derive(Serialize)]
@@ -476,6 +480,7 @@ fn citation_to_json(
         harvard_slug,
         ambiguous: citation.is_ambiguous(),
         metadata,
+        law: citation.law(),
     }
 }
 
