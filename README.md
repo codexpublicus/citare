@@ -7,6 +7,9 @@ Part of the [stare.pub](https://stare.pub) project family.
 ## Features
 
 - Extract legal citations from text (case law, statutes, journals)
+- Statutes as state courts cite them (`General Statutes § 52-557n`, `42 Pa.C.S. § 5322`,
+  `Penal Law § 160.05`), each with its jurisdiction, code and section in fields of their
+  own ([docs/laws-local.md](docs/laws-local.md))
 - Resolve short-form citations (Id., supra, short case) to their full citations
 - Annotate source text with citation markers
 - Harvard CAP slug mapping — resolve citations to [Caselaw Access Project](https://case.law) data

@@ -20,6 +20,8 @@ A new divergence goes in this file before it's merged, with all four.
 |---|---|---|
 | [`§` pin cites on `Id.` and `Ibid.`](#id-section-pin) | #41, #48 | [freelawproject/eyecite#299](https://github.com/freelawproject/eyecite/issues/299); follow-up drafted in [`id-section-pin.md`](eyecite-issue-drafts/id-section-pin.md) |
 | [Statute section numbers with letters or Unicode hyphens](#law-section) | #48 | drafted in [`law-section.md`](eyecite-issue-drafts/law-section.md) (reporters-db) |
+| [Codes cited by subject keep the subject](#law-subject-split) | #49 | drafted in [`law-subject-split.md`](eyecite-issue-drafts/law-subject-split.md) |
+| [State-code statute forms](#state-code-forms) | #49's PR | drafted in [`state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md) (reporters-db) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -244,3 +246,108 @@ whole section number and nothing after it.
 
 The regex is reporters-db's, so the fix belongs there; a draft issue is in
 [`eyecite-issue-drafts/law-section.md`](eyecite-issue-drafts/law-section.md).
+
+<a id="law-subject-split"></a>
+## Codes cited by subject keep the subject
+
+reporters-db keys some codes without the subject that names them, and matches the subject
+with a `subject` group: `N.Y. Law` (`N.Y. Gen. Bus. Law § 394`), `Cal. Code` (`Cal. Civ.
+Code § 1714`), `Tex. Code Ann.` (`Tex. Penal Code Ann. § 22.01`), `N.Y.` (`N.Y. C.P.L.R. §
+5501`) and `Md. Code Ann.` (`Md. Code Ann., Cts. & Jud. Proc. § 5-101`). eyecite's normalized
+reporter is the key, so every New York, California and Texas code normalizes to the same
+string. New York has a second problem: its `N.Y.` and `N.Y. Law` entries both match `N.Y.
+Gen. Bus. Law § 394`, with different groups, and eyecite keeps whichever of the two
+extractors its set of extractors happens to yield first, which changes from process to
+process.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `N.Y. Gen. Bus. Law § 394` | reporter `N.Y. Gen. Bus. Law`, subject `Gen. Bus.`, normalized `N.Y. Law`; or, in another process, reporter `N.Y.`, subject `Gen. Bus. Law`, normalized `N.Y.` | reporter `N.Y. Gen. Bus. Law`, subject `Gen. Bus.`, normalized `N.Y. Gen. Bus. Law` |
+| `Cal. Civ. Code § 1714` | normalized `Cal. Code` | normalized `Cal. Civ. Code` |
+| `Tex. Penal Code Ann. § 22.01` | normalized `Tex. Code Ann.` | normalized `Tex. Penal Code Ann.` |
+| `N.Y. C.P.L.R. § 5501` | normalized `N.Y.` | normalized `N.Y. C.P.L.R.` |
+| `Md. Code Ann., Cts. & Jud. Proc. § 5-101` | normalized `Md. Code Ann.` | normalized `Md. Code Ann., Cts. & Jud. Proc.` |
+
+When two laws.json regexes match the same text, citare keeps the one with the longer
+`reporter` group, the more specific entry: `N.Y. Law` over `N.Y.`, the split the `Cal. Code`
+and `Tex. Code Ann.` entries already give. The normalized reporter (`corrected_reporter()`,
+and `code` in `Citation::law()`) puts the subject back into the key: after its first word for
+the codes named around it (`N.Y. Law`, `Cal. Code`, `Tex. Code Ann.`), after the key for the
+others, with the comma the text has (`Md. Code Ann., Cts. & Jud. Proc.`). Groups are unchanged
+apart from the New York split. Laws also no longer take a CAP reporter slug from a reporter
+edition with the same name: the `N.Y.` statute entry had New York Reports' `ny`.
+
+### Evidence
+
+Ten processes of eyecite 2.7.8 on `See N.Y. Gen. Bus. Law § 394 (2020).`: five gave reporter
+`N.Y. Gen. Bus. Law` (normalized `N.Y. Law`) and five reporter `N.Y.` (normalized `N.Y.`). A
+link to the statute's text needs the code: `N.Y. Law § 394` names no statute, and neither
+does `Tex. Code Ann. § 22.01`. Over the CourtListener ten-percent sample, citare's normalized
+reporter changes for 144 statute citations: 91 Texas codes, 36 New York, 14 California and
+3 Maryland. citation-bench's eyecite vectors have no code cited by subject, so parity is
+unchanged.
+
+### Tests
+
+- `crates/citare-core/tests/law_local.rs`: `new_york_code_split`, and the codes cited by
+  subject in `statute_fields`.
+- citation-bench: `vectors/divergences/` `law_section/4` (`N.Y. Gen. Bus. Law § 394-ccc`), and
+  `vectors/statutes/` `cal_civ_code` and `tex_penal_code_ann`, which eyecite misses only on the
+  normalized reporter.
+
+### Upstream
+
+The split is eyecite's (the extractor order) and the normalized reporter is eyecite's
+`corrected_reporter()`; a draft issue is in
+[`eyecite-issue-drafts/law-subject-split.md`](eyecite-issue-drafts/law-subject-split.md).
+
+<a id="state-code-forms"></a>
+## State-code statute forms
+
+reporters-db names each state's code by its Bluebook abbreviation, and state courts mostly
+cite their codes in their own forms. eyecite returns those as a bare `§` unknown citation.
+citare adds the most common forms from its own supplement to reporters-db's laws data,
+[`data/laws-local.json`](../data/laws-local.json), written up with the measurement in
+[`laws-local.md`](laws-local.md).
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `General Statutes § 52-557n` | unknown citation `§` | law citation: Connecticut, `Conn. Gen. Stat.`, section `52-557n` |
+| `Practice Book § 17-49` | unknown citation `§` | Connecticut, `Conn. Practice Book`, section `17-49` |
+| `OCGA § 16-9-93` | unknown citation `§` | Georgia, `Ga. Code Ann.`, section `16-9-93` |
+| `42 Pa.C.S. § 5322` | unknown citation `§` | Pennsylvania, `Pa. Cons. Stat.`, title `42`, section `5322` |
+| `Penal Law § 160.05` | unknown citation `§` | New York, `N.Y. Penal Law`, section `160.05` |
+| `(Pen. Code, § 211)` | unknown citation `§` | California, `Cal. Pen. Code`, section `211` |
+| `TEX. PENAL CODE ANN. § 1.03(a)` | unknown citation `§` | Texas, `Tex. Penal Code Ann.`, section `1.03`, pin cite `(a)` |
+| `G. L. c. 93A, § 2` | unknown citation `§` | Massachusetts, `Mass. Gen. Laws`, chapter `93A`, section `2` |
+| `22 O.S. 1951, § 1066` | case citation `22 O.S. 1951` (Ohio State Reports, page 1951) and unknown citation `§` | Oklahoma, `Okla. Stat.`, title `22`, section `1066` |
+
+The rest of the forms are in `data/laws-local.json`: `A.R.S.`, `HRS`, `N.C.G.S.` and `G.S.`,
+`N.D.C.C.`, `T.C.A.`, `40 P.S.`, `19-A M.R.S.`, `24 V.S.A.`, `Family Ct Act`, `Code Civ.
+Proc.,`, `Tex. Fam.Code`, `MCL`, `NMSA 1978,`, `Ala. Code 1975,`, `A.C.A.`, `La.Rev.Stat.`,
+`G.L. 1956`, `West Virginia Code` and `WIS. STAT.`. A statute's `reporter` group also no
+longer ends in whitespace: eyecite's `28 U.S.C.` and a line break before the `§` gives reporter
+`U.S.C.` plus the line break, and citare's gives `U.S.C.`.
+
+### Evidence
+
+Over the CourtListener ten-percent sample, 820 CAP opinions and the stare.pub sample, citare
+finds 4,710 statute citations it didn't, in 988 opinions, and loses none; 85 case citations
+that were Oklahoma statutes read as Ohio State Reports go away. I read 40 of the new
+citations, drawn at random, in context: all 40 have the right jurisdiction, code and title or
+chapter, and 39 the right section
+([`evidence/state-code-forms.md`](evidence/state-code-forms.md)). The trimmed reporter group
+changes 81 `U.S.C.` citations in the ten-percent sample.
+
+### Tests
+
+- `crates/citare-core/tests/law_local.rs`: every example in `data/laws-local.json`, the fields
+  of each form (`statute_fields`), look-alikes that must not match (`not_a_supplement_code`),
+  and the reporter group's end (`reporter_group_has_no_trailing_space`).
+- citation-bench `vectors/statutes/`: 78 inputs from real opinions over 41 forms, scored with
+  `mise run bench:statutes`. eyecite's misses are in `baselines/eyecite.known-differences`.
+
+### Upstream
+
+The forms belong in reporters-db's laws data, where they would reach eyecite too; a draft
+issue is in [`eyecite-issue-drafts/state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md).
