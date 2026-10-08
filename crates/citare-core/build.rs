@@ -11,7 +11,9 @@ use citare_data_build::regexes::{
     id_regex, nonalphanum_boundaries_re, placeholder_citations_regex, relax_ws, short_cite_re,
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
 };
-use citare_data_build::reporters::{parse_journals, parse_laws, parse_reporters};
+use citare_data_build::reporters::{
+    merge_local_laws, parse_journals, parse_laws, parse_local_laws, parse_reporters,
+};
 use citare_data_build::template::process_variables;
 
 // ---------------------------------------------------------------------------
@@ -28,6 +30,7 @@ struct BuildEdition {
     start: Option<String>,
     end: Option<String>,
     harvard_slug: Option<String>,
+    jurisdiction: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +75,7 @@ const LAW_SECTION_REGEX: &str = concat!(
 fn main() {
     println!("cargo::rerun-if-changed=../../data/");
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
+    println!("cargo::rerun-if-changed=../../data/laws-local.json");
     println!("cargo::rerun-if-env-changed=CITARE_DUMP_BUNDLE_JSON");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
@@ -140,8 +144,18 @@ fn main() {
     );
 
     let laws_json = include_str!("../../data/reporters-db/reporters_db/data/laws.json");
-    let laws = parse_laws(laws_json).expect("Failed to parse laws.json");
+    let mut laws = parse_laws(laws_json).expect("Failed to parse laws.json");
     println!("cargo::warning=Loaded {} laws", laws.len());
+
+    // citare's own supplement: statute forms reporters-db doesn't have, like
+    // `General Statutes § 52-557n` and `42 Pa.C.S. § 5322` (docs/laws-local.md).
+    let local_laws = parse_local_laws(include_str!("../../data/laws-local.json"))
+        .expect("Failed to parse data/laws-local.json");
+    merge_local_laws(&mut laws, &local_laws).unwrap_or_else(|e| panic!("{e}"));
+    println!(
+        "cargo::warning=Added {} local law entries",
+        local_laws.laws.values().map(Vec::len).sum::<usize>()
+    );
 
     let journals_json = include_str!("../../data/reporters-db/reporters_db/data/journals.json");
     let journals = parse_journals(journals_json).expect("Failed to parse journals.json");
@@ -187,6 +201,7 @@ fn main() {
     let add_regex = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
                      kind: &str,
                      reporter_strings: &[&str],
+                     explicit_strings: &[String],
                      edition: &BuildEdition,
                      regex: &str| {
         let entry = editions_by_regex.entry(regex.to_string()).or_default();
@@ -203,6 +218,9 @@ fn main() {
             for &s in reporter_strings {
                 entry.strings.insert(s.to_string());
             }
+        } else {
+            // A custom regex without the name (laws-local.json's prefilter).
+            entry.strings.extend(explicit_strings.iter().cloned());
         }
 
         // Add short cite variant
@@ -219,6 +237,8 @@ fn main() {
                 for &s in reporter_strings {
                     short_entry.strings.insert(s.to_string());
                 }
+            } else {
+                short_entry.strings.extend(explicit_strings.iter().cloned());
             }
         }
     };
@@ -229,6 +249,7 @@ fn main() {
                        edition_name: &str,
                        edition: &BuildEdition,
                        variation_names: &[String],
+                       explicit_strings: &[String],
                        regex_variables: &HashMap<String, String>| {
         for template in regex_templates {
             let resolved =
@@ -250,6 +271,7 @@ fn main() {
                     editions_by_regex,
                     "editions",
                     &[edition_name],
+                    explicit_strings,
                     edition,
                     &resolved,
                 );
@@ -262,6 +284,7 @@ fn main() {
                 editions_by_regex,
                 "editions",
                 &[edition_name],
+                explicit_strings,
                 edition,
                 &regex,
             );
@@ -273,6 +296,7 @@ fn main() {
                     editions_by_regex,
                     "variations",
                     &[var_name.as_str()],
+                    explicit_strings,
                     edition,
                     &var_regex,
                 );
@@ -293,6 +317,7 @@ fn main() {
                     start: edition_data.start.clone(),
                     end: edition_data.end.clone(),
                     harvard_slug: harvard_slug_map.get(edition_name).cloned(),
+                    jurisdiction: None,
                 };
 
                 let regex_templates: Vec<String> = edition_data
@@ -315,6 +340,7 @@ fn main() {
                     edition_name,
                     &edition,
                     &edition_variations,
+                    &[],
                     &regex_variables,
                 );
             }
@@ -332,7 +358,10 @@ fn main() {
                 short_name: source_key.clone(),
                 start: source.start.clone(),
                 end: source.end.clone(),
-                harvard_slug: harvard_slug_map.get(source_key).cloned(),
+                // CAP slugs are for case reporters. Looking laws up by key
+                // gave the `N.Y.` statute entry New York Reports' slug.
+                harvard_slug: None,
+                jurisdiction: Some(source.jurisdiction.clone()).filter(|j| !j.is_empty()),
             };
 
             let regex_templates: Vec<String> = if source.regexes.is_empty() {
@@ -353,6 +382,7 @@ fn main() {
                 source_key,
                 &edition,
                 &variation_names,
+                &source.strings,
                 &regex_variables,
             );
         }
@@ -369,7 +399,8 @@ fn main() {
                 short_name: source_key.clone(),
                 start: source.start.clone(),
                 end: source.end.clone(),
-                harvard_slug: harvard_slug_map.get(source_key).cloned(),
+                harvard_slug: None,
+                jurisdiction: None,
             };
 
             let regex_templates: Vec<String> = if source.regexes.is_empty() {
@@ -386,6 +417,7 @@ fn main() {
                 source_key,
                 &edition,
                 &variation_names,
+                &[],
                 &regex_variables,
             );
         }
@@ -729,6 +761,7 @@ fn main() {
                     start: e.start.clone().map(Into::into),
                     end: e.end.clone().map(Into::into),
                     harvard_slug: e.harvard_slug.clone().map(Into::into),
+                    reporter_jurisdiction: e.jurisdiction.clone().map(Into::into),
                 }
             })
             .collect(),

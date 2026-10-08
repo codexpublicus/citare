@@ -44,7 +44,8 @@ impl Data {
                         2 => ReporterSource::Journals,
                         _ => ReporterSource::Reporters,
                     },
-                ),
+                )
+                .with_jurisdiction(e.reporter_jurisdiction.as_deref().map(str::to_string)),
                 short_name: e.short_name.to_string(),
                 start: e.start.as_deref().map(str::to_string),
                 end: e.end.as_deref().map(str::to_string),

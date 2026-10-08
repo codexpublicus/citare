@@ -1,0 +1,229 @@
+{
+  "#": [
+    "citare's supplement to reporters-db's laws.json, merged in by crates/citare-core/build.rs.",
+    "Each entry is one more cluster under its key, in laws.json's schema. Under a key reporters-db has, a missing name, cite_type, jurisdiction, start, end or regexes comes from that key's first cluster, so the entry adds spellings of the same edition. A new key gives them all.",
+    "strings: prefilter strings (compared with whitespace removed) for a regex that doesn't contain the reporter's name; without them it would run on every document.",
+    "examples: citations the entry must recognize; crates/citare-core/tests/law_local.rs checks each one.",
+    "Why each entry exists, and how the forms were measured: docs/laws-local.md."
+  ],
+  "laws": {
+    "Ala. Code": [
+      {
+        "regexes": ["$reporter 1975,? § $law_section"],
+        "examples": ["Ala. Code 1975, § 12-15-65(m)", "Ala.Code 1975, § 13A-5-40"],
+        "notes": "Alabama's own style, with the code's year."
+      }
+    ],
+    "Ariz. Rev. Stat.": [
+      {
+        "variations": ["A.R.S."],
+        "examples": ["A.R.S. § 13-604.01"],
+        "notes": "Arizona courts' abbreviation."
+      }
+    ],
+    "Ark. Code Ann.": [
+      {
+        "variations": ["A.C.A."],
+        "examples": ["A.C.A. § 4-9-309"],
+        "notes": "Arkansas courts' abbreviation."
+      }
+    ],
+    "Cal. Code": [
+      {
+        "regexes": [
+          "(?P<reporter>(?P<subject>Pen\\.|Civ\\.|Evid\\.|Veh\\.|Gov\\.|Fam\\.|Lab\\.|Ins\\.|Prob\\.|Corp\\.|Com\\.|Elec\\.|Ed\\.|Educ\\.|Fin\\.|Wat\\.|Bus\\. & Prof\\.|Welf\\. & Inst\\.|Health & Saf\\.|Rev\\. & Tax\\.|Pub\\. Resources|Pub\\. Util\\.|Fish & G\\.|Food & Agr\\.|Harb\\. & Nav\\.|Sts\\. & Hy\\.|Unemp\\. Ins\\.) Code), § $law_section"
+        ],
+        "strings": ["Code,§"],
+        "examples": ["(Pen. Code, § 211)", "(Evid. Code, § 662.)", "(Welf. & Inst. Code, § 300, subd. (b))", "(Gov. Code, § 70373)"],
+        "notes": "California Style Manual: the code by subject without `Cal.`, and a comma before the section. The comma and the abbreviated subject keep it apart from Texas's `Penal Code § 22.01`."
+      },
+      {
+        "regexes": ["(?P<reporter>Code (?P<subject>Civ\\. Proc\\.)), § $law_section"],
+        "strings": ["CodeCiv.Proc.,§"],
+        "examples": ["(Code Civ. Proc., § 472c.)"],
+        "notes": "California Style Manual's `Code Civ. Proc.`; the code is Cal. Civ. Proc. Code."
+      }
+    ],
+    "Conn. Gen. Stat.": [
+      {
+        "regexes": [
+          "$reporter § $law_section",
+          "$reporter \\((?:Rev\\. to|Supp\\.) \\d{4}\\) § $law_section"
+        ],
+        "variations": ["General Statutes", "C.G.S.", "C.G.S.A."],
+        "examples": ["General Statutes § 52-557n", "General Statutes (Rev. to 2013) § 53a-54a", "C.G.S.A. § 31-294c", "C.G.S. § 52-584", "Conn. Gen. Stat. (Rev. to 2015) § 14-227a"],
+        "notes": "Connecticut courts cite their statutes as `General Statutes §`, often with the revision year."
+      }
+    ],
+    "Conn. Practice Book": [
+      {
+        "name": "Connecticut Practice Book",
+        "cite_type": "court_rule",
+        "jurisdiction": "Connecticut",
+        "regexes": ["$reporter § $law_section"],
+        "variations": ["Practice Book", "Conn. Prac. Book"],
+        "examples": ["Practice Book § 17-49", "Practice Book § 10-31"],
+        "notes": "The rules of Connecticut's courts. reporters-db has no court rules."
+      }
+    ],
+    "Ga. Code Ann.": [
+      {
+        "variations": ["O.C.G.A.", "OCGA"],
+        "examples": ["OCGA § 16-9-93 (b) (2)", "O.C.G.A. § 51-12-5.1"],
+        "notes": "Georgia courts' Official Code of Georgia Annotated."
+      }
+    ],
+    "Haw. Rev. Stat.": [
+      {
+        "variations": ["HRS", "H.R.S."],
+        "examples": ["HRS § 707-720(3)", "H.R.S. § 291E-61"],
+        "notes": "Hawaii courts' abbreviation."
+      }
+    ],
+    "La. Stat. Ann.": [
+      {
+        "variations": ["La. R.S.", "La. Rev. Stat.", "La. Rev. Stat. Ann."],
+        "examples": ["La.Rev.Stat. § 13:841.3", "La. R.S. § 15:574.4"],
+        "notes": "Louisiana Revised Statutes, the form before the Bluebook's `La. Stat. Ann.`."
+      }
+    ],
+    "Mass. Gen. Laws": [
+      {
+        "regexes": ["$reporter ?(?:\\(Ter\\. Ed\\.\\) )?c(?:h)?\\. ?(?P<chapter>\\d+[A-Z]?),? § $law_section"],
+        "variations": ["G. L.", "M.G.L.", "M.G.L.A.", "Mass. Gen. Laws Ann."],
+        "examples": ["G. L. c. 184, § 15", "G.L. c. 231 §6F", "G.L.c. 94C, § 32E", "G. L. (Ter. Ed.) c. 152, § 15", "Mass. Gen. Laws c. 93A, § 2"],
+        "notes": "Massachusetts courts' `G. L. c. N, §`, and chapters with a letter (93A), which reporters-db's `ch\\. (?P<chapter>\\d+)` misses."
+      }
+    ],
+    "Me. Rev. Stat. Ann.": [
+      {
+        "regexes": ["(?P<title>\\d+(?:-[A-Z])?) $reporter,? § $law_section"],
+        "variations": ["M.R.S.", "M.R.S.A.", "Me. Rev. Stat."],
+        "examples": ["19-A M.R.S. § 1653(6)", "15 M.R.S.A., § 393", "23 M.R.S. § 153-B"],
+        "notes": "Maine courts put the title first, and titles can have a letter (19-A)."
+      }
+    ],
+    "Mich. Comp. Laws": [
+      {
+        "variations": ["MCL", "M.C.L.", "MCLA", "M.C.L.A."],
+        "examples": ["MCL § 500.3101", "MCLA § 750.316"],
+        "notes": "Michigan courts' abbreviations."
+      }
+    ],
+    "N.C. Gen. Stat.": [
+      {
+        "variations": ["N.C.G.S.", "G.S."],
+        "examples": ["N.C.G.S. § 143-291", "G.S. § 14-17"],
+        "notes": "North Carolina courts' abbreviations."
+      }
+    ],
+    "N.D. Cent. Code": [
+      {
+        "variations": ["N.D.C.C."],
+        "examples": ["N.D.C.C. § 14-05-24"],
+        "notes": "North Dakota courts' abbreviation."
+      }
+    ],
+    "N.M. Stat. Ann.": [
+      {
+        "regexes": ["$reporter(?: 1978)?,? § $law_section"],
+        "variations": ["NMSA", "N.M.S.A."],
+        "examples": ["NMSA 1978, § 32A-4-28", "NMSA 1978 § 30-31-23"],
+        "notes": "New Mexico courts' `NMSA 1978`."
+      }
+    ],
+    "N.Y.": [
+      {
+        "regexes": ["(?P<reporter>(?P<subject>Family Ct\\.? Act|Family Court Act|Surrogate's Court Procedure Act|SCPA|CPLR|C\\.P\\.L\\.R\\.)),? § $law_section"],
+        "strings": ["Act§", "Act,§", "SCPA§", "CPLR§", "C.P.L.R.§"],
+        "examples": ["Family Ct Act § 1046 [a] [ii]", "CPLR § 5501"],
+        "notes": "New York's codes not named `Law`, cited without `N.Y.`."
+      }
+    ],
+    "N.Y. Law": [
+      {
+        "regexes": ["(?P<reporter>(?P<subject>Abandoned Property|Agriculture and Markets|Alcoholic Beverage Control|Arts and Cultural Affairs|Banking|Benevolent Orders|Business Corporation|Canal|Cannabis|Civil Rights|Civil Service|Cooperative Corporations|Correction|County|Criminal Procedure|Debtor and Creditor|Domestic Relations|Economic Development|Education|Elder|Election|Eminent Domain Procedure|Employers' Liability|Energy|Environmental Conservation|Estates, Powers and Trusts|Executive|Financial Services|General Associations|General Business|General City|General Construction|General Municipal|General Obligations|Highway|Indian|Insurance|Judiciary|Labor|Legislative|Lien|Limited Liability Company|Local Finance|Mental Hygiene|Military|Multiple Dwelling|Multiple Residence|Municipal Home Rule|Navigation|Not-for-Profit Corporation|Parks, Recreation and Historic Preservation|Partnership|Penal|Personal Property|Private Housing Finance|Public Authorities|Public Buildings|Public Health|Public Housing|Public Lands|Public Officers|Public Service|Racing, Pari-Mutuel Wagering and Breeding|Railroad|Rapid Transit|Real Property Actions and Proceedings|Real Property Tax|Real Property|Religious Corporations|Retirement and Social Security|Rural Electric Cooperative|Second Class Cities|Social Services|State Finance|Tax|Town|Transportation Corporations|Transportation|Vehicle and Traffic|Village|Volunteer Firefighters' Benefit|Workers' Compensation) Law),? § $law_section"],
+        "strings": ["Law§", "Law,§"],
+        "examples": ["Penal Law § 160.05", "Judiciary Law § 431", "Vehicle and Traffic Law § 1192 (3)", "Real Property Actions and Proceedings Law § 1304", "Town Law, § 198"],
+        "notes": "New York's consolidated laws cited by name without `N.Y.`, as New York courts write them. The list is the consolidated laws' names, so `Family Law` or `Criminal Law` (Maryland articles) don't match."
+      }
+    ],
+    "Okla. Stat.": [
+      {
+        "regexes": ["(?P<title>\\d+) $reporter ?(?:Supp\\. ?)?(?:\\d{4})?,? § $law_section"],
+        "variations": ["O.S."],
+        "examples": ["12 O.S.2011 § 1141.5", "22 O.S.2001, § 1089", "21 O.S. § 701.7"],
+        "notes": "Oklahoma courts put the title first and the code's year after `O.S.`."
+      }
+    ],
+    "Pa. Cons. Stat.": [
+      {
+        "variations": ["Pa.C.S.", "Pa.C.S.A.", "Pa. Cons. Stat. Ann."],
+        "examples": ["42 Pa.C.S. § 5322(a)(4)", "42 Pa.C.S.A. § 7102(c)", "18 Pa. C.S. § 6308"],
+        "notes": "Pennsylvania courts' abbreviation of the Consolidated Statutes."
+      }
+    ],
+    "Pa. Stat. Ann.": [
+      {
+        "name": "Purdon's Pennsylvania Statutes Annotated",
+        "cite_type": "leg_statute",
+        "jurisdiction": "Pennsylvania",
+        "regexes": [
+          "(?P<title>\\d+) $reporter § $law_section",
+          "$reporter tit\\. (?P<title>\\d+), § $law_section"
+        ],
+        "variations": ["P.S.", "Pa. Stat."],
+        "examples": ["40 P.S. § 532.7", "77 P.S. § 717.1(a)", "Pa. Stat. Ann. tit. 53, § 10916.1"],
+        "notes": "Pennsylvania statutes not yet in the Consolidated Statutes, cited by Purdon's title. reporters-db has no entry."
+      }
+    ],
+    "R.I. Gen. Laws": [
+      {
+        "regexes": ["$reporter 1956,? (?:\\(\\d{4} Reenactment\\) )?§ $law_section"],
+        "variations": ["G.L.", "R.I.G.L."],
+        "examples": ["G.L. 1956 § 11-23-1", "G.L. 1956, § 24-10-1"],
+        "notes": "Rhode Island courts' `G.L. 1956`."
+      }
+    ],
+    "Tenn. Code Ann.": [
+      {
+        "variations": ["T.C.A.", "Tennessee Code Annotated"],
+        "examples": ["T.C.A. § 49-2-303(a)", "Tennessee Code Annotated § 36-1-113(c)"],
+        "notes": "Tennessee courts' forms."
+      }
+    ],
+    "Tex. Code Ann.": [
+      {
+        "regexes": [
+          "(?P<reporter>Tex\\. $law_subject ?Code(?: Ann\\.)?) § $law_section",
+          "(?P<reporter>TEX\\. $law_subject CODE(?: ANN\\.)?) § $law_section"
+        ],
+        "strings": ["Tex.", "TEX."],
+        "examples": ["Tex. Prop.Code Ann. § 204.010(a)(16)", "Tex. Fam.Code § 54.02(f)", "TEX. PENAL CODE ANN. § 1.03(a)", "TEX. CIV. PRAC. & REM. CODE ANN. § 16.026(a)"],
+        "notes": "Texas codes typeset in small capitals (all capitals in text), without `Ann.`, or without a space before `Code`."
+      }
+    ],
+    "Vt. Stat. Ann.": [
+      {
+        "regexes": ["(?P<title>\\d+) $reporter § $law_section"],
+        "variations": ["V.S.A."],
+        "examples": ["19 V.S.A. § 230", "24 V.S.A. § 4470"],
+        "notes": "Vermont courts put the title first."
+      }
+    ],
+    "W. Va. Code": [
+      {
+        "variations": ["West Virginia Code"],
+        "examples": ["West Virginia Code § 23-4-2(c)(2)"],
+        "notes": "The code's name spelled out, as West Virginia courts often write it."
+      }
+    ],
+    "Wis. Stat.": [
+      {
+        "variations": ["WIS. STAT."],
+        "examples": ["WIS. STAT. § 847.07"],
+        "notes": "Small capitals, as Wisconsin courts typeset it."
+      }
+    ]
+  }
+}

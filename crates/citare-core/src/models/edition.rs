@@ -8,6 +8,9 @@ pub struct Reporter {
     pub cite_type: String,
     pub source: ReporterSource,
     pub is_scotus: bool,
+    /// The jurisdiction of a law from laws.json (`New York`, `United
+    /// States`); `None` for reporters and journals.
+    pub jurisdiction: Option<String>,
 }
 
 /// The source database a reporter comes from.
@@ -33,7 +36,14 @@ impl Reporter {
             cite_type,
             source,
             is_scotus,
+            jurisdiction: None,
         }
+    }
+
+    /// Set the jurisdiction (laws only).
+    pub fn with_jurisdiction(mut self, jurisdiction: Option<String>) -> Self {
+        self.jurisdiction = jurisdiction;
+        self
     }
 }
 

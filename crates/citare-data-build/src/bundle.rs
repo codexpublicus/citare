@@ -42,6 +42,9 @@ const SEC_REPORTER_MAP: u64 = 6;
 const SEC_ONEOFFS: u64 = 7;
 // 8 was the editions lookup in drafts of version 1; not reused.
 const SEC_COURT_KEYS: u64 = 9;
+/// Added after version 1 shipped; a reader that lacks it sees no
+/// jurisdictions, and a bundle without it has none.
+const SEC_REPORTER_JURISDICTIONS: u64 = 10;
 
 /// A string borrowed from the bundle's bytes when decoded, or owned when
 /// built.
@@ -60,6 +63,10 @@ pub struct BundleEdition<'a> {
     pub start: Option<Str<'a>>,
     pub end: Option<Str<'a>>,
     pub harvard_slug: Option<Str<'a>>,
+    /// The law's jurisdiction from laws.json (`New York`); `None` for
+    /// reporters and journals. Stored per reporter (section 10).
+    #[serde(default)]
+    pub reporter_jurisdiction: Option<Str<'a>>,
 }
 
 /// One citation extractor: a regex template with a reporter substituted in.
@@ -251,6 +258,7 @@ impl DataBundle<'_> {
                 e.start.as_deref(),
                 e.end.as_deref(),
                 e.harvard_slug.as_deref(),
+                e.reporter_jurisdiction.as_deref(),
             ]
             .into_iter()
             .flatten()
@@ -304,7 +312,7 @@ impl DataBundle<'_> {
         sections.push((SEC_STRINGS, s));
 
         // Reporters, interned out of the editions.
-        type ReporterKey<'a> = (&'a str, &'a str, &'a str, u8);
+        type ReporterKey<'a> = (&'a str, &'a str, &'a str, u8, Option<&'a str>);
         let mut reporters: Vec<ReporterKey> = Vec::new();
         let mut reporter_idx: HashMap<ReporterKey, u64> = HashMap::new();
         let edition_reporter: Vec<u64> = self
@@ -316,6 +324,7 @@ impl DataBundle<'_> {
                     e.reporter_name.as_ref(),
                     e.reporter_cite_type.as_ref(),
                     e.reporter_source,
+                    e.reporter_jurisdiction.as_deref(),
                 );
                 *reporter_idx.entry(key).or_insert_with(|| {
                     reporters.push(key);
@@ -437,6 +446,17 @@ impl DataBundle<'_> {
             put_varint(&mut s, strs.id(v));
         }
         sections.push((SEC_COURT_KEYS, s));
+
+        // Jurisdictions, one per reporter, written only when some law has
+        // one, so a bundle without them is byte-identical to before.
+        if reporters.iter().any(|r| r.4.is_some()) {
+            let mut s = Vec::new();
+            put_varint(&mut s, reporters.len() as u64);
+            for r in &reporters {
+                put_varint(&mut s, r.4.map_or(0, |j| strs.id(j) + 1));
+            }
+            sections.push((SEC_REPORTER_JURISDICTIONS, s));
+        }
 
         let mut out = Vec::new();
         out.extend_from_slice(MAGIC);
@@ -621,6 +641,17 @@ impl<'a> DataBundle<'a> {
         let source: Vec<u8> = (0..n)
             .map(|_| r.varint().map(|v| v as u8))
             .collect::<Result<_, _>>()?;
+        let jurisdiction: Vec<Option<Str<'a>>> =
+            match secs.iter().find(|(i, _)| *i == SEC_REPORTER_JURISDICTIONS) {
+                Some((_, payload)) => {
+                    let mut r = Reader::new(payload);
+                    if r.count()? != n {
+                        return Err(BundleError::BadIndex("reporter jurisdiction"));
+                    }
+                    (0..n).map(|_| strs.opt(&mut r)).collect::<Result<_, _>>()?
+                }
+                None => vec![None; n],
+            };
 
         let mut r = Reader::new(find(SEC_EDITIONS, "editions")?);
         let n = r.count()?;
@@ -659,6 +690,7 @@ impl<'a> DataBundle<'a> {
                     start,
                     end,
                     harvard_slug,
+                    reporter_jurisdiction: jurisdiction[ri].clone(),
                 },
             )
             .collect();
@@ -783,6 +815,7 @@ mod tests {
             start: Some("1938-01-01T00:00:00".into()),
             end: None,
             harvard_slug: Some("a2d".into()),
+            reporter_jurisdiction: None,
         };
         DataBundle {
             meta: vec![("reporters_db_commit".into(), "abc".into())],
@@ -820,6 +853,34 @@ mod tests {
         assert_eq!(&bytes[..8], MAGIC);
         assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
         assert_eq!(read_meta(&bytes).unwrap(), b.meta);
+    }
+
+    #[test]
+    fn round_trips_jurisdictions() {
+        let mut b = sample();
+        let plain = b.encode();
+        b.editions.push(BundleEdition {
+            reporter_short_name: "Conn. Gen. Stat.".into(),
+            reporter_name: "General Statutes of Connecticut".into(),
+            reporter_cite_type: "leg_statute".into(),
+            reporter_source: 1,
+            short_name: "Conn. Gen. Stat.".into(),
+            start: None,
+            end: None,
+            harvard_slug: None,
+            reporter_jurisdiction: Some("Connecticut".into()),
+        });
+        let bytes = b.encode();
+        assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
+        // Without a jurisdiction the section is left out entirely.
+        assert!(!sections(&plain)
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_REPORTER_JURISDICTIONS));
+        assert!(sections(&bytes)
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_REPORTER_JURISDICTIONS));
     }
 
     #[test]

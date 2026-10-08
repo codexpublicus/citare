@@ -85,6 +85,7 @@ A *string id* is an index into the string table (section 2); an *optional string
 | 7 | one-off extractors | count, then per extractor: regex (string id), token type (1 id., 2 supra, 3 stop word, 4 section, 5 paragraph, 6 placeholder), case-insensitive flag, strings (count, then string ids). |
 | 8 | | Unused (an editions lookup in drafts of version 1). |
 | 9 | court keys | count, then per court: citation string reduced to lowercase alphanumerics (string id), courts-db id (string id), in courts-db order. |
+| 10 | reporter jurisdictions | count *R* (the reporter count of section 3), then *R* optional string ids: each reporter's jurisdiction from laws.json (`New York`), 0 for reporters and journals. Written only when some law has one; a reader without it, or a bundle without it, has no jurisdictions. Added after version 1 shipped. |
 
 A derived reporter regex is the prefilter string escaped as Rust's `regex::escape` does
 it (a backslash before each of `\.+*?()|[]{}^$#&-~`), then with `\.\s*` in place of

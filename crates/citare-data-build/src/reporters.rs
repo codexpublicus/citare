@@ -60,6 +60,11 @@ pub struct LawCluster {
     pub end: Option<String>,
     #[serde(default)]
     pub variations: Vec<String>,
+    /// Prefilter strings for regexes that don't contain the reporter's name
+    /// (citare's supplement only; reporters-db has no such field). Without
+    /// them such a regex runs on every document.
+    #[serde(default)]
+    pub strings: Vec<String>,
     /// Absorb unknown fields (examples, href, notes, …)
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -92,6 +97,93 @@ pub fn parse_reporters(json_str: &str) -> Result<ReportersMap, serde_json::Error
 /// Parse laws.json into a map of law key → list of clusters.
 pub fn parse_laws(json_str: &str) -> Result<LawsMap, serde_json::Error> {
     serde_json::from_str(json_str)
+}
+
+/// One law in citare's own supplement to laws.json, `data/laws-local.json`:
+/// the same fields, all optional for a key reporters-db already has.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalLaw {
+    pub name: Option<String>,
+    pub cite_type: Option<String>,
+    pub jurisdiction: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    #[serde(default)]
+    pub regexes: Vec<String>,
+    #[serde(default)]
+    pub variations: Vec<String>,
+    #[serde(default)]
+    pub strings: Vec<String>,
+    /// Citations this entry must recognize; citare's tests check each.
+    #[serde(default)]
+    pub examples: Vec<String>,
+    /// Why the entry exists: the forms it covers and where they were seen.
+    pub notes: String,
+}
+
+/// The supplement file: a comment and the laws, keyed like laws.json.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalLaws {
+    #[serde(rename = "#")]
+    pub comment: Vec<String>,
+    pub laws: std::collections::BTreeMap<String, Vec<LocalLaw>>,
+}
+
+/// Parse `data/laws-local.json`.
+pub fn parse_local_laws(json_str: &str) -> Result<LocalLaws, serde_json::Error> {
+    serde_json::from_str(json_str)
+}
+
+/// Add the supplement's laws to `laws`, each as one more cluster under its
+/// key. A law under a key reporters-db has takes that key's first cluster's
+/// name, cite type, jurisdiction and dates, so it is the same edition, and
+/// its regexes if it gives none (a variations-only entry). A new key must
+/// give a name, cite type, jurisdiction and regexes.
+pub fn merge_local_laws(laws: &mut LawsMap, local: &LocalLaws) -> Result<(), String> {
+    for (key, entries) in &local.laws {
+        let base = laws.get(key).and_then(|c| c.first()).cloned();
+        for l in entries {
+            let need = |field: &Option<String>, inherited: Option<String>, what: &str| {
+                field
+                    .clone()
+                    .or(inherited)
+                    .ok_or_else(|| format!("laws-local.json: new law {key:?} needs a {what}"))
+            };
+            let regexes = if !l.regexes.is_empty() {
+                l.regexes.clone()
+            } else if let Some(b) = &base {
+                b.regexes.clone()
+            } else {
+                return Err(format!("laws-local.json: new law {key:?} needs regexes"));
+            };
+            let cluster = LawCluster {
+                name: need(&l.name, base.as_ref().map(|b| b.name.clone()), "name")?,
+                cite_type: need(
+                    &l.cite_type,
+                    base.as_ref().map(|b| b.cite_type.clone()),
+                    "cite_type",
+                )?,
+                regexes,
+                jurisdiction: need(
+                    &l.jurisdiction,
+                    base.as_ref().map(|b| b.jurisdiction.clone()),
+                    "jurisdiction",
+                )?,
+                start: l
+                    .start
+                    .clone()
+                    .or(base.as_ref().and_then(|b| b.start.clone())),
+                end: l.end.clone().or(base.as_ref().and_then(|b| b.end.clone())),
+                variations: l.variations.clone(),
+                strings: l.strings.clone(),
+                extra: HashMap::new(),
+            };
+            laws.entry(key.clone()).or_default().push(cluster);
+        }
+    }
+    Ok(())
 }
 
 /// Parse journals.json into a map of journal key → list of clusters.

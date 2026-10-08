@@ -10,7 +10,7 @@ use std::sync::{LazyLock, OnceLock};
 use aho_corasick::AhoCorasick;
 use regex::Regex;
 
-use crate::models::edition::Edition;
+use crate::models::edition::{Edition, ReporterSource};
 use crate::models::token::{CitationTokenData, Token, TokenData, TokenOrStr, Tokens};
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,17 @@ impl std::fmt::Debug for TokenExtractor {
 }
 
 impl TokenExtractor {
+    /// Whether every edition this extractor finds is a law (laws.json).
+    fn is_law(&self) -> bool {
+        let mut eds = self
+            .extra
+            .exact_editions
+            .iter()
+            .chain(&self.extra.variation_editions)
+            .peekable();
+        eds.peek().is_some() && eds.all(|e| e.reporter.source == ReporterSource::Laws)
+    }
+
     /// Get the compiled regex, compiling on first access.
     fn compiled_regex(&self) -> Option<&Regex> {
         self.compiled_regex
@@ -137,6 +148,17 @@ impl TokenExtractor {
             end: inner_end,
             groups,
         };
+
+        let mut token_data = token_data;
+        if self.token_type == TokenType::Citation && self.is_law() {
+            // A reporter regex ends in `\s*` (whitespace is relaxed after its
+            // periods), so a statute regex with optional space after the
+            // reporter (`G. L. c. 6`, `12 O.S. 2011`) can capture it.
+            if let Some(Some(r)) = token_data.groups.get_mut("reporter") {
+                let trimmed = r.trim_end().len();
+                r.truncate(trimmed);
+            }
+        }
 
         match self.token_type {
             TokenType::Citation => Some(Token::Citation(CitationTokenData {
@@ -523,17 +545,54 @@ impl AhocorasickTokenizer {
 // Shared tokenize implementation
 // ---------------------------------------------------------------------------
 
+/// The length of a law citation token's `reporter` group, or 0 for any other
+/// token.
+///
+/// Two laws.json regexes can match the same text with different groups:
+/// `N.Y. Gen. Bus. Law § 394` is reporter `N.Y.` with subject `Gen. Bus.
+/// Law` under reporters-db's `N.Y.` entry, and reporter `N.Y. Gen. Bus. Law`
+/// with subject `Gen. Bus.` under its `N.Y. Law` entry. Only the first token
+/// of a span survives, and the extractor order that decides it is arbitrary
+/// (eyecite's varies from run to run), so the longer reporter, the more
+/// specific entry, goes first (#49).
+fn law_reporter_len(token: &Token) -> usize {
+    match token {
+        Token::Citation(ct)
+            if ct
+                .exact_editions
+                .iter()
+                .chain(&ct.variation_editions)
+                .next()
+                .is_some()
+                && ct
+                    .exact_editions
+                    .iter()
+                    .chain(&ct.variation_editions)
+                    .all(|e| e.reporter.source == ReporterSource::Laws) =>
+        {
+            ct.token_data
+                .groups
+                .get("reporter")
+                .and_then(|r| r.as_deref())
+                .map_or(0, str::len)
+        }
+        _ => 0,
+    }
+}
+
 /// Core tokenization logic shared by `Tokenizer` and `AhocorasickTokenizer`.
 ///
 /// Takes a list of raw tokens, sorts them, resolves overlaps, fills gaps
 /// with plain text, and returns the final token list plus citation positions.
 fn tokenize_impl(raw_tokens: &[Token], text: &str) -> (Tokens, Vec<(usize, Token)>) {
-    // Sort by (start ascending, end descending)
+    // Sort by (start ascending, end descending), then put the law token with
+    // the longest reporter first among those with the same span.
     let mut sorted: Vec<&Token> = raw_tokens.iter().collect();
     sorted.sort_by(|a, b| {
         a.start()
             .cmp(&b.start())
             .then_with(|| b.end().cmp(&a.end()))
+            .then_with(|| law_reporter_len(b).cmp(&law_reporter_len(a)))
     });
 
     let mut citation_tokens: Vec<(usize, Token)> = Vec::new();
@@ -629,7 +688,7 @@ pub fn append_text(tokens: &mut Tokens, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::edition::{Reporter, ReporterSource};
+    use crate::models::edition::Reporter;
     use std::collections::HashSet;
 
     #[test]

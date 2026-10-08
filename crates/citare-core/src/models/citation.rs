@@ -336,8 +336,13 @@ impl Citation {
     /// Return the corrected reporter short name.
     ///
     /// Prefers `edition_guess.short_name` when available; falls back to the
-    /// `"reporter"` capture group from the token.
+    /// `"reporter"` capture group from the token. A law citation gives its
+    /// code with the subject in it ([`LawFields::code`]): `N.Y. Gen. Bus.
+    /// Law`, where eyecite gives reporters-db's key `N.Y. Law` (#49).
     pub fn corrected_reporter(&self) -> Option<String> {
+        if let Citation::FullLaw(d) = self {
+            return Some(law_code(&d.resource, self.matched_text()));
+        }
         self.resource_common().map(|r| {
             r.edition_guess
                 .as_ref()
@@ -349,6 +354,42 @@ impl Citation {
                         .and_then(|v| v.clone())
                         .unwrap_or_default()
                 })
+        })
+    }
+
+    /// A statute citation's parts in fields of their own: jurisdiction,
+    /// code, title or chapter, and section. `None` for anything but a
+    /// [`Citation::FullLaw`].
+    pub fn law(&self) -> Option<LawFields> {
+        let Citation::FullLaw(d) = self else {
+            return None;
+        };
+        let r = &d.resource;
+        let group = |k: &str| {
+            r.common
+                .groups
+                .get(k)
+                .and_then(|v| v.as_deref())
+                .map(|v| v.split_whitespace().collect::<Vec<_>>().join(" "))
+        };
+        // The guessed edition's jurisdiction, or the one every candidate
+        // edition shares.
+        let jurisdiction = match &r.edition_guess {
+            Some(e) => e.reporter.jurisdiction.clone(),
+            None => {
+                let mut js = r.all_editions.iter().map(|e| &e.reporter.jurisdiction);
+                let first = js.next().cloned().flatten();
+                js.all(|j| *j == first).then_some(first).flatten()
+            }
+        };
+        Some(LawFields {
+            jurisdiction,
+            code: law_code(r, self.matched_text()),
+            subject: group("subject")
+                .map(|s| normalize_subject(&s, group("reporter").as_deref().unwrap_or_default())),
+            title: group("title"),
+            chapter: group("chapter"),
+            section: group("section"),
         })
     }
 
@@ -365,6 +406,111 @@ impl Citation {
             Citation::Unknown(_) => "UnknownCitation",
         }
     }
+}
+
+/// A statute citation's parts, from [`Citation::law`].
+///
+/// `N.Y. Gen. Bus. Law § 394` gives jurisdiction `New York`, code `N.Y. Gen.
+/// Bus. Law`, subject `Gen. Bus.` and section `394`; `General Statutes §
+/// 52-557n` gives `Connecticut`, `Conn. Gen. Stat.` and `52-557n`; `42 Pa.C.S.
+/// § 5322` gives `Pennsylvania`, `Pa. Cons. Stat.`, title `42` and section
+/// `5322`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LawFields {
+    /// The jurisdiction from reporters-db's laws data (or citare's
+    /// supplement, `data/laws-local.json`), e.g. `Connecticut`, `United
+    /// States`.
+    pub jurisdiction: Option<String>,
+    /// The code in its standard abbreviation, whatever spelling the text
+    /// used: `Conn. Gen. Stat.` for `General Statutes`, `C.G.S.A.` or
+    /// `Conn. Gen. Stat.`. Codes cited by subject keep it: `N.Y. Penal Law`,
+    /// `Cal. Civ. Proc. Code`, `Tex. Fam. Code Ann.`, `Md. Code Ann., Cts. &
+    /// Jud. Proc.`.
+    pub code: String,
+    /// The subject part of a code cited by subject (`Gen. Bus.`, `Penal`,
+    /// `Civ. Proc.`), as found, with an all-capitals subject in title case.
+    pub subject: Option<String>,
+    /// The title, for codes cited by title (`42 U.S.C.`, `42 Pa.C.S.`,
+    /// `19-A M.R.S.`).
+    pub title: Option<String>,
+    /// The chapter, for codes cited by chapter (`G. L. c. 93A`).
+    pub chapter: Option<String>,
+    /// The section, without its subsection pin (`52-557n`, `5322`).
+    pub section: Option<String>,
+}
+
+/// A law citation's code: the edition's short name, with the subject group
+/// put back in for codes cited by subject. reporters-db keys those codes
+/// without it (`N.Y. Law`, `Cal. Code`, `Tex. Code Ann.`, `N.Y.`, `Md. Code
+/// Ann.`), so the key alone loses which code is meant (#49).
+fn law_code(r: &ResourceCitationCommon, matched: &str) -> String {
+    let group = |k: &str| r.common.groups.get(k).and_then(|v| v.as_deref());
+    let reporter = group("reporter").unwrap_or_default();
+    let short = r
+        .edition_guess
+        .as_ref()
+        .map(|e| e.short_name.as_str())
+        .unwrap_or(reporter);
+    let Some(raw) = group("subject").filter(|s| !s.trim().is_empty()) else {
+        return short.to_string();
+    };
+    let subject = normalize_subject(raw, reporter);
+    if reporter.contains(raw) {
+        // The subject sits inside the code's name: `N.Y. Gen. Bus. Law`,
+        // `Cal. Civ. Code`, and the bare forms `Penal Law`, `Pen. Code`.
+        match short.split_once(' ') {
+            Some((first, rest)) => format!("{first} {subject} {rest}"),
+            None => format!("{short} {subject}"),
+        }
+    } else {
+        // The subject follows the code: `N.Y. C.P.L.R.`, `Md. Code Ann.,
+        // Cts. & Jud. Proc.`.
+        let comma = matched
+            .find(reporter)
+            .is_some_and(|i| matched[i + reporter.len()..].trim_start().starts_with(','));
+        let sep = if comma { ", " } else { " " };
+        format!("{short}{sep}{subject}")
+    }
+}
+
+/// Collapse whitespace in a code subject, and put the subject of a code
+/// set in capitals (`TEX. PENAL CODE ANN.`, from small-caps typesetting) in
+/// title case: `Penal`, `Civ. Prac. & Rem.`, `Gov't`. Initialisms
+/// (`C.P.L.R.`) and a subject that is the whole reporter (`CPLR`) keep
+/// their capitals.
+fn normalize_subject(s: &str, reporter: &str) -> String {
+    let words: Vec<&str> = s.split_whitespace().collect();
+    let squeeze = |x: &str| x.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (s_sq, r_sq) = (squeeze(s), squeeze(reporter));
+    let small_caps = r_sq != s_sq
+        && r_sq.contains(&s_sq)
+        && r_sq.chars().any(|c| c.is_alphabetic())
+        && !r_sq.chars().any(|c| c.is_lowercase());
+    if !small_caps {
+        return words.join(" ");
+    }
+    words
+        .iter()
+        .map(|w| {
+            // Only words with a run of letters: `PRAC.` but not `C.P.L.R.`.
+            let letters: Vec<bool> = w.chars().map(char::is_alphabetic).collect();
+            if !letters.windows(2).any(|p| p[0] && p[1]) {
+                return w.to_string();
+            }
+            let mut out = String::with_capacity(w.len());
+            let mut first = true;
+            for c in w.chars() {
+                if first && c.is_alphabetic() {
+                    out.push(c);
+                    first = false;
+                } else {
+                    out.extend(c.to_lowercase());
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Set a known-missing page (a run of underscores, e.g. `1 U.S. ___`) to
