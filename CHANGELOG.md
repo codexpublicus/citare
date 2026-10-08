@@ -4,6 +4,16 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.5.3 - 2026-10-08
+
+### Features
+
+- *(core)* Recognize state-code statutes ([#69](https://github.com/codexpublicus/citare/pull/69))
+
+### Fixes
+
+- *(core)* Resolve supras after parallel cites ([#65](https://github.com/codexpublicus/citare/pull/65))
+
 ## v0.5.2 - 2026-10-05
 
 ### Fixes
