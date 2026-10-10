@@ -9,4 +9,5 @@ pub mod courts;
 pub mod harvard;
 pub mod regexes;
 pub mod reporters;
+pub mod slugs;
 pub mod template;

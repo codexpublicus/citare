@@ -166,6 +166,8 @@ Citations are automatically mapped to [Harvard Caselaw Access Project](https://c
 
 366 of 399 Harvard reporters are matched. The `harvard_slug` field appears in CLI, WASM, and Rust API output.
 
+Every case-reporter edition also has a `slug`, next to `harvard_slug` in the same outputs. It is the CAP slug where CAP has the reporter, and otherwise one derived from the reporters-db edition name with an `rdb-` prefix that no CAP slug uses: `2021 NY Slip Op 01234` → `rdb-ny-slip-op`, `10 F.4th 100` → `rdb-f-4th`. An edition whose volume is always a year never takes a CAP slug, so `2019-Ohio-1234` is `rdb-ohio`, not CAP's Ohio Reports (`ohio`). Slugs are public paths in stare's index and never change once released: [`data/edition-slugs.json`](data/edition-slugs.json) lists every edition name's slugs, and a test fails if one changes or disappears. Laws and journals have no slug.
+
 ## Data Sources
 
 Citation patterns are sourced from:

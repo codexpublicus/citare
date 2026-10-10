@@ -14,6 +14,7 @@ use citare_data_build::regexes::{
 use citare_data_build::reporters::{
     merge_local_laws, parse_journals, parse_laws, parse_local_laws, parse_reporters,
 };
+use citare_data_build::slugs;
 use citare_data_build::template::process_variables;
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ struct BuildEdition {
     start: Option<String>,
     end: Option<String>,
     harvard_slug: Option<String>,
+    slug: Option<String>,
     jurisdiction: Option<String>,
 }
 
@@ -304,10 +306,44 @@ fn main() {
         }
     };
 
+    // A volume that is a year (`2019-Ohio-1234`): the `volume_year` group.
+    let volume_year = regex_variables
+        .get("volume_year")
+        .expect("regexes.json has no volume_year")
+        .clone();
+    // Every case-reporter edition's slug, as (edition name, reporter name,
+    // slug), checked below.
+    let mut edition_slugs: Vec<(String, String, String)> = Vec::new();
+
     // --- Add reporters.json ---
     for (source_key, source_cluster) in &reporters {
         for source in source_cluster {
             for (edition_name, edition_data) in &source.editions {
+                let regex_templates: Vec<String> = edition_data
+                    .regexes
+                    .as_ref()
+                    .filter(|v| !v.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| vec!["$full_cite".to_string()]);
+
+                // An edition whose every regex takes a year for its volume
+                // never takes a CAP slug (citare_data_build::slugs).
+                let year_volume = regex_templates.iter().all(|t| {
+                    citare_data_build::template::recursive_substitute(t, &regex_variables, 100)
+                        .is_ok_and(|r| r.contains(&volume_year))
+                });
+                let harvard_slug = harvard_slug_map.get(edition_name).cloned();
+                let slug = slugs::assign(
+                    edition_name,
+                    &source.name,
+                    harvard_slug.as_deref(),
+                    year_volume,
+                )
+                .unwrap_or_else(|| {
+                    panic!("edition {edition_name:?} has no letters or digits for a slug")
+                });
+                edition_slugs.push((edition_name.clone(), source.name.clone(), slug.clone()));
+
                 let edition = BuildEdition {
                     reporter_short_name: source_key.clone(),
                     reporter_name: source.name.clone(),
@@ -316,16 +352,10 @@ fn main() {
                     short_name: edition_name.clone(),
                     start: edition_data.start.clone(),
                     end: edition_data.end.clone(),
-                    harvard_slug: harvard_slug_map.get(edition_name).cloned(),
+                    harvard_slug,
+                    slug: Some(slug),
                     jurisdiction: None,
                 };
-
-                let regex_templates: Vec<String> = edition_data
-                    .regexes
-                    .as_ref()
-                    .filter(|v| !v.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| vec!["$full_cite".to_string()]);
 
                 let edition_variations: Vec<String> = source
                     .variations
@@ -361,6 +391,7 @@ fn main() {
                 // CAP slugs are for case reporters. Looking laws up by key
                 // gave the `N.Y.` statute entry New York Reports' slug.
                 harvard_slug: None,
+                slug: None,
                 jurisdiction: Some(source.jurisdiction.clone()).filter(|j| !j.is_empty()),
             };
 
@@ -400,6 +431,7 @@ fn main() {
                 start: source.start.clone(),
                 end: source.end.clone(),
                 harvard_slug: None,
+                slug: None,
                 jurisdiction: None,
             };
 
@@ -422,6 +454,35 @@ fn main() {
             );
         }
     }
+
+    // Derived slugs stay out of CAP's namespace and never collide; slugs are
+    // public paths in stare's index, so a collision fails the build.
+    let cap_reporters: Vec<(String, String)> =
+        serde_json::from_str::<Vec<serde_json::Value>>(harvard_json)
+            .expect("Failed to parse harvard_reporters.json")
+            .iter()
+            .filter_map(|e| {
+                let name = e.get("short_name")?.as_str()?;
+                let slug = e.get("slug")?.as_str()?;
+                Some((name.to_string(), slug.to_string()))
+            })
+            .collect();
+    if let Err(e) = slugs::check(
+        cap_reporters.iter().map(|(n, s)| (n.as_str(), s.as_str())),
+        edition_slugs
+            .iter()
+            .map(|(n, r, s)| (n.as_str(), r.as_str(), s.as_str())),
+    ) {
+        panic!("Edition slugs are invalid:\n{e}");
+    }
+    println!(
+        "cargo::warning={} edition slugs, {} derived",
+        edition_slugs.len(),
+        edition_slugs
+            .iter()
+            .filter(|(_, _, s)| s.starts_with(slugs::DERIVED_PREFIX))
+            .count()
+    );
 
     // -----------------------------------------------------------------------
     // 4. Deduplicate editions and build the flat array
@@ -761,6 +822,7 @@ fn main() {
                     start: e.start.clone().map(Into::into),
                     end: e.end.clone().map(Into::into),
                     harvard_slug: e.harvard_slug.clone().map(Into::into),
+                    slug: e.slug.clone().map(Into::into),
                     reporter_jurisdiction: e.jurisdiction.clone().map(Into::into),
                 }
             })

@@ -59,6 +59,14 @@ pub struct Edition {
     pub end: Option<String>,
     /// Harvard Caselaw Access Project reporter slug (e.g. "us", "a2d"), if known.
     pub harvard_slug: Option<String>,
+    /// A stable slug for every case-reporter edition (`None` for laws and
+    /// journals): the Harvard slug where CAP has the reporter, else one
+    /// derived from the reporters-db edition name with an `rdb-` prefix
+    /// (`NY Slip Op` → `rdb-ny-slip-op`). An edition whose volume is a year
+    /// (`2019-Ohio-1234`) always gets a derived slug, even when it shares
+    /// its name with a CAP reporter. A slug never changes once released;
+    /// `data/edition-slugs.json` lists them all.
+    pub slug: Option<String>,
 }
 
 impl Edition {
@@ -161,6 +169,7 @@ mod tests {
             start: start.map(String::from),
             end: end.map(String::from),
             harvard_slug: None,
+            slug: None,
         }
     }
 

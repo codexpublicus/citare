@@ -1855,6 +1855,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
         };
         let result = guess_edition(std::slice::from_ref(&edition), &[], None);
         assert_eq!(result, Some(edition));
@@ -1875,6 +1876,7 @@ mod tests {
             start: Some("1886-01-01".to_string()),
             end: Some("1999-12-31".to_string()),
             harvard_slug: None,
+            slug: None,
         };
         let e2 = Edition {
             reporter,
@@ -1882,6 +1884,7 @@ mod tests {
             start: Some("2000-01-01".to_string()),
             end: None,
             harvard_slug: None,
+            slug: None,
         };
         // Without year, can't narrow down
         assert_eq!(guess_edition(&[e1, e2], &[], None), None);

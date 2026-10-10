@@ -185,6 +185,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
         }
     }
 
