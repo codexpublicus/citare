@@ -857,7 +857,7 @@ mod tests {
                 BundleEdition {
                     short_name: "A.3d".into(),
                     harvard_slug: None,
-                    slug: Some("rdb-a-3d".into()),
+                    slug: Some("a-3d".into()),
                     ..ed
                 },
             ],

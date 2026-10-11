@@ -25,8 +25,8 @@ const SNAPSHOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/edition-
 type Slugs = BTreeMap<String, BTreeSet<String>>;
 
 /// Edition name → its slugs, from the loaded data. A name has more than one
-/// slug only when its editions are different reporters (CAP's Ohio Reports,
-/// `ohio`, and the Ohio neutral citation, `rdb-ohio`).
+/// slug only when its editions are different reporters whose volumes overlap
+/// (`Ct. Cl.`: `us-ct-cl` and `wv-ct-cl`).
 fn current() -> Slugs {
     let mut out = Slugs::new();
     for e in &data::get().editions {
@@ -128,44 +128,60 @@ fn slug_of(text: &str) -> Option<String> {
         .or_else(|| rc.all_editions.first().and_then(|e| e.slug.clone()))
 }
 
-// The reporters with the most CourtListener cases that CAP never had, plus
-// two CAP reporters that keep their CAP slug.
+/// The `(slug, volume)` index path of the first full case citation in `text`.
+fn path_of(text: &str) -> (Option<String>, Option<String>) {
+    let citations = get_citations(text, false, "", &[]);
+    let c = citations
+        .iter()
+        .find(|c| matches!(c, Citation::FullCase(_)))
+        .unwrap_or_else(|| panic!("no full case citation in {text:?}"));
+    (
+        slug_of(text),
+        c.common().groups.get("volume").cloned().flatten(),
+    )
+}
+
+// The reporters with the most CourtListener cases that CAP never had, the
+// neutral citations that share a CAP reporter's slug or take their own, and
+// CAP reporters that keep their CAP slug.
 #[rstest]
-#[case("2021 NY Slip Op 01234", "rdb-ny-slip-op")]
-#[case("2019-Ohio-1234", "rdb-ohio")]
-#[case("2019 Ohio 1234", "rdb-ohio")]
-#[case("T.C. Memo. 2019-123", "rdb-t-c-memo")]
-#[case("100 N.Y.S.3d 200", "rdb-n-y-s-3d")]
-#[case("150 A.D.3d 100", "ad3d")]
-#[case("10 F.4th 100", "rdb-f-4th")]
-#[case("400 P.3d 100", "p3d")]
-#[case("2021 IL App (1st) 200123", "rdb-il-app-1st")]
+#[case("2021 NY Slip Op 01234", "ny-slip-op")]
+#[case("2019-Ohio-1234", "ohio")]
+#[case("2019 Ohio 1234", "ohio")]
 #[case("1 Ohio 1", "ohio")]
+#[case("T.C. Memo. 2019-123", "t-c-memo")]
+#[case("100 N.Y.S.3d 200", "n-y-s-3d")]
+#[case("150 A.D.3d 100", "ad3d")]
+#[case("10 F.4th 100", "f-4th")]
+#[case("400 P.3d 100", "p3d")]
+#[case("2021 IL App (1st) 200123", "il-app-1st")]
+#[case("2019 Pa. Super. 12", "pa-super")]
+#[case("2019 ME 12", "me")]
+#[case("2021 ND 123", "nd-neutral")]
+#[case("50 N.D. 1", "nd")]
 fn slug_for_courtlistener_reporters(#[case] text: &str, #[case] slug: &str) {
     assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
 }
 
-// The Ohio neutral citation shares its edition name with CAP's Ohio Reports
-// (vols 1-20) but must never land in CAP's `ohio`.
+// The Ohio neutral citation and CAP's Ohio Reports (vols 1-20) share `ohio`;
+// the neutral's volumes are years, so their index paths never meet.
 #[test]
-fn ohio_neutral_never_gets_caps_ohio() {
+fn ohio_neutral_and_ohio_reports_share_a_slug_by_volume() {
     for text in ["2019-Ohio-1234", "2002 Ohio 1", "2019-Ohio-1234, ¶ 12"] {
-        let citations = get_citations(text, false, "", &[]);
-        for c in &citations {
-            let Some(rc) = c.resource_common() else {
-                continue;
-            };
-            for e in rc.all_editions.iter().chain(rc.edition_guess.as_ref()) {
-                assert_ne!(e.slug.as_deref(), Some("ohio"), "{text}: {e:?}");
-            }
-        }
-        assert_eq!(slug_of(text).as_deref(), Some("rdb-ohio"), "{text}");
+        let (slug, volume) = path_of(text);
+        assert_eq!(slug.as_deref(), Some("ohio"), "{text}");
+        let volume: u32 = volume.expect("a volume").parse().unwrap();
+        assert!(volume >= 1700, "{text}: volume {volume}");
     }
+    let (slug, volume) = path_of("20 Ohio 1");
+    assert_eq!(
+        (slug.as_deref(), volume.as_deref()),
+        (Some("ohio"), Some("20"))
+    );
 }
 
 #[test]
-fn every_derived_slug_is_unique_to_its_name() {
-    let mut owner: BTreeMap<String, String> = BTreeMap::new();
+fn every_slug_is_well_formed() {
     for (name, slugs) in current() {
         for slug in slugs {
             assert!(
@@ -177,11 +193,6 @@ fn every_derived_slug_is_unique_to_its_name() {
                         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
                 "{name:?}: {slug:?}"
             );
-            if slug.starts_with("rdb-") {
-                if let Some(other) = owner.insert(slug.clone(), name.clone()) {
-                    panic!("{other:?} and {name:?} both derive {slug:?}");
-                }
-            }
         }
     }
 }

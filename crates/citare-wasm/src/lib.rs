@@ -93,7 +93,7 @@ pub struct JsCitation {
     pub harvard_slug: Option<String>,
     /// The edition's stable slug: `harvard_slug` where CAP has the
     /// reporter, else one derived from the reporters-db edition name
-    /// (`rdb-ny-slip-op`). Every case reporter has one; laws and journals
+    /// (`ny-slip-op`). Every case reporter has one; laws and journals
     /// don't.
     pub slug: Option<String>,
     pub ambiguous: bool,

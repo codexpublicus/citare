@@ -78,6 +78,7 @@ fn main() {
     println!("cargo::rerun-if-changed=../../data/");
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
     println!("cargo::rerun-if-changed=../../data/laws-local.json");
+    println!("cargo::rerun-if-changed=../../data/cap_volumes.json");
     println!("cargo::rerun-if-env-changed=CITARE_DUMP_BUNDLE_JSON");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
@@ -306,14 +307,8 @@ fn main() {
         }
     };
 
-    // A volume that is a year (`2019-Ohio-1234`): the `volume_year` group.
-    let volume_year = regex_variables
-        .get("volume_year")
-        .expect("regexes.json has no volume_year")
-        .clone();
-    // Every case-reporter edition's slug, as (edition name, reporter name,
-    // slug), checked below.
-    let mut edition_slugs: Vec<(String, String, String)> = Vec::new();
+    // Every case-reporter edition's slug, checked below.
+    let mut edition_slugs: Vec<slugs::EditionSlug> = Vec::new();
 
     // --- Add reporters.json ---
     for (source_key, source_cluster) in &reporters {
@@ -326,23 +321,30 @@ fn main() {
                     .cloned()
                     .unwrap_or_else(|| vec!["$full_cite".to_string()]);
 
-                // An edition whose every regex takes a year for its volume
-                // never takes a CAP slug (citare_data_build::slugs).
-                let year_volume = regex_templates.iter().all(|t| {
-                    citare_data_build::template::recursive_substitute(t, &regex_variables, 100)
-                        .is_ok_and(|r| r.contains(&volume_year))
-                });
                 let harvard_slug = harvard_slug_map.get(edition_name).cloned();
-                let slug = slugs::assign(
-                    edition_name,
-                    &source.name,
-                    harvard_slug.as_deref(),
-                    year_volume,
-                )
-                .unwrap_or_else(|| {
-                    panic!("edition {edition_name:?} has no letters or digits for a slug")
+                let slug = slugs::assign(edition_name, &source.name, harvard_slug.as_deref())
+                    .unwrap_or_else(|| {
+                        panic!("edition {edition_name:?} has no letters or digits for a slug")
+                    });
+                let year = |d: &Option<String>| d.as_deref()?.get(..4)?.parse().ok();
+                edition_slugs.push(slugs::EditionSlug {
+                    name: edition_name.clone(),
+                    reporter: source.name.clone(),
+                    slug: slug.clone(),
+                    start_year: year(&edition_data.start),
+                    end_year: year(&edition_data.end),
+                    regexes: regex_templates
+                        .iter()
+                        .filter_map(|t| {
+                            citare_data_build::template::recursive_substitute(
+                                t,
+                                &regex_variables,
+                                100,
+                            )
+                            .ok()
+                        })
+                        .collect(),
                 });
-                edition_slugs.push((edition_name.clone(), source.name.clone(), slug.clone()));
 
                 let edition = BuildEdition {
                     reporter_short_name: source_key.clone(),
@@ -455,8 +457,9 @@ fn main() {
         }
     }
 
-    // Derived slugs stay out of CAP's namespace and never collide; slugs are
-    // public paths in stare's index, so a collision fails the build.
+    // Slugs are public paths in stare's index (`<slug>/<volume>`), so any
+    // slug that could put two reporters' volumes in one place fails the
+    // build (citare_data_build::slugs::check).
     let cap_reporters: Vec<(String, String)> =
         serde_json::from_str::<Vec<serde_json::Value>>(harvard_json)
             .expect("Failed to parse harvard_reporters.json")
@@ -467,20 +470,27 @@ fn main() {
                 Some((name.to_string(), slug.to_string()))
             })
             .collect();
-    if let Err(e) = slugs::check(
-        cap_reporters.iter().map(|(n, s)| (n.as_str(), s.as_str())),
-        edition_slugs
-            .iter()
-            .map(|(n, r, s)| (n.as_str(), r.as_str(), s.as_str())),
-    ) {
+    let cap_volumes: std::collections::BTreeMap<String, (u32, u32)> =
+        serde_json::from_str(include_str!("../../data/cap_volumes.json"))
+            .expect("Failed to parse data/cap_volumes.json");
+    let cap_pairs: Vec<(&str, &str)> = cap_reporters
+        .iter()
+        .map(|(n, s)| (n.as_str(), s.as_str()))
+        .collect();
+    let unmatched = slugs::unmatched_by_reporter(&edition_slugs);
+    if !unmatched.is_empty() {
+        panic!("Edition slugs are invalid:\n{}", unmatched.join("\n"));
+    }
+    if let Err(e) = slugs::check(&cap_pairs, &cap_volumes, &edition_slugs) {
         panic!("Edition slugs are invalid:\n{e}");
     }
+    let cap_slug_set: HashSet<&str> = cap_reporters.iter().map(|(_, s)| s.as_str()).collect();
     println!(
-        "cargo::warning={} edition slugs, {} derived",
+        "cargo::warning={} edition slugs, {} not CAP's",
         edition_slugs.len(),
         edition_slugs
             .iter()
-            .filter(|(_, _, s)| s.starts_with(slugs::DERIVED_PREFIX))
+            .filter(|e| !cap_slug_set.contains(e.slug.as_str()))
             .count()
     );
 

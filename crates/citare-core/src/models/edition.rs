@@ -61,11 +61,11 @@ pub struct Edition {
     pub harvard_slug: Option<String>,
     /// A stable slug for every case-reporter edition (`None` for laws and
     /// journals): the Harvard slug where CAP has the reporter, else one
-    /// derived from the reporters-db edition name with an `rdb-` prefix
-    /// (`NY Slip Op` → `rdb-ny-slip-op`). An edition whose volume is a year
-    /// (`2019-Ohio-1234`) always gets a derived slug, even when it shares
-    /// its name with a CAP reporter. A slug never changes once released;
-    /// `data/edition-slugs.json` lists them all.
+    /// derived from the reporters-db edition name (`NY Slip Op` →
+    /// `ny-slip-op`). Reporters share a slug only when their volumes can't
+    /// overlap: the Ohio neutral citation (`2019-Ohio-1234`) and CAP's Ohio
+    /// Reports (vols 1-20) are both `ohio`. A slug never changes once
+    /// released; `data/edition-slugs.json` lists them all.
     pub slug: Option<String>,
 }
 
