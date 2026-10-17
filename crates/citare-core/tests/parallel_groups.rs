@@ -407,4 +407,10 @@ fn emphasis_around_a_string_cite_is_not_a_case_name() {
         defendant(&cites, "34 N. Y., 223").as_deref(),
         Some("The People")
     );
+    // "1 Car. & P., 100" isn't a reporter citare knows, so only the
+    // semicolon marks where Bate v. Hill ends.
+    assert_eq!(
+        defendant(&cites, "32 N. Y., 127").as_deref(),
+        Some("Loomis")
+    );
 }

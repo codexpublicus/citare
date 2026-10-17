@@ -1560,11 +1560,19 @@ fn extract_parties_from_versus(
     ) else {
         return;
     };
-    // An emphasis tag that also holds an earlier citation covers more than
-    // one case, such as a whole string cite in one <em> (#66): taking it
-    // gives every case in it the first one's start. The plain text search
-    // finds the name instead.
+    // An emphasis tag that also holds an earlier citation, or a semicolon
+    // before this citation, covers more than one case, such as a whole
+    // string cite in one <em> (#66): taking it gives every case in it the
+    // first one's start. The plain text search finds the name instead.
     let (_, tag_start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+    let (cite_start, _) = common_span(&citation.resource.common);
+    if document
+        .plain_text
+        .get(tag_start..cite_start)
+        .is_some_and(|before| before.contains(';'))
+    {
+        return;
+    }
     for word in words[..index].iter().rev() {
         let TokenOrStr::Token(token) = word else {
             continue;
