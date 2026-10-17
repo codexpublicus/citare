@@ -216,13 +216,40 @@ pub struct LocalExample {
     pub volume: String,
 }
 
-/// The supplement file: a comment and the editions.
+/// A reporter in `data/reporters-local.json` that reporters-db doesn't have,
+/// added under reporters.json key `reporter` as a cluster of its own with one
+/// edition. The cluster's `name` must not be one reporters-db already has
+/// under that key.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalReporter {
+    pub reporter: String,
+    pub name: String,
+    pub cite_type: String,
+    pub edition: String,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub regexes: Vec<String>,
+    /// As [`LocalEdition::examples`].
+    #[serde(default)]
+    pub examples: Vec<LocalExample>,
+    /// As [`LocalEdition::rejects`].
+    #[serde(default)]
+    pub rejects: Vec<String>,
+    /// Why the entry exists.
+    pub notes: String,
+}
+
+/// The supplement file: a comment, the editions whose regexes it replaces,
+/// and the reporters it adds.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalReporters {
     #[serde(rename = "#")]
     pub comment: Vec<String>,
     pub editions: Vec<LocalEdition>,
+    #[serde(default)]
+    pub reporters: Vec<LocalReporter>,
 }
 
 /// Parse `data/reporters-local.json`.
@@ -230,10 +257,47 @@ pub fn parse_local_reporters(json_str: &str) -> Result<LocalReporters, serde_jso
     serde_json::from_str(json_str)
 }
 
-/// Replace the regexes of each supplement edition in `reporters`. Fails when
-/// an entry names no edition, so a reporters-db rename can't drop one
-/// silently.
+/// Replace the regexes of each supplement edition in `reporters`, then add
+/// each supplement reporter. Fails when an edition entry names no edition, so
+/// a reporters-db rename can't drop one silently, and when reporters-db
+/// already has a reporter the supplement adds.
 pub fn apply_local_reporters(
+    reporters: &mut ReportersMap,
+    local: &LocalReporters,
+) -> Result<(), String> {
+    apply_local_editions(reporters, local)?;
+    for l in &local.reporters {
+        let clusters = reporters.entry(l.reporter.clone()).or_default();
+        if clusters.iter().any(|c| c.name == l.name) {
+            return Err(format!(
+                "reporters-local.json: reporters-db now has {:?} under {:?}; drop the local one",
+                l.name, l.reporter
+            ));
+        }
+        if l.regexes.is_empty() {
+            return Err(format!("reporters-local.json: {:?} needs regexes", l.name));
+        }
+        clusters.push(ReporterCluster {
+            name: l.name.clone(),
+            cite_type: l.cite_type.clone(),
+            editions: HashMap::from([(
+                l.edition.clone(),
+                EditionData {
+                    start: l.start.clone(),
+                    end: l.end.clone(),
+                    regexes: Some(l.regexes.clone()),
+                },
+            )]),
+            variations: HashMap::new(),
+            mlz_jurisdiction: Vec::new(),
+            cite_format: None,
+            extra: HashMap::new(),
+        });
+    }
+    Ok(())
+}
+
+fn apply_local_editions(
     reporters: &mut ReportersMap,
     local: &LocalReporters,
 ) -> Result<(), String> {

@@ -57,15 +57,23 @@ pub struct Edition {
     pub start: Option<String>,
     /// ISO-8601 date string (YYYY-...) or None if open-ended.
     pub end: Option<String>,
-    /// Harvard Caselaw Access Project reporter slug (e.g. "us", "a2d"), if known.
+    /// The Harvard Caselaw Access Project (CAP) slug of the reporter this
+    /// edition is (e.g. "us", "a2d"), if CAP has it. It is `slug` when that
+    /// is a CAP slug and CAP files volumes of this edition's kind (numbers or
+    /// years) under it, else `None`: a year-volume neutral citation that
+    /// shares a numbered CAP reporter's `slug` (`2019-Ohio-1234`, `ohio`) has
+    /// none.
     pub harvard_slug: Option<String>,
     /// A stable slug for every case-reporter edition (`None` for laws and
     /// journals): the Harvard slug where CAP has the reporter, else one
     /// derived from the reporters-db edition name (`NY Slip Op` →
     /// `ny-slip-op`). Reporters share a slug only when their volumes can't
     /// overlap: the Ohio neutral citation (`2019-Ohio-1234`) and CAP's Ohio
-    /// Reports (vols 1-20) are both `ohio`. A slug never changes once
-    /// released; `data/edition-slugs.json` lists them all.
+    /// Reports (vols 1-20) are both `ohio`. Where CAP splits one series by
+    /// volume, so does citare: `10 Mass. App. Div. 12` is `mass-app-div` and
+    /// `1995 Mass. App. Div. 12` is `mass-app-div-annual`, editions of two
+    /// reporters. A slug never changes once released;
+    /// `data/edition-slugs.json` lists them all.
     pub slug: Option<String>,
 }
 
