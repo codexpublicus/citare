@@ -4,7 +4,11 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
-## v0.5.4 - 2026-10-17
+## v0.6.0 - 2026-10-17
+
+### Breaking changes
+
+- *(core)* `Edition` has a new public `slug` field, so code that builds an `Edition` with a struct literal has to set it
 
 ### Features
 
