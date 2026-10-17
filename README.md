@@ -166,6 +166,8 @@ Citations are automatically mapped to [Harvard Caselaw Access Project](https://c
 
 366 of 399 Harvard reporters are matched. The `harvard_slug` field appears in CLI, WASM, and Rust API output.
 
+Every case-reporter edition also has a `slug`, next to `harvard_slug` in the same outputs. It is the CAP slug where CAP has the reporter, and otherwise one derived from the reporters-db edition name, in the same namespace: `2021 NY Slip Op 01234` → `ny-slip-op`, `10 F.4th 100` → `f-4th`. Reporters share a slug only when their volumes can't overlap, so `2019-Ohio-1234` and `20 Ohio 1` are both `ohio` (volume 2019 and volume 20), while the two `Ct. Cl.` reporters are `us-ct-cl` and `wv-ct-cl`. Neutral citations whose volume is a year share the slug of the CAP reporter with the same letters (`2021 ND 123` and `50 N.D. 1` are both `nd`); [`data/reporters-local.json`](data/reporters-local.json) limits the ones reporters-db leaves open to a year (docs/reporters-local.md). The build fails on any slug that could put two reporters' volumes in one place (`citare_data_build::slugs`, with CAP's volume ranges in [`data/cap_volumes.json`](data/cap_volumes.json)). Slugs are public paths in stare's index and never change once released: [`data/edition-slugs.json`](data/edition-slugs.json) lists every edition name's slugs, and a test fails if one changes or disappears. Laws and journals have no slug.
+
 ## Data Sources
 
 Citation patterns are sourced from:

@@ -839,6 +839,7 @@ mod tests {
                 start: None,
                 end: None,
                 harvard_slug: None,
+                slug: None,
             };
             Token::Citation(CitationTokenData {
                 token_data: TokenData {
@@ -950,6 +951,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
         };
         let token = Token::Citation(CitationTokenData {
             token_data: td,
@@ -980,6 +982,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
         };
         let token = Token::Citation(CitationTokenData {
             token_data: td,

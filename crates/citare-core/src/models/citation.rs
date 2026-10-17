@@ -872,6 +872,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
         };
         let mut resource = make_resource(make_token("1 U.S. 1", 0, 8));
         resource.edition_guess = Some(edition);

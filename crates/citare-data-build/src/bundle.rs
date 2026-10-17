@@ -45,6 +45,9 @@ const SEC_COURT_KEYS: u64 = 9;
 /// Added after version 1 shipped; a reader that lacks it sees no
 /// jurisdictions, and a bundle without it has none.
 const SEC_REPORTER_JURISDICTIONS: u64 = 10;
+/// Added after version 1 shipped; a reader that lacks it, or a bundle
+/// without it, has no edition slugs.
+const SEC_EDITION_SLUGS: u64 = 11;
 
 /// A string borrowed from the bundle's bytes when decoded, or owned when
 /// built.
@@ -63,6 +66,11 @@ pub struct BundleEdition<'a> {
     pub start: Option<Str<'a>>,
     pub end: Option<Str<'a>>,
     pub harvard_slug: Option<Str<'a>>,
+    /// The edition's stable slug ([`crate::slugs`]): the CAP slug or one
+    /// derived from the edition name. `None` for laws and journals. Stored
+    /// in section 11.
+    #[serde(default)]
+    pub slug: Option<Str<'a>>,
     /// The law's jurisdiction from laws.json (`New York`); `None` for
     /// reporters and journals. Stored per reporter (section 10).
     #[serde(default)]
@@ -258,6 +266,7 @@ impl DataBundle<'_> {
                 e.start.as_deref(),
                 e.end.as_deref(),
                 e.harvard_slug.as_deref(),
+                e.slug.as_deref(),
                 e.reporter_jurisdiction.as_deref(),
             ]
             .into_iter()
@@ -456,6 +465,17 @@ impl DataBundle<'_> {
                 put_varint(&mut s, r.4.map_or(0, |j| strs.id(j) + 1));
             }
             sections.push((SEC_REPORTER_JURISDICTIONS, s));
+        }
+
+        // Edition slugs, one per edition, written only when some edition
+        // has one.
+        if self.editions.iter().any(|e| e.slug.is_some()) {
+            let mut s = Vec::new();
+            put_varint(&mut s, self.editions.len() as u64);
+            for e in &self.editions {
+                put_varint(&mut s, strs.opt(&e.slug));
+            }
+            sections.push((SEC_EDITION_SLUGS, s));
         }
 
         let mut out = Vec::new();
@@ -672,16 +692,27 @@ impl<'a> DataBundle<'a> {
             (0..n).map(|_| strs.opt(&mut r)).collect::<Result<_, _>>()?;
         let end: Vec<Option<Str<'a>>> =
             (0..n).map(|_| strs.opt(&mut r)).collect::<Result<_, _>>()?;
-        let slug: Vec<Option<Str<'a>>> =
+        let harvard: Vec<Option<Str<'a>>> =
             (0..n).map(|_| strs.opt(&mut r)).collect::<Result<_, _>>()?;
+        let slugs: Vec<Option<Str<'a>>> = match secs.iter().find(|(i, _)| *i == SEC_EDITION_SLUGS) {
+            Some((_, payload)) => {
+                let mut r = Reader::new(payload);
+                if r.count()? != n {
+                    return Err(BundleError::BadIndex("edition slug"));
+                }
+                (0..n).map(|_| strs.opt(&mut r)).collect::<Result<_, _>>()?
+            }
+            None => vec![None; n],
+        };
         let editions: Vec<BundleEdition<'a>> = rep
             .into_iter()
             .zip(ed_short)
             .zip(start)
             .zip(end)
-            .zip(slug)
+            .zip(harvard)
+            .zip(slugs)
             .map(
-                |((((ri, short_name), start), end), harvard_slug)| BundleEdition {
+                |(((((ri, short_name), start), end), harvard_slug), slug)| BundleEdition {
                     reporter_short_name: Cow::Borrowed(short[ri]),
                     reporter_name: Cow::Borrowed(name[ri]),
                     reporter_cite_type: Cow::Borrowed(ctype[ri]),
@@ -690,6 +721,7 @@ impl<'a> DataBundle<'a> {
                     start,
                     end,
                     harvard_slug,
+                    slug,
                     reporter_jurisdiction: jurisdiction[ri].clone(),
                 },
             )
@@ -815,6 +847,7 @@ mod tests {
             start: Some("1938-01-01T00:00:00".into()),
             end: None,
             harvard_slug: Some("a2d".into()),
+            slug: Some("a2d".into()),
             reporter_jurisdiction: None,
         };
         DataBundle {
@@ -824,6 +857,7 @@ mod tests {
                 BundleEdition {
                     short_name: "A.3d".into(),
                     harvard_slug: None,
+                    slug: Some("a-3d".into()),
                     ..ed
                 },
             ],
@@ -868,6 +902,7 @@ mod tests {
             start: None,
             end: None,
             harvard_slug: None,
+            slug: None,
             reporter_jurisdiction: Some("Connecticut".into()),
         });
         let bytes = b.encode();
@@ -881,6 +916,25 @@ mod tests {
             .unwrap()
             .iter()
             .any(|(id, _)| *id == SEC_REPORTER_JURISDICTIONS));
+    }
+
+    #[test]
+    fn round_trips_without_slugs() {
+        let mut b = sample();
+        assert!(sections(&b.encode())
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_EDITION_SLUGS));
+        // A bundle from before section 11 decodes with no slugs.
+        for e in &mut b.editions {
+            e.slug = None;
+        }
+        let bytes = b.encode();
+        assert!(!sections(&bytes)
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_EDITION_SLUGS));
+        assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
     }
 
     #[test]

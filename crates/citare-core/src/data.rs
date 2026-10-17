@@ -50,6 +50,7 @@ impl Data {
                 start: e.start.as_deref().map(str::to_string),
                 end: e.end.as_deref().map(str::to_string),
                 harvard_slug: e.harvard_slug.as_deref().map(str::to_string),
+                slug: e.slug.as_deref().map(str::to_string),
             })
             .collect();
         Ok(Self { bundle, editions })

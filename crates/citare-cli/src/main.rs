@@ -162,6 +162,11 @@ struct CitationJson {
     groups: BTreeMap<String, Option<String>>,
     year: Option<i32>,
     harvard_slug: Option<String>,
+    /// The edition's stable slug: `harvard_slug` where CAP has the
+    /// reporter, else one derived from the reporters-db edition name
+    /// (`ny-slip-op`). Every case reporter has one; laws and journals
+    /// don't.
+    slug: Option<String>,
     ambiguous: bool,
     metadata: BTreeMap<String, Option<String>>,
     /// A statute citation's jurisdiction, code, title or chapter, and
@@ -465,6 +470,16 @@ fn citation_to_json(
                 .and_then(|r| r.all_editions.first())
                 .and_then(|e| e.harvard_slug.clone())
         });
+    let slug = citation
+        .resource_common()
+        .and_then(|r| r.edition_guess.as_ref())
+        .and_then(|e| e.slug.clone())
+        .or_else(|| {
+            citation
+                .resource_common()
+                .and_then(|r| r.all_editions.first())
+                .and_then(|e| e.slug.clone())
+        });
     let metadata = extract_metadata(citation);
 
     CitationJson {
@@ -478,6 +493,7 @@ fn citation_to_json(
         groups: citation.common().groups.clone().into_iter().collect(),
         year,
         harvard_slug,
+        slug,
         ambiguous: citation.is_ambiguous(),
         metadata,
         law: citation.law(),

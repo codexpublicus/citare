@@ -186,6 +186,79 @@ pub fn merge_local_laws(laws: &mut LawsMap, local: &LocalLaws) -> Result<(), Str
     Ok(())
 }
 
+/// One edition in citare's own supplement to reporters.json,
+/// `data/reporters-local.json`, whose regexes replace reporters-db's. The
+/// edition is named by its reporters.json key, its cluster's `name`, and its
+/// edition name, since one key can hold several reporters.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalEdition {
+    pub reporter: String,
+    pub name: String,
+    pub edition: String,
+    pub regexes: Vec<String>,
+    /// Citations the entry must recognize, with the volume each must have;
+    /// citare's tests check each.
+    #[serde(default)]
+    pub examples: Vec<LocalExample>,
+    /// Citations the entry must no longer recognize as this edition.
+    #[serde(default)]
+    pub rejects: Vec<String>,
+    /// Why the entry exists.
+    pub notes: String,
+}
+
+/// A citation a [`LocalEdition`] must recognize, and its volume.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalExample {
+    pub cite: String,
+    pub volume: String,
+}
+
+/// The supplement file: a comment and the editions.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalReporters {
+    #[serde(rename = "#")]
+    pub comment: Vec<String>,
+    pub editions: Vec<LocalEdition>,
+}
+
+/// Parse `data/reporters-local.json`.
+pub fn parse_local_reporters(json_str: &str) -> Result<LocalReporters, serde_json::Error> {
+    serde_json::from_str(json_str)
+}
+
+/// Replace the regexes of each supplement edition in `reporters`. Fails when
+/// an entry names no edition, so a reporters-db rename can't drop one
+/// silently.
+pub fn apply_local_reporters(
+    reporters: &mut ReportersMap,
+    local: &LocalReporters,
+) -> Result<(), String> {
+    for l in &local.editions {
+        let edition = reporters
+            .get_mut(&l.reporter)
+            .and_then(|clusters| clusters.iter_mut().find(|c| c.name == l.name))
+            .and_then(|c| c.editions.get_mut(&l.edition))
+            .ok_or_else(|| {
+                format!(
+                    "reporters-local.json: no edition {:?} of {:?} under {:?}",
+                    l.edition, l.name, l.reporter
+                )
+            })?;
+        if l.regexes.is_empty() {
+            return Err(format!(
+                "reporters-local.json: {:?} needs regexes",
+                l.edition
+            ));
+        }
+        edition.regexes = Some(l.regexes.clone());
+    }
+    Ok(())
+}
+
 /// Parse journals.json into a map of journal key → list of clusters.
 pub fn parse_journals(json_str: &str) -> Result<JournalsMap, serde_json::Error> {
     serde_json::from_str(json_str)

@@ -1,0 +1,73 @@
+{
+  "#": [
+    "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
+    "Each entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
+    "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
+    "Why each entry exists: docs/reporters-local.md."
+  ],
+  "editions": [
+    {
+      "reporter": "LA",
+      "name": "Louisiana Neutral Citation",
+      "edition": "LA",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2021 LA 12", "volume": "2021"}],
+      "rejects": ["50 LA 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's Louisiana Reports (`la`, vols 1-263) by volume."
+    },
+    {
+      "reporter": "ND",
+      "name": "North Dakota Neutral Citation",
+      "edition": "ND",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2021 ND 123", "volume": "2021"}],
+      "rejects": ["50 ND 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's North Dakota Reports (`nd`, vols 1-79) by volume."
+    },
+    {
+      "reporter": "NM",
+      "name": "New Mexico Neutral Citation",
+      "edition": "NM",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2015 NM 12", "volume": "2015"}],
+      "rejects": ["50 NM 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's New Mexico Reports (`nm`, vols 1-150) by volume."
+    },
+    {
+      "reporter": "PA",
+      "name": "Pennsylvania Neutral Citation",
+      "edition": "PA",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2019 PA 12", "volume": "2019"}],
+      "rejects": ["50 PA 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's Pennsylvania State Reports (`pa`, vols 1-639) by volume."
+    },
+    {
+      "reporter": "SD",
+      "name": "South Dakota Neutral Citation",
+      "edition": "SD",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2019 SD 12", "volume": "2019"}],
+      "rejects": ["50 SD 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's South Dakota Reports (`sd`, vols 1-90) by volume."
+    },
+    {
+      "reporter": "VT",
+      "name": "Vermont Neutral Citation",
+      "edition": "VT",
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "2019 VT 12", "volume": "2019"}],
+      "rejects": ["50 VT 1"],
+      "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's Vermont Reports (`vt`, vols 1-203) by volume."
+    },
+    {
+      "reporter": "Conn. Super. Ct.",
+      "name": "Connecticut Superior Court Reports",
+      "edition": "Conn. Super. Ct.",
+      "regexes": ["(?P<volume>[1-9]\\d{0,2}) $reporter,? $page"],
+      "examples": [{"cite": "5 Conn. Super. Ct. 123", "volume": "5"}],
+      "rejects": ["1999 Conn. Super. Ct. 13301"],
+      "notes": "The Reports ran 1986-1994 in a handful of volumes. reporters-db takes any volume, which also matches the Superior Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year); capping the volume at three digits lets the two share `conn-super-ct`."
+    }
+  ]
+}

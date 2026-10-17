@@ -12,8 +12,10 @@ use citare_data_build::regexes::{
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
 };
 use citare_data_build::reporters::{
-    merge_local_laws, parse_journals, parse_laws, parse_local_laws, parse_reporters,
+    apply_local_reporters, merge_local_laws, parse_journals, parse_laws, parse_local_laws,
+    parse_local_reporters, parse_reporters,
 };
+use citare_data_build::slugs;
 use citare_data_build::template::process_variables;
 
 // ---------------------------------------------------------------------------
@@ -30,6 +32,7 @@ struct BuildEdition {
     start: Option<String>,
     end: Option<String>,
     harvard_slug: Option<String>,
+    slug: Option<String>,
     jurisdiction: Option<String>,
 }
 
@@ -76,6 +79,8 @@ fn main() {
     println!("cargo::rerun-if-changed=../../data/");
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
     println!("cargo::rerun-if-changed=../../data/laws-local.json");
+    println!("cargo::rerun-if-changed=../../data/cap_volumes.json");
+    println!("cargo::rerun-if-changed=../../data/reporters-local.json");
     println!("cargo::rerun-if-env-changed=CITARE_DUMP_BUNDLE_JSON");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
@@ -131,7 +136,12 @@ fn main() {
     // 2. Parse data files
     // -----------------------------------------------------------------------
     let reporters_json = include_str!("../../data/reporters-db/reporters_db/data/reporters.json");
-    let reporters = parse_reporters(reporters_json).expect("Failed to parse reporters.json");
+    let mut reporters = parse_reporters(reporters_json).expect("Failed to parse reporters.json");
+    // citare's own supplement: neutral citations whose volume is a year
+    // (docs/reporters-local.md).
+    let local_reporters = parse_local_reporters(include_str!("../../data/reporters-local.json"))
+        .expect("Failed to parse data/reporters-local.json");
+    apply_local_reporters(&mut reporters, &local_reporters).unwrap_or_else(|e| panic!("{e}"));
     let total_editions: usize = reporters
         .values()
         .flat_map(|clusters| clusters.iter())
@@ -304,10 +314,45 @@ fn main() {
         }
     };
 
+    // Every case-reporter edition's slug, checked below.
+    let mut edition_slugs: Vec<slugs::EditionSlug> = Vec::new();
+
     // --- Add reporters.json ---
     for (source_key, source_cluster) in &reporters {
         for source in source_cluster {
             for (edition_name, edition_data) in &source.editions {
+                let regex_templates: Vec<String> = edition_data
+                    .regexes
+                    .as_ref()
+                    .filter(|v| !v.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| vec!["$full_cite".to_string()]);
+
+                let harvard_slug = harvard_slug_map.get(edition_name).cloned();
+                let slug = slugs::assign(edition_name, &source.name, harvard_slug.as_deref())
+                    .unwrap_or_else(|| {
+                        panic!("edition {edition_name:?} has no letters or digits for a slug")
+                    });
+                let year = |d: &Option<String>| d.as_deref()?.get(..4)?.parse().ok();
+                edition_slugs.push(slugs::EditionSlug {
+                    name: edition_name.clone(),
+                    reporter: source.name.clone(),
+                    slug: slug.clone(),
+                    start_year: year(&edition_data.start),
+                    end_year: year(&edition_data.end),
+                    regexes: regex_templates
+                        .iter()
+                        .filter_map(|t| {
+                            citare_data_build::template::recursive_substitute(
+                                t,
+                                &regex_variables,
+                                100,
+                            )
+                            .ok()
+                        })
+                        .collect(),
+                });
+
                 let edition = BuildEdition {
                     reporter_short_name: source_key.clone(),
                     reporter_name: source.name.clone(),
@@ -316,16 +361,10 @@ fn main() {
                     short_name: edition_name.clone(),
                     start: edition_data.start.clone(),
                     end: edition_data.end.clone(),
-                    harvard_slug: harvard_slug_map.get(edition_name).cloned(),
+                    harvard_slug,
+                    slug: Some(slug),
                     jurisdiction: None,
                 };
-
-                let regex_templates: Vec<String> = edition_data
-                    .regexes
-                    .as_ref()
-                    .filter(|v| !v.is_empty())
-                    .cloned()
-                    .unwrap_or_else(|| vec!["$full_cite".to_string()]);
 
                 let edition_variations: Vec<String> = source
                     .variations
@@ -361,6 +400,7 @@ fn main() {
                 // CAP slugs are for case reporters. Looking laws up by key
                 // gave the `N.Y.` statute entry New York Reports' slug.
                 harvard_slug: None,
+                slug: None,
                 jurisdiction: Some(source.jurisdiction.clone()).filter(|j| !j.is_empty()),
             };
 
@@ -400,6 +440,7 @@ fn main() {
                 start: source.start.clone(),
                 end: source.end.clone(),
                 harvard_slug: None,
+                slug: None,
                 jurisdiction: None,
             };
 
@@ -422,6 +463,43 @@ fn main() {
             );
         }
     }
+
+    // Slugs are public paths in stare's index (`<slug>/<volume>`), so any
+    // slug that could put two reporters' volumes in one place fails the
+    // build (citare_data_build::slugs::check).
+    let cap_reporters: Vec<(String, String)> =
+        serde_json::from_str::<Vec<serde_json::Value>>(harvard_json)
+            .expect("Failed to parse harvard_reporters.json")
+            .iter()
+            .filter_map(|e| {
+                let name = e.get("short_name")?.as_str()?;
+                let slug = e.get("slug")?.as_str()?;
+                Some((name.to_string(), slug.to_string()))
+            })
+            .collect();
+    let cap_volumes: std::collections::BTreeMap<String, (u32, u32)> =
+        serde_json::from_str(include_str!("../../data/cap_volumes.json"))
+            .expect("Failed to parse data/cap_volumes.json");
+    let cap_pairs: Vec<(&str, &str)> = cap_reporters
+        .iter()
+        .map(|(n, s)| (n.as_str(), s.as_str()))
+        .collect();
+    let unmatched = slugs::unmatched_by_reporter(&edition_slugs);
+    if !unmatched.is_empty() {
+        panic!("Edition slugs are invalid:\n{}", unmatched.join("\n"));
+    }
+    if let Err(e) = slugs::check(&cap_pairs, &cap_volumes, &edition_slugs) {
+        panic!("Edition slugs are invalid:\n{e}");
+    }
+    let cap_slug_set: HashSet<&str> = cap_reporters.iter().map(|(_, s)| s.as_str()).collect();
+    println!(
+        "cargo::warning={} edition slugs, {} not CAP's",
+        edition_slugs.len(),
+        edition_slugs
+            .iter()
+            .filter(|e| !cap_slug_set.contains(e.slug.as_str()))
+            .count()
+    );
 
     // -----------------------------------------------------------------------
     // 4. Deduplicate editions and build the flat array
@@ -761,6 +839,7 @@ fn main() {
                     start: e.start.clone().map(Into::into),
                     end: e.end.clone().map(Into::into),
                     harvard_slug: e.harvard_slug.clone().map(Into::into),
+                    slug: e.slug.clone().map(Into::into),
                     reporter_jurisdiction: e.jurisdiction.clone().map(Into::into),
                 }
             })
