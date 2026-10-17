@@ -482,7 +482,7 @@ fn resolve(
 /// resolver callback returned.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum Key {
-    Builtin(citare_core::Resource),
+    Builtin(Box<citare_core::Resource>),
     Id(String),
 }
 
@@ -577,7 +577,9 @@ impl citare_core::Resolver for CallbackResolver<'_> {
 
     fn resolve_full(&mut self, citation: &citare_core::Citation) -> Option<Key> {
         let key = self.ask(Kind::Full, citation, None, || {
-            Some(Key::Builtin(citare_core::resolve_full_citation(citation)))
+            Some(Key::Builtin(Box::new(citare_core::resolve_full_citation(
+                citation,
+            ))))
         });
         self.callbacks.full_resolved(citation, key.as_ref());
         key
