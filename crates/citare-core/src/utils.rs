@@ -446,6 +446,121 @@ fn find_last(haystack: &str, needle: &str) -> Option<usize> {
     haystack.rfind(needle)
 }
 
+/// Describe `citations` found in `text`, one block per citation, for
+/// debugging: eyecite's `dump_citations`.
+///
+/// Each block starts with the citation's type and its line of `text`, up
+/// to `context_chars` characters either side of its span, then lists its
+/// spans, its non-empty groups and metadata, and, for case, law and journal
+/// citations, the year, corrected reporter and edition guess. With `color`
+/// the type is green and the citation bold blue (ANSI escapes), as eyecite
+/// prints them.
+///
+/// ```rust
+/// use citare_core::{get_citations, utils::dump_citations};
+///
+/// let text = "blah. Foo v. Bar, 1 U.S. 1, 2 (1999). blah";
+/// let dump = dump_citations(&get_citations(text, false, "", &[]), text, 30, false);
+/// assert!(dump.starts_with("FullCaseCitation: blah. Foo v. Bar, 1 U.S. 1, 2 (1999). blah\n"));
+/// assert!(dump.contains("    * pin_cite=\"2\""));
+/// ```
+pub fn dump_citations(
+    citations: &[crate::models::Citation],
+    text: &str,
+    context_chars: usize,
+    color: bool,
+) -> String {
+    let (green, blue_bold, end) = if color {
+        ("\x1b[32m", "\x1b[94m\x1b[1m", "\x1b[0m")
+    } else {
+        ("", "", "")
+    };
+    let mut out: Vec<String> = Vec::new();
+    for citation in citations {
+        let (start, stop) = citation.span();
+        let (start, stop) = (start.min(text.len()), stop.min(text.len()));
+        let (Some(before), Some(matched), Some(after)) =
+            (text.get(..start), text.get(start..stop), text.get(stop..))
+        else {
+            out.push(format!(
+                "{green}{}:{end} <span {start}..{stop} is not in the text>",
+                citation.type_name()
+            ));
+            continue;
+        };
+        let before_start = before
+            .char_indices()
+            .rev()
+            .nth(context_chars.saturating_sub(1))
+            .map_or(0, |(i, _)| i);
+        let before = if context_chars == 0 {
+            ""
+        } else {
+            &before[before_start..]
+        };
+        let before = before.rsplit('\n').next().unwrap_or("").trim_start();
+        let after_end = after
+            .char_indices()
+            .nth(context_chars)
+            .map_or(after.len(), |(i, _)| i);
+        let after = after[..after_end]
+            .split('\n')
+            .next()
+            .unwrap_or("")
+            .trim_end();
+        out.push(format!(
+            "{green}{}:{end} {before}{blue_bold}{matched}{end}{after}",
+            citation.type_name()
+        ));
+
+        out.push(format!("  * span={:?}", citation.span()));
+        if citation.full_span() != citation.span() {
+            out.push(format!("  * full_span={:?}", citation.full_span()));
+        }
+        if let (Some(s), Some(e)) = citation.pin_cite_span() {
+            out.push(format!("  * pin_cite_span={:?}", (s, e)));
+        }
+
+        let mut groups: Vec<(&String, &String)> = citation
+            .common()
+            .groups
+            .iter()
+            .filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
+            .collect();
+        groups.sort();
+        if !groups.is_empty() {
+            out.push("  * groups".to_string());
+            out.extend(groups.iter().map(|(k, v)| format!("    * {k}={v:?}")));
+        }
+
+        let metadata: Vec<(&str, &str)> = citation
+            .metadata_fields()
+            .into_iter()
+            .filter_map(|(k, v)| v.map(|v| (k, v)))
+            .collect();
+        if !metadata.is_empty() {
+            out.push("  * metadata".to_string());
+            out.extend(metadata.iter().map(|(k, v)| format!("    * {k}={v:?}")));
+        }
+
+        if let Some(resource) = citation.resource_common() {
+            if let Some(year) = resource.year {
+                out.push(format!("  * year={year}"));
+            }
+            if let Some(reporter) = citation.corrected_reporter() {
+                out.push(format!("  * corrected_reporter={reporter:?}"));
+            }
+            if let Some(edition) = &resource.edition_guess {
+                out.push(format!("  * edition_guess={:?}", edition.short_name));
+            }
+            if citation.is_ambiguous() {
+                out.push("  * ambiguous=true".to_string());
+            }
+        }
+    }
+    out.join("\n")
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

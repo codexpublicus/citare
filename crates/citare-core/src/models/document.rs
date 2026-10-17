@@ -5,7 +5,7 @@ use regex::Regex;
 use super::token::{Token, Tokens};
 use crate::annotate::SpanUpdater;
 use crate::clean::{clean_text, html, CleanStep};
-use crate::tokenizer::AhocorasickTokenizer;
+use crate::tokenizer::{AhocorasickTokenizer, Tokenize};
 use crate::utils::placeholder_markup;
 
 /// Represents a document being processed for citation extraction.
@@ -134,6 +134,12 @@ impl Document {
     /// Tokenize the document's plain text, populating `words` and
     /// `citation_tokens`.
     pub fn tokenize(&mut self, tokenizer: &AhocorasickTokenizer) {
+        self.tokenize_with(tokenizer);
+    }
+
+    /// Tokenize the document's plain text with any [`Tokenize`]
+    /// implementation, populating `words` and `citation_tokens`.
+    pub fn tokenize_with(&mut self, tokenizer: &dyn Tokenize) {
         let (words, citation_tokens) = tokenizer.tokenize(&self.plain_text);
         self.words = words;
         self.citation_tokens = citation_tokens;

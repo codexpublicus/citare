@@ -393,6 +393,101 @@ impl Citation {
         })
     }
 
+    /// The variant's metadata as `(name, value)` pairs, in a fixed order per
+    /// variant, with every field present (unset ones as `None`). Span fields
+    /// (`pin_cite_span_*`) are left out; see [`Citation::pin_cite_span`].
+    ///
+    /// This is the `metadata` object of citare-wasm and the CLI's JSON, and
+    /// what [`crate::utils::dump_citations`] prints.
+    pub fn metadata_fields(&self) -> Vec<(&'static str, Option<&str>)> {
+        fn case(c: &CaseMetadata) -> [(&'static str, Option<&str>); 6] {
+            [
+                ("parenthetical", c.parenthetical.as_deref()),
+                ("pin_cite", c.pin_cite.as_deref()),
+                ("year", c.year.as_deref()),
+                ("month", c.month.as_deref()),
+                ("day", c.day.as_deref()),
+                ("court", c.court.as_deref()),
+            ]
+        }
+        match self {
+            Citation::FullCase(d) => {
+                let m = &d.metadata;
+                let mut fields = case(&m.case).to_vec();
+                fields.extend([
+                    ("plaintiff", m.plaintiff.as_deref()),
+                    ("defendant", m.defendant.as_deref()),
+                    ("extra", m.extra.as_deref()),
+                    ("antecedent_guess", m.antecedent_guess.as_deref()),
+                    (
+                        "resolved_case_name_short",
+                        m.resolved_case_name_short.as_deref(),
+                    ),
+                    ("resolved_case_name", m.resolved_case_name.as_deref()),
+                ]);
+                fields
+            }
+            Citation::ShortCase(d) => {
+                let m = &d.metadata;
+                let mut fields = case(&m.case).to_vec();
+                fields.push(("antecedent_guess", m.antecedent_guess.as_deref()));
+                fields
+            }
+            Citation::FullLaw(d) => {
+                let m = &d.metadata;
+                vec![
+                    ("parenthetical", m.parenthetical.as_deref()),
+                    ("pin_cite", m.pin_cite.as_deref()),
+                    ("year", m.year.as_deref()),
+                    ("month", m.month.as_deref()),
+                    ("day", m.day.as_deref()),
+                    ("publisher", m.publisher.as_deref()),
+                ]
+            }
+            Citation::FullJournal(d) => {
+                let m = &d.metadata;
+                vec![
+                    ("parenthetical", m.parenthetical.as_deref()),
+                    ("pin_cite", m.pin_cite.as_deref()),
+                    ("year", m.year.as_deref()),
+                    ("month", m.month.as_deref()),
+                    ("day", m.day.as_deref()),
+                ]
+            }
+            Citation::Supra(d) => {
+                let m = &d.metadata;
+                vec![
+                    ("parenthetical", m.parenthetical.as_deref()),
+                    ("pin_cite", m.pin_cite.as_deref()),
+                    ("antecedent_guess", m.antecedent_guess.as_deref()),
+                    ("volume", m.volume.as_deref()),
+                ]
+            }
+            Citation::Id(d) => {
+                let m = &d.metadata;
+                vec![
+                    ("parenthetical", m.parenthetical.as_deref()),
+                    ("pin_cite", m.pin_cite.as_deref()),
+                ]
+            }
+            Citation::Reference(d) => {
+                let m = &d.metadata;
+                vec![
+                    ("parenthetical", m.parenthetical.as_deref()),
+                    ("pin_cite", m.pin_cite.as_deref()),
+                    ("plaintiff", m.plaintiff.as_deref()),
+                    ("defendant", m.defendant.as_deref()),
+                    (
+                        "resolved_case_name_short",
+                        m.resolved_case_name_short.as_deref(),
+                    ),
+                    ("resolved_case_name", m.resolved_case_name.as_deref()),
+                ]
+            }
+            Citation::Unknown(_) => Vec::new(),
+        }
+    }
+
     /// A stable string identifier for the concrete citation type.
     pub fn type_name(&self) -> &'static str {
         match self {
