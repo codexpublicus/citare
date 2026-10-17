@@ -98,6 +98,69 @@ fn re_leading_in() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r"(?i)^In\s+").unwrap())
 }
 
+/// Text that can stand between two citations of one decision: punctuation,
+/// brackets and parentheses, pin cites (pages, ranges, notes, paragraphs,
+/// starred pages, blanks), division numbers ("301(4)(b)", "418(II)"),
+/// "S. C." (same case), "et seq.", syllabus paragraphs, and a citation
+/// citare didn't find ("2 OBR 380", "74 PUR4th 464", "2008-Ohio-\n4",
+/// "27 L.R.A. (N.S.) 435", "Ann. Cas. 1918C, 529").
+fn re_parallel_glue() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(concat!(
+            r"^(?:[\s,;:\[\]()&*_\-‐‑–—]",
+            r"|\d+\s+[A-Z][A-Za-z0-9]*\.?(?:\s+[A-Za-z][A-Za-z0-9]*\.?){0,2}\s+\d+",
+            r"|\d+\s+L\.\s*R\.\s*A\.,?\s*(?:\(N\.\s*S\.\)|\[N\.\s*S\.\]|N\.\s*S\.,)?\s*\d+",
+            r"|Ann\.\s*Cas\.\s*\d{4}[A-E]?,?\s*\d+",
+            r"|\d{4}\s*[-‐‑–—]\s*[A-Z][a-z]+\s*[-‐‑–—]\s*\d+",
+            r"|\d+[a-z]?",
+            r"|\(\s*(?:[a-z]|[IVXivx]{1,5})\s*\)",
+            r"|(?i:and\s+)?(?i:n|nn|fn|note|notes)\.?",
+            r"|at(?:\s+(?:page|p\.|pp\.))?|¶+|(?i:syl(?:labus)?)[.:]?|(?i:s\.\s*c\.)|et\s+seq\.",
+            r")*$"
+        ))
+        .unwrap()
+    })
+}
+
+/// A year in parentheses or brackets, which closes the citation before it
+/// ("(1922)", "[2007]", but not the bracketed pin "[1082]").
+fn re_closing_year() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"[(\[]\s*(?:1[6-9]|20)\d\d\s*[)\]]").unwrap())
+}
+
+/// Whether the citation token at word `earlier` and the one at word `later`
+/// can be parallel citations of one decision, from the words between them.
+///
+/// Searching back from a citation for its case name passes over the
+/// citations before it, which is how "Smith v. Jones, 275 Conn. 38, 881
+/// A.2d 194" gives both citations one name. It must stop at an earlier
+/// citation of another decision: "Sutton v. Elrod, 724 So.2d 551
+/// (Ala.Civ.App.1998); Beasley, 564 So.2d 959", "49 Hun, 583; affd., 121
+/// N. Y. 259", or "209 P. 1102 (1922), 214 P. 146" (#66). eyecite passes
+/// over every citation, so this is a deliberate difference
+/// (docs/divergences.md).
+pub(crate) fn joins_parallel_cites(words: &Tokens, earlier: usize, later: usize) -> bool {
+    // A decision is printed once in each reporter, so two citations in one
+    // reporter edition are two decisions ("1 U.S. 12; 12 U.S. 1").
+    let editions = |i: usize| match words.get(i) {
+        Some(TokenOrStr::Token(Token::Citation(ct))) => ct
+            .exact_editions
+            .iter()
+            .chain(&ct.variation_editions)
+            .map(|e| e.short_name.as_str())
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    let later_editions = editions(later);
+    if editions(earlier).iter().any(|e| later_editions.contains(e)) {
+        return false;
+    }
+    let between = extract_text(words, earlier + 1, later);
+    !re_closing_year().is_match(&between) && re_parallel_glue().is_match(&between)
+}
+
 // ---------------------------------------------------------------------------
 // Courts data
 // ---------------------------------------------------------------------------
@@ -982,11 +1045,21 @@ fn scan_for_case_boundaries(
     }
     let back_seek = index.saturating_sub(BACKWARD_SEEK);
     let year_paren_re = re_year_paren();
+    // The citation token the words scanned so far come before.
+    let mut later_citation = index;
+    // Where the case name ends, and its year, as they were when the "v."
+    // was found: a year in parentheses further back closes an earlier
+    // citation ("25 L.Ed.2d 763 (1970) and Brady v. United States").
+    let mut at_v: Option<(usize, Option<String>)> = None;
 
     for i in (back_seek..index).rev() {
         let word = &words[i];
         let word_str = token_to_str(word);
         state.offset += word_str.len();
+
+        if state.v_token_found && at_v.is_none() {
+            at_v = Some((state.title_starting_index, state.pre_cite_year.clone()));
+        }
 
         if word_str == "," {
             continue;
@@ -997,8 +1070,33 @@ fn scan_for_case_boundaries(
             state.plaintiff_length += 1;
         }
 
-        // Handle citation tokens
+        // Handle citation tokens. An earlier citation of another decision
+        // ends the search (#66), and so does any citation once a "v." is
+        // found: the plaintiff can't reach back past it ("140 N.E.2d 98, and
+        // Hughes v. State"). The case name is then whatever follows that
+        // citation, from its first capitalized word ("and Kumho Tire,"), if
+        // anything does.
         if let TokenOrStr::Token(Token::Citation(_)) = word {
+            if state.v_token_found || !joins_parallel_cites(words, i, later_citation) {
+                if let Some((end, year)) = at_v.take() {
+                    state.title_starting_index = end;
+                    state.pre_cite_year = year;
+                }
+                let end = state.title_starting_index;
+                let start = (i + 1..end).find(|&j| {
+                    token_to_str(&words[j])
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_uppercase)
+                });
+                state.start_index = start;
+                state.candidate_case_name = start.map(|j| extract_text(words, j, end));
+                if start.is_none() {
+                    state.pre_cite_year = None;
+                }
+                return;
+            }
+            later_citation = i;
             if i > 0 {
                 state.title_starting_index = i - 1;
             }
@@ -1515,9 +1613,19 @@ pub fn find_case_name_in_html(citation: &mut FullCaseCitationData, document: &Do
     let words = &document.words;
     let index = citation.resource.common.index;
     let back_seek = index.saturating_sub(BACKWARD_SEEK);
+    // The citation token the words scanned so far come before.
+    let mut later_citation = index;
     for i in (back_seek..index).rev() {
         let word = &words[i];
         if is_whitespace_word(word) {
+            continue;
+        }
+        // An earlier citation of another decision ends the search (#66).
+        if let TokenOrStr::Token(Token::Citation(_)) = word {
+            if !joins_parallel_cites(words, i, later_citation) {
+                return;
+            }
+            later_citation = i;
             continue;
         }
         if is_v_token(word) {
