@@ -4,6 +4,12 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.5.4 - 2026-10-17
+
+### Features
+
+- *(core)* Give every reporter edition a stable slug ([#71](https://github.com/codexpublicus/citare/pull/71))
+
 ## v0.5.3 - 2026-10-08
 
 ### Features
