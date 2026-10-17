@@ -161,7 +161,10 @@ impl JsSpans {
 }
 
 /// A resolution group: one resource and all citations that point to it.
+///
+/// Non-exhaustive, so fields can be added without breaking Rust callers.
 #[derive(Serialize)]
+#[non_exhaustive]
 pub struct JsResolution {
     /// The caller's resource id, when a resolver gave one.
     #[serde(skip_serializing_if = "Option::is_none")]
