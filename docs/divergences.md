@@ -506,9 +506,25 @@ decision (`and 20 N.J. 537, 120 A.2d 442`), a bracketed year in the middle of a 
 784 pairs are newly in one group. I read 25 of them, drawn at random, in context: all 25 are
 parallel citations of one decision, most of them Michigan's semicolons in plain text, which
 eyecite's plain-text search stops at, and citations past the 28-word window. In all, the
-plaintiff changes on 1,674 citations, the defendant on 1,833, the full span on 2,008 and the
-year on 354, and 7 opinions gain a reference or supra citation that a wrong case name or an
-overlong full span had hidden. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
+plaintiff changes on 1,641 citations, the defendant on 1,800, the full span on 1,975 and the
+year on 352, and 5 opinions gain 6 reference or supra citations that a wrong case name or an
+overlong full span had hidden; none loses one.
+
+In `resolve`, 60 short, supra and reference citations resolve that didn't (37 supras, 20
+references, 3 short cites); I read 16 of them, drawn at random, and each resolves to the case
+the text names (`Keko Industries, supra` to `192 Ct.Cl. 773`, `Cimino` to `54 AD2d 843`, `First
+Nationwide` to `27 F.3d 763`). 20 no longer resolve. 13 are references to a decision that is
+now one group of several citations, which the rule for references doesn't cover yet (#67). Two
+are a supra of `Brown v. Liberty Loan Corp. of Duval`, now two decisions with one name (`392
+F.Supp. 1023 (M.D.Fla.1975), rev'd, 539 F.2d 1355`), which leaves a bare supra ambiguous by
+the [supra rule](#supra-after-parallel). Two are a page typo in the opinion (`169 So. 39` and
+`169 So. 40` for one decision), two are short cites after a pin cite read as a full citation
+(`Id., 340 U.S. 478, 479, 71 S.Ct., 460`), and one is an id. citation. 4 resolve to a different
+citation: a supra of `Stanford v. Texas` moves to the first citation of the same decision, and
+three id. citations used as "the same case name" before another decision's citation (`In re
+Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S. 645, 651. Id.,
+(1990), 52 Ohio St.3d 155`) now follow eyecite's rule and resolve to the citation before them,
+which is wrong for Murray. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
 opinions against 1.83 to 1.94 before).
 
 ### Tests

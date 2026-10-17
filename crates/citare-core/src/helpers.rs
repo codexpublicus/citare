@@ -1560,16 +1560,18 @@ fn extract_parties_from_versus(
     ) else {
         return;
     };
-    // An emphasis tag that also holds an earlier citation, or a semicolon
-    // before this citation, covers more than one case, such as a whole
-    // string cite in one <em> (#66): taking it gives every case in it the
-    // first one's start. The plain text search finds the name instead.
-    let (_, tag_start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+    // Emphasis tags that hold an earlier citation or a semicolon, before
+    // this citation, cover more than one case, such as a whole string cite
+    // in one <em> (#66): taking them gives every case in them the first
+    // one's start. The plain text search finds the name instead.
+    let (_, tags_start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+    let (_, _, tags_end) = convert_html_to_plain_text_and_loc(document, defendant_tag);
     let (cite_start, _) = common_span(&citation.resource.common);
+    let tags_end = tags_end.min(cite_start);
     if document
         .plain_text
-        .get(tag_start..cite_start)
-        .is_some_and(|before| before.contains(';'))
+        .get(tags_start..tags_end)
+        .is_some_and(|names| names.contains(';'))
     {
         return;
     }
@@ -1577,10 +1579,10 @@ fn extract_parties_from_versus(
         let TokenOrStr::Token(token) = word else {
             continue;
         };
-        if token.start() < tag_start {
+        if token.start() < tags_start {
             break;
         }
-        if matches!(token, Token::Citation(_)) {
+        if token.start() < tags_end && matches!(token, Token::Citation(_)) {
             return;
         }
     }

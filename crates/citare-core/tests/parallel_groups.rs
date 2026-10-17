@@ -414,3 +414,25 @@ fn emphasis_around_a_string_cite_is_not_a_case_name() {
         Some("Loomis")
     );
 }
+
+// courtlistener-10pct/3564744: only a semicolon or citation inside the
+// emphasis tag counts; one after it, before the citation, doesn't.
+#[test]
+fn semicolon_after_the_name_tag_keeps_the_name() {
+    let text = "<p>(Supreme Court rule 58); <em>Bentley</em> v. <em>Colgate, 10 N.J. Mis. R. \
+                1222</em>, 1227;<em>163 Atl. Rep. 98</em>; <em>Gibson</em> v. \
+                <em>Gillespie</em> (Del.),<em>143 Atl. Rep. 544</em>; and more.</p>";
+    let cites = get_citations(
+        "",
+        false,
+        text,
+        &[CleanStep::Html, CleanStep::InlineWhitespace],
+    );
+    let plaintiff = cites.iter().find_map(|c| match c {
+        Citation::FullCase(d) if c.matched_text() == "163 Atl. Rep. 98" => {
+            d.metadata.plaintiff.clone()
+        }
+        _ => None,
+    });
+    assert_eq!(plaintiff.as_deref(), Some("Bentley"));
+}
