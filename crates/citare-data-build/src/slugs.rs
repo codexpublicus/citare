@@ -23,9 +23,8 @@ use std::collections::BTreeMap;
 /// Slugs set by hand, as `(edition name, reporters-db reporter name, slug)`.
 /// They split reporters that share an edition name but whose volumes overlap
 /// (the second `Hill` is South Carolina's), give a name the CAP slug CAP files
-/// it under (`Day.`), and name neutral citations whose regex takes any
-/// volume, so can't be told from the CAP reporter with the same letters by
-/// volume (`2021 ND 123` and `N.D.`). Never change or remove an entry once
+/// it under (`Day.`), and put a neutral citation under the CAP reporter
+/// with the same letters (`ME`, `me`). Never change or remove an entry once
 /// released.
 pub const BY_REPORTER: &[(&str, &str, &str)] = &[
     // CAP gives these short names to two reporters.
@@ -54,20 +53,16 @@ pub const BY_REPORTER: &[(&str, &str, &str)] = &[
         "davis-l-ct-cas",
     ),
     ("Ohio Law. Abs.", "Ohio Law Abstracts", "ohio-law-abs"),
-    // A year-volume neutral citation beside CAP's Maine Reports (vols 1–161).
+    // Year-volume neutral citations under the CAP reporter with the same
+    // letters, whose volumes all fall below 1700 (data/cap_volumes.json).
+    // All but `ME` take a year only through data/reporters-local.json.
+    ("LA", "Louisiana Neutral Citation", "la"),
     ("ME", "Maine Reports", "me"),
-    // Neutral citations whose regex takes any volume.
-    (
-        "Conn. Super. Ct.",
-        "Connecticut Superior Court format-neutral citation",
-        "conn-super-ct-neutral",
-    ),
-    ("LA", "Louisiana Neutral Citation", "la-neutral"),
-    ("ND", "North Dakota Neutral Citation", "nd-neutral"),
-    ("NM", "New Mexico Neutral Citation", "nm-neutral"),
-    ("PA", "Pennsylvania Neutral Citation", "pa-neutral"),
-    ("SD", "South Dakota Neutral Citation", "sd-neutral"),
-    ("VT", "Vermont Neutral Citation", "vt-neutral"),
+    ("ND", "North Dakota Neutral Citation", "nd"),
+    ("NM", "New Mexico Neutral Citation", "nm"),
+    ("PA", "Pennsylvania Neutral Citation", "pa"),
+    ("SD", "South Dakota Neutral Citation", "sd"),
+    ("VT", "Vermont Neutral Citation", "vt"),
     // Different reporters with one edition name. The CAP reporter, or the
     // one cited most, keeps the plain slug.
     (

@@ -12,7 +12,8 @@ use citare_data_build::regexes::{
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
 };
 use citare_data_build::reporters::{
-    merge_local_laws, parse_journals, parse_laws, parse_local_laws, parse_reporters,
+    apply_local_reporters, merge_local_laws, parse_journals, parse_laws, parse_local_laws,
+    parse_local_reporters, parse_reporters,
 };
 use citare_data_build::slugs;
 use citare_data_build::template::process_variables;
@@ -79,6 +80,7 @@ fn main() {
     println!("cargo::rerun-if-changed=../../data/harvard_reporters.json");
     println!("cargo::rerun-if-changed=../../data/laws-local.json");
     println!("cargo::rerun-if-changed=../../data/cap_volumes.json");
+    println!("cargo::rerun-if-changed=../../data/reporters-local.json");
     println!("cargo::rerun-if-env-changed=CITARE_DUMP_BUNDLE_JSON");
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
@@ -134,7 +136,12 @@ fn main() {
     // 2. Parse data files
     // -----------------------------------------------------------------------
     let reporters_json = include_str!("../../data/reporters-db/reporters_db/data/reporters.json");
-    let reporters = parse_reporters(reporters_json).expect("Failed to parse reporters.json");
+    let mut reporters = parse_reporters(reporters_json).expect("Failed to parse reporters.json");
+    // citare's own supplement: neutral citations whose volume is a year
+    // (docs/reporters-local.md).
+    let local_reporters = parse_local_reporters(include_str!("../../data/reporters-local.json"))
+        .expect("Failed to parse data/reporters-local.json");
+    apply_local_reporters(&mut reporters, &local_reporters).unwrap_or_else(|e| panic!("{e}"));
     let total_editions: usize = reporters
         .values()
         .flat_map(|clusters| clusters.iter())

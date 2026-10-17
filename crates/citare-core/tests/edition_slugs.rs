@@ -88,7 +88,7 @@ fn released_slugs_never_change() {
     assert!(
         changed.is_empty(),
         "released edition slugs changed or disappeared; they are public paths in stare's \
-         index, so keep them (citare_data_build::slugs::OVERRIDES):\n{}",
+         index, so keep them (citare_data_build::slugs::BY_REPORTER):\n{}",
         changed.join("\n")
     );
     if added.is_empty() {
@@ -157,8 +157,11 @@ fn path_of(text: &str) -> (Option<String>, Option<String>) {
 #[case("2021 IL App (1st) 200123", "il-app-1st")]
 #[case("2019 Pa. Super. 12", "pa-super")]
 #[case("2019 ME 12", "me")]
-#[case("2021 ND 123", "nd-neutral")]
+#[case("2021 ND 123", "nd")]
 #[case("50 N.D. 1", "nd")]
+#[case("2019 VT 12", "vt")]
+#[case("1999 Conn. Super. Ct. 13301-M", "conn-super-ct")]
+#[case("5 Conn. Super. Ct. 123", "conn-super-ct")]
 fn slug_for_courtlistener_reporters(#[case] text: &str, #[case] slug: &str) {
     assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
 }
@@ -177,6 +180,22 @@ fn ohio_neutral_and_ohio_reports_share_a_slug_by_volume() {
     assert_eq!(
         (slug.as_deref(), volume.as_deref()),
         (Some("ohio"), Some("20"))
+    );
+}
+
+// North Dakota's neutral citation shares `nd` with CAP's North Dakota
+// Reports (vols 1-79) at year volumes.
+#[test]
+fn north_dakota_neutral_shares_nd_by_volume() {
+    let (slug, volume) = path_of("2021 ND 123");
+    assert_eq!(
+        (slug.as_deref(), volume.as_deref()),
+        (Some("nd"), Some("2021"))
+    );
+    let (slug, volume) = path_of("50 N.D. 1");
+    assert_eq!(
+        (slug.as_deref(), volume.as_deref()),
+        (Some("nd"), Some("50"))
     );
 }
 
