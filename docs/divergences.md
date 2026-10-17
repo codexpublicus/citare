@@ -523,8 +523,9 @@ the [supra rule](#supra-after-parallel). Two are a page typo in the opinion (`16
 citation: a supra of `Stanford v. Texas` moves to the first citation of the same decision, and
 three id. citations used as "the same case name" before another decision's citation (`In re
 Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S. 645, 651. Id.,
-(1990), 52 Ohio St.3d 155`) now follow eyecite's rule and resolve to the citation before them,
-which is wrong for Murray. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
+(1990), 52 Ohio St.3d 155`) now follow eyecite's rule and resolve to the citation before them.
+For two of them that is another decision in the same case; for Murray it is Stanley v.
+Illinois, which is wrong. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
 opinions against 1.83 to 1.94 before).
 
 ### Tests
