@@ -21,6 +21,12 @@
 //! citare find --html < opinion.html
 //! citare find --clean-steps all_whitespace,underscores < opinion.txt
 //! citare clean --html --clean-steps all_whitespace < opinion.html
+//!
+//! # Debug output (eyecite's dump_citations)
+//! citare dump --text "Foo v. Bar, 1 U.S. 1, 2 (1999). Id. at 3."
+//!
+//! # Run every extractor, without the Aho-Corasick prefilter (slow)
+//! citare find --tokenizer simple --text "1 U.S. 1"
 //! ```
 //!
 //! `--offsets` sets the unit of every span in `find` and `resolve` output:
@@ -36,12 +42,29 @@
 //! citations. Each citation from `find` and `resolve` then also has a
 //! `markup` object whose spans index the HTML input itself, and `annotate`
 //! inserts its markers into the HTML.
+//!
+//! `--tokenizer` picks how `find`, `resolve`, `annotate` and `dump`
+//! tokenize: `aho-corasick` (the default) runs only the extractors whose
+//! reporter strings appear in the text; `simple` runs all of them, as
+//! eyecite's base `Tokenizer` does, and compiles every reporter regex on
+//! first use. The two find the same citations, so `simple` is a check on
+//! the prefilter.
+//!
+//! Resolution uses citare's built-in rules. Resolving to your own resources
+//! (eyecite's resolver callbacks) is a library feature: `Resolver` in
+//! citare-core, `resolvers` in citare-wasm.
 
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 
-use citare_core::{CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit, UnbalancedTags};
-use clap::{Args, Parser, Subcommand};
+use std::io::IsTerminal;
+use std::sync::LazyLock;
+
+use citare_core::tokenizer::DEFAULT_TOKENIZER;
+use citare_core::{
+    CitationSpans, CleanStep, Document, OffsetMap, OffsetUnit, Tokenize, Tokenizer, UnbalancedTags,
+};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 
 // ---------------------------------------------------------------------------
@@ -75,6 +98,37 @@ struct InputArgs {
     clean_steps: Vec<String>,
 }
 
+/// Which tokenizer finds the citation tokens.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+enum TokenizerChoice {
+    /// Run only the extractors whose reporter strings appear in the text.
+    #[default]
+    AhoCorasick,
+    /// Run every extractor (eyecite's base Tokenizer). Slow: it compiles
+    /// every reporter regex.
+    Simple,
+}
+
+impl TokenizerChoice {
+    fn tokenizer(self) -> &'static dyn Tokenize {
+        static SIMPLE: LazyLock<Tokenizer> = LazyLock::new(Tokenizer::new);
+        match self {
+            TokenizerChoice::AhoCorasick => &*DEFAULT_TOKENIZER,
+            TokenizerChoice::Simple => &*SIMPLE,
+        }
+    }
+}
+
+/// When `dump` colors its output.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+enum ColorChoice {
+    /// When stdout is a terminal.
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Extract citations and output as a JSON array.
@@ -90,6 +144,9 @@ enum Command {
         /// indexes).
         #[arg(long, default_value = "bytes", value_parser = parse_offset_unit)]
         offsets: OffsetUnit,
+        /// Tokenizer: aho-corasick (default) or simple.
+        #[arg(long, value_enum, default_value_t)]
+        tokenizer: TokenizerChoice,
     },
     /// Extract and resolve citations; output as a JSON array of resource groups.
     Resolve {
@@ -104,6 +161,9 @@ enum Command {
         /// indexes).
         #[arg(long, default_value = "bytes", value_parser = parse_offset_unit)]
         offsets: OffsetUnit,
+        /// Tokenizer: aho-corasick (default) or simple.
+        #[arg(long, value_enum, default_value_t)]
+        tokenizer: TokenizerChoice,
     },
     /// Extract citations and wrap each in `<cite>…</cite>` markers; output
     /// the annotated text (the HTML itself with `--html`) as a JSON string.
@@ -116,6 +176,29 @@ enum Command {
         /// wrap (put markers around each piece so the HTML stays balanced).
         #[arg(long, default_value = "unchecked", value_parser = parse_unbalanced_tags)]
         unbalanced_tags: UnbalancedTags,
+        /// Tokenizer: aho-corasick (default) or simple.
+        #[arg(long, value_enum, default_value_t)]
+        tokenizer: TokenizerChoice,
+    },
+    /// Describe each citation for debugging: its line of text, spans,
+    /// groups and metadata (eyecite's dump_citations). Spans index the
+    /// cleaned text.
+    Dump {
+        #[command(flatten)]
+        input: InputArgs,
+        /// Drop citations that could not be unambiguously matched to a
+        /// reporter edition.
+        #[arg(long, default_value_t = false)]
+        remove_ambiguous: bool,
+        /// Characters of context to show either side of a citation.
+        #[arg(long, default_value_t = 30)]
+        context_chars: usize,
+        /// Color the output: auto (when stdout is a terminal), always or never.
+        #[arg(long, value_enum, default_value_t)]
+        color: ColorChoice,
+        /// Tokenizer: aho-corasick (default) or simple.
+        #[arg(long, value_enum, default_value_t)]
+        tokenizer: TokenizerChoice,
     },
     /// Print the cleaned text that `find` with the same flags indexes.
     Clean {
@@ -255,8 +338,9 @@ fn main() {
             input,
             remove_ambiguous,
             offsets,
+            tokenizer,
         } => {
-            let (document, citations) = prepare(&input, remove_ambiguous);
+            let (document, citations) = prepare(&input, remove_ambiguous, tokenizer);
             let converter = Converter::new(&document, offsets);
             let output: Vec<CitationJson> =
                 citations.iter().map(|c| converter.convert(c)).collect();
@@ -267,8 +351,9 @@ fn main() {
             input,
             remove_ambiguous,
             offsets,
+            tokenizer,
         } => {
-            let (document, citations) = prepare(&input, remove_ambiguous);
+            let (document, citations) = prepare(&input, remove_ambiguous, tokenizer);
             let resolutions = citare_core::resolve_citations(&citations);
             let converter = Converter::new(&document, offsets);
 
@@ -289,12 +374,33 @@ fn main() {
         Command::Annotate {
             input,
             unbalanced_tags,
+            tokenizer,
         } => {
-            let (document, citations) = prepare(&input, false);
+            let (document, citations) = prepare(&input, false, tokenizer);
             let annotated = annotate(&document, &citations, unbalanced_tags);
             // Output as a JSON string so the caller always gets valid JSON.
             let json = serde_json::to_string(&annotated).expect("serialisation failed");
             println!("{}", json);
+        }
+
+        Command::Dump {
+            input,
+            remove_ambiguous,
+            context_chars,
+            color,
+            tokenizer,
+        } => {
+            let (document, citations) = prepare(&input, remove_ambiguous, tokenizer);
+            let color = match color {
+                ColorChoice::Auto => io::stdout().is_terminal(),
+                ColorChoice::Always => true,
+                ColorChoice::Never => false,
+            };
+            let dump =
+                citare_core::dump_citations(&citations, &document.plain_text, context_chars, color);
+            if !dump.is_empty() {
+                println!("{dump}");
+            }
         }
 
         Command::Clean { input } => {
@@ -371,9 +477,17 @@ fn build_document(input: &InputArgs) -> Document {
 }
 
 /// Build the document and find its citations.
-fn prepare(input: &InputArgs, remove_ambiguous: bool) -> (Document, Vec<citare_core::Citation>) {
+fn prepare(
+    input: &InputArgs,
+    remove_ambiguous: bool,
+    tokenizer: TokenizerChoice,
+) -> (Document, Vec<citare_core::Citation>) {
     let mut document = build_document(input);
-    let citations = citare_core::get_citations_from_document(&mut document, remove_ambiguous);
+    let citations = citare_core::get_citations_from_document_with(
+        &mut document,
+        remove_ambiguous,
+        tokenizer.tokenizer(),
+    );
     (document, citations)
 }
 
@@ -500,93 +614,13 @@ fn citation_to_json(
     }
 }
 
-/// Flatten per-variant metadata structs into a uniform string map.
+/// The citation's metadata as a uniform string map.
 fn extract_metadata(citation: &citare_core::Citation) -> BTreeMap<String, Option<String>> {
-    let mut map: BTreeMap<String, Option<String>> = BTreeMap::new();
-
-    match citation {
-        citare_core::Citation::FullCase(d) => {
-            let m = &d.metadata;
-            let c = &m.case;
-            insert_opt(&mut map, "parenthetical", &c.parenthetical);
-            insert_opt(&mut map, "pin_cite", &c.pin_cite);
-            insert_opt(&mut map, "year", &c.year);
-            insert_opt(&mut map, "month", &c.month);
-            insert_opt(&mut map, "day", &c.day);
-            insert_opt(&mut map, "court", &c.court);
-            insert_opt(&mut map, "plaintiff", &m.plaintiff);
-            insert_opt(&mut map, "defendant", &m.defendant);
-            insert_opt(&mut map, "extra", &m.extra);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-            insert_opt(
-                &mut map,
-                "resolved_case_name_short",
-                &m.resolved_case_name_short,
-            );
-            insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
-        }
-        citare_core::Citation::ShortCase(d) => {
-            let m = &d.metadata;
-            let c = &m.case;
-            insert_opt(&mut map, "parenthetical", &c.parenthetical);
-            insert_opt(&mut map, "pin_cite", &c.pin_cite);
-            insert_opt(&mut map, "year", &c.year);
-            insert_opt(&mut map, "month", &c.month);
-            insert_opt(&mut map, "day", &c.day);
-            insert_opt(&mut map, "court", &c.court);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-        }
-        citare_core::Citation::FullLaw(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "year", &m.year);
-            insert_opt(&mut map, "month", &m.month);
-            insert_opt(&mut map, "day", &m.day);
-            insert_opt(&mut map, "publisher", &m.publisher);
-        }
-        citare_core::Citation::FullJournal(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "year", &m.year);
-            insert_opt(&mut map, "month", &m.month);
-            insert_opt(&mut map, "day", &m.day);
-        }
-        citare_core::Citation::Supra(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-            insert_opt(&mut map, "volume", &m.volume);
-        }
-        citare_core::Citation::Id(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-        }
-        citare_core::Citation::Reference(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "plaintiff", &m.plaintiff);
-            insert_opt(&mut map, "defendant", &m.defendant);
-            insert_opt(
-                &mut map,
-                "resolved_case_name_short",
-                &m.resolved_case_name_short,
-            );
-            insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
-        }
-        citare_core::Citation::Unknown(_) => {}
-    }
-
-    map
-}
-
-#[inline]
-fn insert_opt(map: &mut BTreeMap<String, Option<String>>, key: &str, value: &Option<String>) {
-    map.insert(key.to_string(), value.clone());
+    citation
+        .metadata_fields()
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.map(str::to_string)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -801,5 +835,74 @@ mod tests {
             annotate(&plain, &citations, UnbalancedTags::Unchecked),
             "Café v. Bär, <cite>410 U.S. 113</cite>"
         );
+    }
+
+    #[test]
+    fn tokenizer_and_dump_flags_parse() {
+        let cli = Cli::try_parse_from(["citare", "find", "--tokenizer", "simple"]).unwrap();
+        let Command::Find { tokenizer, .. } = cli.command else {
+            panic!("expected find");
+        };
+        assert_eq!(tokenizer, TokenizerChoice::Simple);
+        for cmd in ["find", "resolve", "annotate", "dump"] {
+            let cli = Cli::try_parse_from(["citare", cmd, "--tokenizer", "aho-corasick"]);
+            assert!(cli.is_ok(), "{cmd}");
+        }
+        assert!(Cli::try_parse_from(["citare", "find", "--tokenizer", "hyperscan"]).is_err());
+
+        let cli = Cli::try_parse_from([
+            "citare",
+            "dump",
+            "--html",
+            "--context-chars",
+            "10",
+            "--color",
+            "never",
+        ])
+        .unwrap();
+        let Command::Dump {
+            input,
+            context_chars,
+            color,
+            tokenizer,
+            remove_ambiguous,
+        } = cli.command
+        else {
+            panic!("expected dump");
+        };
+        assert!(input.html && !remove_ambiguous);
+        assert_eq!(
+            (context_chars, color, tokenizer),
+            (10, ColorChoice::Never, TokenizerChoice::AhoCorasick)
+        );
+        assert!(Cli::try_parse_from(["citare", "dump", "--color", "sometimes"]).is_err());
+    }
+
+    #[test]
+    fn simple_tokenizer_finds_what_the_default_finds() {
+        let mut args = input(false, &[]);
+        args.text = Some(TEXT.to_string());
+        let spans = |tokenizer| -> Vec<(&'static str, (usize, usize))> {
+            prepare(&args, false, tokenizer)
+                .1
+                .iter()
+                .map(|c| (c.type_name(), c.span()))
+                .collect()
+        };
+        let default = spans(TokenizerChoice::AhoCorasick);
+        assert!(!default.is_empty());
+        assert_eq!(spans(TokenizerChoice::Simple), default);
+    }
+
+    #[test]
+    fn dump_describes_html_input_in_its_cleaned_text() {
+        let args = input(true, &[]);
+        let mut document = build_document_from(HTML, &args);
+        let citations = citare_core::get_citations_from_document(&mut document, false);
+        let dump = citare_core::dump_citations(&citations, &document.plain_text, 20, false);
+        assert!(dump.starts_with("FullCaseCitation: "), "{dump}");
+        assert!(dump.contains("ReferenceCitation: "), "{dump}");
+        assert!(dump.contains("    * plaintiff=\"Café\""), "{dump}");
+        assert!(!dump.contains('<'), "{dump}");
     }
 }
