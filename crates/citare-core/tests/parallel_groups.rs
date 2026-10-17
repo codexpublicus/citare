@@ -388,3 +388,23 @@ fn citations_in_one_reporter_are_not_parallel() {
         &[],
     );
 }
+
+// courtlistener-10pct/6636114: one emphasis tag around a whole string cite
+// isn't a case name, and gave every case in it the tag's start.
+#[test]
+fn emphasis_around_a_string_cite_is_not_a_case_name() {
+    let text = "<p>discretionary power.— <em>Bate v. Hill, 1 Car. &amp; P., 100; Turnpike Co. v. \
+                Loomis, 32 N. Y., 127; La Beau v. The People, 34 N. Y., 223; Com. v. Jennings, \
+                107 Mass., 488.</em></p>";
+    expect(markup(text), &[]);
+    let cites = get_citations(
+        "",
+        false,
+        text,
+        &[CleanStep::Html, CleanStep::InlineWhitespace],
+    );
+    assert_eq!(
+        defendant(&cites, "34 N. Y., 223").as_deref(),
+        Some("The People")
+    );
+}

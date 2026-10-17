@@ -1560,6 +1560,22 @@ fn extract_parties_from_versus(
     ) else {
         return;
     };
+    // An emphasis tag that also holds an earlier citation covers more than
+    // one case, such as a whole string cite in one <em> (#66): taking it
+    // gives every case in it the first one's start. The plain text search
+    // finds the name instead.
+    let (_, tag_start, _) = convert_html_to_plain_text_and_loc(document, plaintiff_tag);
+    for word in words[..index].iter().rev() {
+        let TokenOrStr::Token(token) = word else {
+            continue;
+        };
+        if token.start() < tag_start {
+            break;
+        }
+        if matches!(token, Token::Citation(_)) {
+            return;
+        }
+    }
     set_parties_from_html(citation, document, plaintiff_tag, defendant_tag);
 }
 
