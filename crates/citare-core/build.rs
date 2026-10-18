@@ -25,6 +25,11 @@ use citare_data_build::template::process_variables;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct BuildEdition {
     reporter_short_name: String,
+    /// Sorts an edition split off a shared name (`hill-sc`, `wash-va`) after
+    /// the one that keeps the name's slug, so an ambiguous citation's first
+    /// edition is that one (citare_data_build::slugs::split_off). Not in the
+    /// bundle; it only orders the editions.
+    split_off: bool,
     reporter_name: String,
     reporter_cite_type: String,
     reporter_source: u8, // 0=Reporters, 1=Laws, 2=Journals
@@ -314,6 +319,11 @@ fn main() {
         }
     };
 
+    // CAP slug → its first and last volume, from CAP's VolumesMetadata.json.
+    let cap_volumes: std::collections::BTreeMap<String, (u32, u32)> =
+        serde_json::from_str(include_str!("../../data/cap_volumes.json"))
+            .expect("Failed to parse data/cap_volumes.json");
+
     // Every case-reporter edition's slug, checked below.
     let mut edition_slugs: Vec<slugs::EditionSlug> = Vec::new();
 
@@ -328,11 +338,25 @@ fn main() {
                     .cloned()
                     .unwrap_or_else(|| vec!["$full_cite".to_string()]);
 
-                let harvard_slug = harvard_slug_map.get(edition_name).cloned();
-                let slug = slugs::assign(edition_name, &source.name, harvard_slug.as_deref())
-                    .unwrap_or_else(|| {
-                        panic!("edition {edition_name:?} has no letters or digits for a slug")
-                    });
+                let slug = slugs::assign(
+                    edition_name,
+                    &source.name,
+                    harvard_slug_map.get(edition_name).map(String::as_str),
+                )
+                .unwrap_or_else(|| {
+                    panic!("edition {edition_name:?} has no letters or digits for a slug")
+                });
+                let regexes: Vec<String> = regex_templates
+                    .iter()
+                    .filter_map(|t| {
+                        citare_data_build::template::recursive_substitute(t, &regex_variables, 100)
+                            .ok()
+                    })
+                    .collect();
+                // CAP's slug for the reporter this edition is, which follows
+                // its slug rather than its name (#72): none for a year-volume
+                // neutral citation that shares a numbered CAP reporter's slug.
+                let harvard_slug = slugs::cap_slug(&slug, &regexes, &cap_volumes);
                 let year = |d: &Option<String>| d.as_deref()?.get(..4)?.parse().ok();
                 edition_slugs.push(slugs::EditionSlug {
                     name: edition_name.clone(),
@@ -340,21 +364,12 @@ fn main() {
                     slug: slug.clone(),
                     start_year: year(&edition_data.start),
                     end_year: year(&edition_data.end),
-                    regexes: regex_templates
-                        .iter()
-                        .filter_map(|t| {
-                            citare_data_build::template::recursive_substitute(
-                                t,
-                                &regex_variables,
-                                100,
-                            )
-                            .ok()
-                        })
-                        .collect(),
+                    regexes,
                 });
 
                 let edition = BuildEdition {
                     reporter_short_name: source_key.clone(),
+                    split_off: slugs::split_off(edition_name, &slug, &cap_volumes),
                     reporter_name: source.name.clone(),
                     reporter_cite_type: source.cite_type.clone(),
                     reporter_source: 0, // Reporters
@@ -391,6 +406,7 @@ fn main() {
         for source in source_cluster {
             let edition = BuildEdition {
                 reporter_short_name: source_key.clone(),
+                split_off: false,
                 reporter_name: source.name.clone(),
                 reporter_cite_type: source.cite_type.clone(),
                 reporter_source: 1, // Laws
@@ -433,6 +449,7 @@ fn main() {
         for source in source_cluster {
             let edition = BuildEdition {
                 reporter_short_name: source_key.clone(),
+                split_off: false,
                 reporter_name: source.name.clone(),
                 reporter_cite_type: source.cite_type.clone(),
                 reporter_source: 2, // Journals
@@ -477,9 +494,6 @@ fn main() {
                 Some((name.to_string(), slug.to_string()))
             })
             .collect();
-    let cap_volumes: std::collections::BTreeMap<String, (u32, u32)> =
-        serde_json::from_str(include_str!("../../data/cap_volumes.json"))
-            .expect("Failed to parse data/cap_volumes.json");
     let cap_pairs: Vec<(&str, &str)> = cap_reporters
         .iter()
         .map(|(n, s)| (n.as_str(), s.as_str()))

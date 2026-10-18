@@ -705,7 +705,7 @@
   "Mass.": ["mass"],
   "Mass. App. Ct.": ["mass-app-ct"],
   "Mass. App. Dec.": ["mass-app-dec"],
-  "Mass. App. Div.": ["mass-app-div"],
+  "Mass. App. Div.": ["mass-app-div", "mass-app-div-annual"],
   "Mass. App. Div. Adv. Sh.": ["mass-app-div-adv-sh"],
   "Mass. App. Div. LEXIS": ["mass-app-div-lexis"],
   "Mass. App. LEXIS": ["mass-app-lexis"],

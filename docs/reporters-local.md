@@ -21,14 +21,30 @@ three-digit volume. reporters-db takes any volume for it, which also matches the
 Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year), so the two can share
 `conn-super-ct`.
 
-Each entry names its edition by reporters.json key, cluster name and edition name, and the
-build fails if one no longer matches an edition. Its `examples` must be recognized as that
-edition with the given volume, and its `rejects` must not be; `tests/reporters_local.rs`
-checks both.
+## Massachusetts Appellate Division
+
+CAP files the Reports of Massachusetts Appellate Division in two series: `mass-app-div`, the
+numbered volumes 1 to 15, and `mass-app-div-annual`, the annual volumes numbered by year
+(1980 to 2015). reporters-db has one `Mass. App. Div.` that takes any volume, so `1995 Mass.
+App. Div. 12` took the numbered series' slug, a directory with no volume 1995 (#75). The file
+caps that edition at a three-digit volume and adds the annual series as a reporter of its own,
+`Reports of Massachusetts Appellate Division (Annual)` (CAP's name), whose volume is a year. The
+two then work like the Ohio Reports and the Ohio neutral citation: each citation matches one
+edition, and its `slug` and `harvard_slug` are that series'.
+
+## Format
+
+`editions` entries name an edition by reporters.json key, cluster name and edition name, and
+replace its regexes; the build fails if one no longer matches an edition. `reporters` entries add
+a reporter reporters-db doesn't have, under a reporters.json key, with one edition; the build
+fails if reporters-db gains a reporter of the same name under that key, so the local one can be
+dropped. An entry's `examples` must be recognized as its edition with the given volume, and its
+`rejects` must not be; `tests/reporters_local.rs` checks both.
 
 ## Measured
 
 Before and after this file, over the CourtListener ten-percent sample citation-bench pins
 (`courtlistener-10pct`, 7,632 opinions), citare found 159,909 and 159,908 citations. The one
 that went is `No. 93 LA 11` above. No citation changed and none was added. citation-bench's
-conformance vectors pass as before (270 of 278, no regressions).
+conformance vectors pass as before (270 of 278, no regressions). The sample has no `Mass. App.
+Div.` citation, so the Massachusetts entries change none of its citations.

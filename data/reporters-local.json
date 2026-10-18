@@ -1,7 +1,8 @@
 {
   "#": [
     "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
-    "Each entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
+    "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
+    "Each reporters entry adds a reporter reporters-db doesn't have, under its reporters.json key, as a cluster of its own with one edition.",
     "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
     "Why each entry exists: docs/reporters-local.md."
   ],
@@ -68,6 +69,29 @@
       "examples": [{"cite": "5 Conn. Super. Ct. 123", "volume": "5"}],
       "rejects": ["1999 Conn. Super. Ct. 13301"],
       "notes": "The Reports ran 1986-1994 in a handful of volumes. reporters-db takes any volume, which also matches the Superior Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year); capping the volume at three digits lets the two share `conn-super-ct`."
+    },
+    {
+      "reporter": "Mass. App. Div.",
+      "name": "Reports of Massachusetts Appellate Division",
+      "edition": "Mass. App. Div.",
+      "regexes": ["(?P<volume>[1-9]\\d{0,2}) $reporter,? $page"],
+      "examples": [{"cite": "10 Mass. App. Div. 12", "volume": "10"}],
+      "rejects": ["1995 Mass. App. Div. 12"],
+      "notes": "The numbered series (CAP's `mass-app-div`, vols 1-15). reporters-db takes any volume, which also matches the annual series added below (`1995 Mass. App. Div. 12`, volume a year); capping the volume at three digits tells the two apart."
+    }
+  ],
+  "reporters": [
+    {
+      "reporter": "Mass. App. Div.",
+      "name": "Reports of Massachusetts Appellate Division (Annual)",
+      "cite_type": "state",
+      "edition": "Mass. App. Div.",
+      "start": "1980-01-01T00:00:00",
+      "end": null,
+      "regexes": ["$volume_year $reporter,? $page"],
+      "examples": [{"cite": "1995 Mass. App. Div. 12", "volume": "1995"}],
+      "rejects": ["10 Mass. App. Div. 12"],
+      "notes": "The annual series, whose volume is its year: CAP's `mass-app-div-annual` (vols 1980-2015, 'Reports of Massachusetts Appellate Division (Annual)'). reporters-db lists only the one `Mass. App. Div.`, so without this entry a citation to an annual volume took the numbered series' slug, `mass-app-div` (#75)."
     }
   ]
 }
