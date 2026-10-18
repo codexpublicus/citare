@@ -1,0 +1,26 @@
+[package]
+name = "citare-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for citare with eyecite's API shape"
+repository.workspace = true
+homepage = "https://github.com/codexpublicus/citare"
+keywords = ["legal", "citation", "python", "law", "parser"]
+categories = ["text-processing"]
+publish = false
+
+[lib]
+name = "_citare"
+crate-type = ["cdylib"]
+# The extension module is tested from Python (crates/citare-py/tests); a Rust
+# test harness would have to link libpython.
+test = false
+doctest = false
+
+[dependencies]
+citare-core = { path = "../citare-core" }
+# extension-module: don't link libpython, so `cargo build --workspace` works
+# without Python's development files. abi3: one wheel for every CPython from
+# 3.10 on.
+pyo3 = { version = "0.30", features = ["extension-module", "abi3-py310"] }

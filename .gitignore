@@ -26,3 +26,9 @@ Thumbs.db
 *.so
 *.dylib
 *.dll
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
