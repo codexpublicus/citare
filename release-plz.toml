@@ -47,26 +47,10 @@ changelog_update = false
 # from this crate's, so the wheel is versioned with the rest. Its Cargo.toml
 # also says publish = false, and its pyproject.toml has the "Private :: Do
 # Not Upload" classifier, so neither crates.io nor PyPI gets it.
-#
-# git_tag_name until v0.7.0 is tagged. In git_only mode release-plz looks
-# up the last release tag of every workspace package, whatever its
-# `release` setting, and reads the package from a worktree of that tag
-# (collect_git_only_packages in release-plz's next_ver.rs). Under the
-# shared `v{{ version }}` name that tag is v0.6.0, which predates this
-# crate (#83), so release-pr fails with "cannot find package". No tag
-# matches `citare-py-v*`, so release-plz treats the crate as new instead.
-# git_tag_enable and git_release_enable stay off for it, so no such tag or
-# release is ever made; the release job only logs a no-op "released
-# citare-py (git-only)". Adding `release = false` here would quiet that,
-# but it also drops the crate's commits from citare-core's
-# changelog_include, and with them #83's changelog line.
-# Delete the git_tag_name line once v0.7.0 exists, since that tag contains
-# crates/citare-py.
 [[package]]
 name = "citare-py"
 version_group = "citare"
 changelog_update = false
-git_tag_name = "citare-py-v{{ version }}"
 
 [changelog]
 protect_breaking_commits = true
