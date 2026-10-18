@@ -26,10 +26,7 @@ name = "citare-core"
 version_group = "citare"
 git_tag_enable = true
 git_release_enable = true
-# citare-py joins this list after the first release whose tag contains it:
-# release-plz resolves every listed package inside a worktree of
-# citare-core's last tag (v0.6.0), which predates the crate (#83).
-changelog_include = ["citare-data-build", "citare-wasm", "citare-cli"]
+changelog_include = ["citare-data-build", "citare-wasm", "citare-cli", "citare-py"]
 
 [[package]]
 name = "citare-data-build"
@@ -51,17 +48,25 @@ changelog_update = false
 # also says publish = false, and its pyproject.toml has the "Private :: Do
 # Not Upload" classifier, so neither crates.io nor PyPI gets it.
 #
-# release = false until a release tag contains this crate. With the
-# shared `v{{ version }}` tag name, release-plz takes v0.6.0 as its last
-# release and looks for it in a worktree of that tag, which predates the
-# crate (#83), so release-pr fails with "cannot find package". The crate's
-# version comes from the workspace, so it still moves with the others.
-# Remove this line, and add citare-py back to citare-core's
-# changelog_include, after the first release that includes crates/citare-py.
+# git_tag_name until v0.7.0 is tagged. In git_only mode release-plz looks
+# up the last release tag of every workspace package, whatever its
+# `release` setting, and reads the package from a worktree of that tag
+# (collect_git_only_packages in release-plz's next_ver.rs). Under the
+# shared `v{{ version }}` name that tag is v0.6.0, which predates this
+# crate (#83), so release-pr fails with "cannot find package". No tag
+# matches `citare-py-v*`, so release-plz treats the crate as new instead.
+# git_tag_enable and git_release_enable stay off for it, so no such tag or
+# release is ever made; the release job only logs a no-op "released
+# citare-py (git-only)". Adding `release = false` here would quiet that,
+# but it also drops the crate's commits from citare-core's
+# changelog_include, and with them #83's changelog line.
+# Delete the git_tag_name line once v0.7.0 exists, since that tag contains
+# crates/citare-py.
 [[package]]
 name = "citare-py"
-release = false
+version_group = "citare"
 changelog_update = false
+git_tag_name = "citare-py-v{{ version }}"
 
 [changelog]
 protect_breaking_commits = true
