@@ -1,6 +1,7 @@
 //! citare's supplement to reporters-db's reporters (`data/reporters-local.json`,
-//! docs/reporters-local.md): every example is recognized as its edition with
-//! its volume, and every reject is not that edition.
+//! docs/reporters-local.md): every example of an edition it changes or a
+//! reporter it adds is recognized as that edition with its volume, and every
+//! reject is not that edition.
 
 use citare_core::{get_citations, Citation, Edition};
 
@@ -24,7 +25,12 @@ fn every_supplement_example_and_reject_holds() {
     let local: serde_json::Value =
         serde_json::from_str(include_str!("../../../data/reporters-local.json")).unwrap();
     let mut n = 0;
-    for entry in local["editions"].as_array().unwrap() {
+    let entries = local["editions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(local["reporters"].as_array().into_iter().flatten());
+    for entry in entries {
         let (name, edition) = (
             entry["name"].as_str().unwrap(),
             entry["edition"].as_str().unwrap(),
@@ -54,5 +60,5 @@ fn every_supplement_example_and_reject_holds() {
             n += 1;
         }
     }
-    assert!(n >= 14, "only {n} examples and rejects");
+    assert!(n >= 18, "only {n} examples and rejects");
 }

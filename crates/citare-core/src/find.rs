@@ -10,7 +10,7 @@ use crate::helpers::{
     add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation,
     disambiguate_reporters, extract_pin_cite, extract_section_pin_cite, filter_citations,
     find_case_name, find_case_name_in_html, find_case_name_in_html_short, find_case_name_short,
-    guess_court, guess_edition,
+    guess_court, guess_edition, joins_parallel_cites,
 };
 use crate::models::citation::{
     normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
@@ -194,7 +194,11 @@ pub fn get_citations_from_document_with(
                         if let (Citation::FullCase(_), Some(Citation::FullCase(_))) =
                             (&citation, citations.last())
                         {
-                            handle_parallel_citation(&mut citation, citations.last().unwrap());
+                            handle_parallel_citation(
+                                &mut citation,
+                                citations.last().unwrap(),
+                                &document.words,
+                            );
                         }
                     }
 
@@ -606,11 +610,26 @@ fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Vec<usize>) {
 // Handle parallel citations
 // ---------------------------------------------------------------------------
 
-fn handle_parallel_citation(current: &mut Citation, preceding: &Citation) {
+/// Give a full case citation the case name and year of the one before it
+/// when they are parallel citations of one decision: eyecite's rule, the
+/// same full span start, or (#66) nothing but pin cites and punctuation
+/// between them (see [`joins_parallel_cites`]). The second case is for a
+/// citation whose own search for a case name ended elsewhere, such as past
+/// the 28 words it looks back.
+fn handle_parallel_citation(current: &mut Citation, preceding: &Citation, words: &Tokens) {
     if let (Citation::FullCase(ref mut cur_data), Citation::FullCase(ref pre_data)) =
         (current, preceding)
     {
-        if cur_data.resource.common.full_span_start == pre_data.resource.common.full_span_start {
+        let pre_start = pre_data.resource.common.full_span_start;
+        let same_start = cur_data.resource.common.full_span_start == pre_start;
+        let adjacent = pre_start.is_some()
+            && joins_parallel_cites(
+                words,
+                pre_data.resource.common.index,
+                cur_data.resource.common.index,
+            );
+        if same_start || adjacent {
+            cur_data.resource.common.full_span_start = pre_start;
             cur_data.metadata.defendant = pre_data.metadata.defendant.clone();
             cur_data.metadata.plaintiff = pre_data.metadata.plaintiff.clone();
             cur_data.metadata.case.year = pre_data.metadata.case.year.clone();

@@ -17,6 +17,10 @@
 //! [`BY_REPORTER`] sets an edition's slug by hand where the rules need it,
 //! keyed by reporters-db edition and reporter name, and [`SAME_BOOKS`] lists
 //! slugs whose reporters-db reporters are one set of books.
+//!
+//! An edition's CAP slug (`harvard_slug`) follows from its slug
+//! ([`cap_slug`]), and [`split_off`] says which editions sort after the one
+//! that keeps a shared name's plain slug.
 
 use std::collections::BTreeMap;
 
@@ -38,12 +42,17 @@ pub const BY_REPORTER: &[(&str, &str, &str)] = &[
         "Report of the Court of Claims (West Virginia)",
         "wv-ct-cl",
     ),
-    // The numbered series; CAP's `mass-app-div-annual` numbers its volumes
-    // by year and is no reporters-db edition's.
+    // CAP's numbered series (vols 1-15) and its annual one (vols 1980-2015),
+    // which data/reporters-local.json adds as a reporter of its own.
     (
         "Mass. App. Div.",
         "Reports of Massachusetts Appellate Division",
         "mass-app-div",
+    ),
+    (
+        "Mass. App. Div.",
+        "Reports of Massachusetts Appellate Division (Annual)",
+        "mass-app-div-annual",
     ),
     // reporters-db spellings of a CAP reporter.
     ("Day.", "Day's Reports (Connecticut)", "day"),
@@ -154,6 +163,42 @@ pub fn assign(
         .map(|(_, _, s)| (*s).to_string())
         .or_else(|| harvard_slug.map(str::to_string))
         .or_else(|| derive(edition_name))
+}
+
+/// The CAP slug of an edition with slug `slug` whose citation regexes are
+/// `regexes`: `slug` itself when it is a CAP slug (a key of `cap_volumes`,
+/// CAP slug → its first and last volume) and the edition's volumes are of the
+/// kind CAP files under it, years or numbers. Otherwise `None`.
+///
+/// So an edition's `harvard_slug` follows its `slug`: the federal `Ct. Cl.`
+/// is `us-ct-cl`, not West Virginia's `wv-ct-cl`, and South Carolina's `Hill`
+/// (`hill-sc`) has none. A year-volume neutral citation that shares a
+/// numbered CAP reporter's slug (`2019-Ohio-1234`, slug `ohio`, CAP's Ohio
+/// Reports, vols 1-20) has none either, since CAP has none of its volumes.
+pub fn cap_slug(
+    slug: &str,
+    regexes: &[String],
+    cap_volumes: &BTreeMap<String, (u32, u32)>,
+) -> Option<String> {
+    let &(first, _) = cap_volumes.get(slug)?;
+    let years = volumes(regexes) == Volumes::Years;
+    (years == (first >= FIRST_YEAR_VOLUME)).then(|| slug.to_string())
+}
+
+/// Whether an edition named `edition_name` with slug `slug` was split off a
+/// name it shares with another reporter: its slug is neither a CAP slug (a
+/// key of `cap_volumes`) nor the one derived from its name. These are the
+/// [`BY_REPORTER`] entries for different reporters under one name
+/// (`hill-sc`, `wash-va`); the reporter that keeps the plain slug is the CAP
+/// one or the one cited most. The data bundle lists a split-off edition
+/// after the others, so a citation citare can't narrow to one edition
+/// (`119 Wash. at 299`) has the plain one first.
+pub fn split_off(
+    edition_name: &str,
+    slug: &str,
+    cap_volumes: &BTreeMap<String, (u32, u32)>,
+) -> bool {
+    !cap_volumes.contains_key(slug) && derive(edition_name).as_deref() != Some(slug)
 }
 
 /// One case-reporter edition with its slug, for [`check`].
@@ -411,6 +456,52 @@ mod tests {
             assign("Ct. Cl.", wv, Some("wv-ct-cl")).as_deref(),
             Some("wv-ct-cl")
         );
+    }
+
+    #[test]
+    fn cap_slug_only_for_cap_volumes() {
+        let caps = BTreeMap::from([
+            ("ohio".to_string(), (1, 20)),
+            ("us-ct-cl".to_string(), (1, 231)),
+            ("mass-app-div-annual".to_string(), (1980, 2015)),
+        ]);
+        let r = |s: &str| vec![s.to_string()];
+        // CAP's Ohio Reports keep `ohio`; the year-volume neutral doesn't.
+        assert_eq!(cap_slug("ohio", &r(SMALL), &caps).as_deref(), Some("ohio"));
+        assert_eq!(cap_slug("ohio", &r(YEAR), &caps), None);
+        // Annual volumes under an annual CAP series, and not numbered ones.
+        assert_eq!(
+            cap_slug("mass-app-div-annual", &r(YEAR), &caps).as_deref(),
+            Some("mass-app-div-annual")
+        );
+        assert_eq!(cap_slug("mass-app-div-annual", &r(SMALL), &caps), None);
+        assert_eq!(
+            cap_slug("us-ct-cl", &r(ANY), &caps).as_deref(),
+            Some("us-ct-cl")
+        );
+        // A slug CAP doesn't have.
+        assert_eq!(cap_slug("hill-sc", &r(ANY), &caps), None);
+    }
+
+    #[test]
+    fn split_off_editions() {
+        let caps = BTreeMap::from([
+            ("wash".to_string(), (1, 200)),
+            ("us-ct-cl".to_string(), (1, 231)),
+        ]);
+        assert!(split_off("Wash.", "wash-va", &caps));
+        assert!(!split_off("Wash.", "wash", &caps));
+        assert!(!split_off("Ct. Cl.", "us-ct-cl", &caps));
+        assert!(!split_off("NY Slip Op", "ny-slip-op", &caps));
+        // Every BY_REPORTER slug that is neither CAP's nor derived.
+        let caps: BTreeMap<String, (u32, u32)> =
+            serde_json::from_str(include_str!("../../../data/cap_volumes.json")).unwrap();
+        let split: Vec<&str> = BY_REPORTER
+            .iter()
+            .filter(|(n, _, s)| split_off(n, s, &caps))
+            .map(|(_, _, s)| *s)
+            .collect();
+        assert_eq!(split.len(), 16, "{split:?}");
     }
 
     #[test]

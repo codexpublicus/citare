@@ -199,6 +199,84 @@ fn north_dakota_neutral_shares_nd_by_volume() {
     );
 }
 
+// CAP files the Massachusetts Appellate Division Reports in two series, and
+// so does citare (#75): the numbered volumes are `mass-app-div` and the
+// annual ones, numbered by year, `mass-app-div-annual`.
+#[test]
+fn mass_app_div_series_split_by_volume() {
+    for (text, slug, volume) in [
+        ("10 Mass. App. Div. 12", "mass-app-div", "10"),
+        ("1995 Mass. App. Div. 12", "mass-app-div-annual", "1995"),
+        ("2015 Mass. App. Div. 1", "mass-app-div-annual", "2015"),
+    ] {
+        let (s, v) = path_of(text);
+        assert_eq!((s.as_deref(), v.as_deref()), (Some(slug), Some(volume)));
+        assert_eq!(harvard_slug_of(text).as_deref(), Some(slug), "{text}");
+    }
+}
+
+/// The `harvard_slug` of the first full case citation in `text`, picked the
+/// way the CLI and WASM bindings pick it.
+fn harvard_slug_of(text: &str) -> Option<String> {
+    let citations = get_citations(text, false, "", &[]);
+    let rc = citations
+        .iter()
+        .find(|c| matches!(c, Citation::FullCase(_)))
+        .unwrap_or_else(|| panic!("no full case citation in {text:?}"))
+        .resource_common()?;
+    rc.edition_guess
+        .as_ref()
+        .or(rc.all_editions.first())
+        .and_then(|e| e.harvard_slug.clone())
+}
+
+// `harvard_slug` names the CAP reporter a citation is in (#72): none for a
+// year-volume neutral citation that shares a numbered CAP reporter's slug,
+// the federal Court of Claims' own for `Ct. Cl.`, and none for a reporter
+// split off a name CAP uses for another.
+#[rstest]
+#[case("2019-Ohio-1234", None)]
+#[case("20 Ohio 1", Some("ohio"))]
+#[case("2019 Pa. Super. 12", None)]
+#[case("50 Pa. Super. 1", Some("pa-super"))]
+#[case("2017 Ark. 173", None)]
+#[case("2014 Ark. App. 442", None)]
+#[case("2024 N.H. 12", None)]
+#[case("82 Ct. Cl. 1 (1935)", Some("us-ct-cl"))]
+#[case("20 Ct. Cl. 59 (1994)", Some("wv-ct-cl"))]
+#[case("172 Wash. 688", Some("wash"))]
+#[case("1 Day. 1", Some("day"))]
+fn harvard_slug_is_the_cap_reporter_cited(#[case] text: &str, #[case] cap: Option<&str>) {
+    assert_eq!(harvard_slug_of(text).as_deref(), cap, "{text}");
+}
+
+// A citation citare can't narrow to one edition takes the slug of the
+// reporter that keeps the name's plain slug, not the one split off it.
+#[rstest]
+#[case("172 Wash. 688", "wash")]
+#[case("14 Wall. 442", "wall")]
+#[case("2 Met. 140", "met")]
+#[case("4 Sneed, 415", "sneed")]
+#[case("100 Ct. Cl. 123", "us-ct-cl")]
+fn ambiguous_citation_takes_the_plain_slug(#[case] text: &str, #[case] slug: &str) {
+    assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
+}
+
+#[test]
+fn harvard_slug_is_the_slug_or_none() {
+    for e in &data::get().editions {
+        if let Some(h) = &e.harvard_slug {
+            assert_eq!(
+                e.slug.as_ref(),
+                Some(h),
+                "{} ({})",
+                e.short_name,
+                e.reporter.name
+            );
+        }
+    }
+}
+
 #[test]
 fn every_slug_is_well_formed() {
     for (name, slugs) in current() {
