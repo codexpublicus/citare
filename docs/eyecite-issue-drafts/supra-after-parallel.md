@@ -47,5 +47,10 @@ resource turns up later on its own, which is fine; but chaining groups through a
 resource lets one misread pair (`Celotex, 477 U.S. at 321-25, 106 S.Ct. 2548; Anderson, 477
 U.S. at 255-57, 106 S.Ct. 2505`, read as one case named Celotex) join two decisions.
 
+Reference citations (`In Haynes at 312`, or an emphasized `Haynes` in markup) go through
+`_resolve_reference_citation`, which needs exactly one resource too, so they fail the same way
+after parallel citations and take the same fix. On the same sample, references resolved go from
+3,060 of 6,363 to 6,128 with it.
+
 citare resolves these this way; its write-up, with the corpus numbers,
 is <https://github.com/codexpublicus/citare/blob/main/docs/divergences.md#supra-after-parallel>.
