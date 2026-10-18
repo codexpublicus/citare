@@ -76,3 +76,8 @@ Before and after this file, over the CourtListener ten-percent sample citation-b
 that went is `No. 93 LA 11` above. No citation changed and none was added. citation-bench's
 conformance vectors pass as before (270 of 278, no regressions). The sample has no `Mass. App.
 Div.` citation, so the Massachusetts entries change none of its citations.
+
+The Ohio entries change two of the sample's 159,914 citations, `127 Ohio 545` and `50 Ohio 107`,
+whose corrected reporter goes from `Ohio` to `Ohio St.`; none is gained or lost, and the vectors
+still pass 270 of 278. `50 Ohio 107`, in a Kansas opinion, is Putnam v. Valentine, `5 Ohio 187`,
+misprinted, so its slug is wrong before and after.
