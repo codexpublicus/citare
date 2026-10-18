@@ -26,7 +26,10 @@ name = "citare-core"
 version_group = "citare"
 git_tag_enable = true
 git_release_enable = true
-changelog_include = ["citare-data-build", "citare-wasm", "citare-cli", "citare-py"]
+# citare-py joins this list after the first release whose tag contains it:
+# release-plz resolves every listed package inside a worktree of
+# citare-core's last tag (v0.6.0), which predates the crate (#83).
+changelog_include = ["citare-data-build", "citare-wasm", "citare-cli"]
 
 [[package]]
 name = "citare-data-build"
@@ -53,7 +56,8 @@ changelog_update = false
 # release and looks for it in a worktree of that tag, which predates the
 # crate (#83), so release-pr fails with "cannot find package". The crate's
 # version comes from the workspace, so it still moves with the others.
-# Remove this line after the first release that includes crates/citare-py.
+# Remove this line, and add citare-py back to citare-core's
+# changelog_include, after the first release that includes crates/citare-py.
 [[package]]
 name = "citare-py"
 release = false
