@@ -4,6 +4,24 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.0 - 2026-10-18
+
+### Breaking changes
+
+- Pluggable resolvers, tokenizer option and dump_citations ([#81](https://github.com/codexpublicus/citare/pull/81))
+
+### Features
+
+- *(py)* Python package with eyecite's API ([#83](https://github.com/codexpublicus/citare/pull/83))
+
+### Fixes
+
+- *(data)* Read `Ohio` volumes 21-177 as the Ohio State Reports ([#86](https://github.com/codexpublicus/citare/pull/86))
+- *(core)* Group nameless parallel runs and resolve an id. used as a case name ([#84](https://github.com/codexpublicus/citare/pull/84))
+- *(core)* Give harvard_slug and slug the CAP reporter cited ([#79](https://github.com/codexpublicus/citare/pull/79))
+- *(core)* Resolve references after parallel cites ([#77](https://github.com/codexpublicus/citare/pull/77))
+- *(core)* Keep parallel citation groups to one decision ([#76](https://github.com/codexpublicus/citare/pull/76))
+
 ## v0.6.0 - 2026-10-17
 
 ### Breaking changes
