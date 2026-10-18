@@ -3,6 +3,7 @@
     "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
     "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
     "Each reporters entry adds a reporter reporters-db doesn't have, under its reporters.json key, as a cluster of its own with one edition.",
+    "Each variations entry adds another abbreviation (variation) for one edition, named like an editions entry, that matches only through the entry's own regexes.",
     "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
     "Why each entry exists: docs/reporters-local.md."
   ],
@@ -62,6 +63,15 @@
       "notes": "A neutral citation's volume is its year. reporters-db takes any volume, so it can't be told from CAP's Vermont Reports (`vt`, vols 1-203) by volume."
     },
     {
+      "reporter": "Ohio",
+      "name": "Ohio Reports",
+      "edition": "Ohio",
+      "regexes": ["(?P<volume>[1-9]|1\\d|20) $reporter $page"],
+      "examples": [{"cite": "5 Ohio 187", "volume": "5"}, {"cite": "20 Ohio 119", "volume": "20"}],
+      "rejects": ["21 Ohio 1", "127 Ohio 545"],
+      "notes": "The Ohio Reports (1821-1851) have 20 volumes, CAP's `ohio` (vols 1-20). reporters-db takes any one- to three-digit volume, so `127 Ohio 545`, the Ohio State Reports cited as `Ohio`, took the Ohio Reports' slug (#80). The variations entry below gives it to the Ohio State Reports."
+    },
+    {
       "reporter": "Conn. Super. Ct.",
       "name": "Connecticut Superior Court Reports",
       "edition": "Conn. Super. Ct.",
@@ -92,6 +102,18 @@
       "examples": [{"cite": "1995 Mass. App. Div. 12", "volume": "1995"}],
       "rejects": ["10 Mass. App. Div. 12"],
       "notes": "The annual series, whose volume is its year: CAP's `mass-app-div-annual` (vols 1980-2015, 'Reports of Massachusetts Appellate Division (Annual)'). reporters-db lists only the one `Mass. App. Div.`, so without this entry a citation to an annual volume took the numbered series' slug, `mass-app-div` (#75)."
+    }
+  ],
+  "variations": [
+    {
+      "reporter": "Ohio St.",
+      "name": "Ohio State Reports",
+      "edition": "Ohio St.",
+      "variation": "Ohio",
+      "regexes": ["(?P<volume>2[1-9]|[3-9]\\d|1[0-6]\\d|17[0-7]) $reporter,? $page"],
+      "examples": [{"cite": "127 Ohio 545", "volume": "127"}, {"cite": "36 Ohio, 201", "volume": "36"}],
+      "rejects": ["14 Ohio 511", "178 Ohio 1", "2016 Ohio 2813"],
+      "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often."
     }
   ]
 }

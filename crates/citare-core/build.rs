@@ -397,6 +397,31 @@ fn main() {
                     &[],
                     &regex_variables,
                 );
+
+                // reporters-local.json's variations of this edition, each
+                // with its own regexes (`127 Ohio 545` for the Ohio State
+                // Reports, but only above the Ohio Reports' last volume).
+                for v in local_reporters.variations.iter().filter(|v| {
+                    v.reporter == *source_key && v.name == source.name && v.edition == *edition_name
+                }) {
+                    for template in &v.regexes {
+                        let resolved = citare_data_build::template::recursive_substitute(
+                            template,
+                            &regex_variables,
+                            100,
+                        )
+                        .unwrap_or_else(|e| panic!("variation {:?}: {e}", v.variation))
+                        .replace("{,", "{0,");
+                        add_regex(
+                            &mut editions_by_regex,
+                            "variations",
+                            &[v.variation.as_str()],
+                            &[],
+                            &edition,
+                            &substitute_edition(&resolved, &[v.variation.as_str()]),
+                        );
+                    }
+                }
             }
         }
     }
