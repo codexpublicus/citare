@@ -429,18 +429,76 @@ pub fn resolve_citations_with<V: Resolver + ?Sized>(
     citations: &[Citation],
     resolver: &mut V,
 ) -> Resolutions<V::Resource> {
-    let mut resolutions: Resolutions<V::Resource> = HashMap::new();
-    let mut resolved_full_cites = ResolvedFullCites::default();
-    let mut last_resolution: Option<V::Resource> = None;
-    let mut previous: Option<&Citation> = None;
+    let mut state = ResolveState {
+        resolutions: HashMap::new(),
+        resolved_full_cites: ResolvedFullCites::default(),
+        last_resolution: None,
+    };
 
-    for citation in citations {
-        let resolution = match citation {
+    let mut i = 0;
+    while i < citations.len() {
+        let previous = i.checked_sub(1).map(|p| &citations[p]);
+        let citation = &citations[i];
+        match citations.get(i + 1) {
+            // An id. citation that stands for the case name of the full
+            // citation after it ("Id., (1990), 52 Ohio St.3d 155") is an id.
+            // of that citation, not of the one before (#78). The full
+            // citation is resolved first, and the id. citation after it.
+            Some(full) if names_next_citation(citation, full) => {
+                let resource = state.resolve(resolver, full, Some(citation));
+                state.last_resolution = resource.clone();
+                if let Some(resource) = resource {
+                    state.record(resource, full.clone());
+                }
+                let id = state.resolve(resolver, citation, None);
+                if let Some(id_resource) = id {
+                    state.record(id_resource.clone(), citation.clone());
+                    // In text order: the id. citation before the full one.
+                    let group = state.resolutions.get_mut(&id_resource).unwrap();
+                    if group.len() > 1 && state.last_resolution.as_ref() == Some(&id_resource) {
+                        let n = group.len();
+                        group.swap(n - 2, n - 1);
+                    }
+                }
+                i += 2;
+            }
+            _ => {
+                let resource = state.resolve(resolver, citation, previous);
+                state.last_resolution = resource.clone();
+                if let Some(resource) = resource {
+                    state.record(resource, citation.clone());
+                }
+                i += 1;
+            }
+        }
+    }
+
+    state.resolutions
+}
+
+/// What [`resolve_citations_with`] has built so far.
+struct ResolveState<R> {
+    resolutions: Resolutions<R>,
+    resolved_full_cites: ResolvedFullCites<R>,
+    last_resolution: Option<R>,
+}
+
+impl<R: Clone + Eq + Hash> ResolveState<R> {
+    /// Resolve one citation. `previous` is the citation before it in the
+    /// text, for full citations cited in parallel.
+    fn resolve<V: Resolver<Resource = R> + ?Sized>(
+        &mut self,
+        resolver: &mut V,
+        citation: &Citation,
+        previous: Option<&Citation>,
+    ) -> Option<R> {
+        match citation {
             // Full citations create new resources.
             Citation::FullCase(_) | Citation::FullLaw(_) | Citation::FullJournal(_) => {
                 let resource = resolver.resolve_full(citation);
                 let parallel = previous.is_some_and(|p| is_parallel(p, citation));
-                resolved_full_cites.push(citation, resource.clone(), parallel);
+                self.resolved_full_cites
+                    .push(citation, resource.clone(), parallel);
                 resource
             }
 
@@ -449,9 +507,9 @@ pub fn resolve_citations_with<V: Resolver + ?Sized>(
 
             _ => {
                 let context = ResolveContext {
-                    resolved_full_cites: &resolved_full_cites,
-                    last_resolution: last_resolution.as_ref(),
-                    resolutions: &resolutions,
+                    resolved_full_cites: &self.resolved_full_cites,
+                    last_resolution: self.last_resolution.as_ref(),
+                    resolutions: &self.resolutions,
                 };
                 match citation {
                     // Short case: match by reporter + volume.
@@ -465,19 +523,47 @@ pub fn resolve_citations_with<V: Resolver + ?Sized>(
                     _ => None,
                 }
             }
-        };
-        previous = Some(citation);
-
-        last_resolution = resolution.clone();
-        if let Some(resource) = resolution {
-            resolutions
-                .entry(resource)
-                .or_default()
-                .push(citation.clone());
         }
     }
 
-    resolutions
+    fn record(&mut self, resource: R, citation: Citation) {
+        self.resolutions.entry(resource).or_default().push(citation);
+    }
+}
+
+/// Whether `citation` is an id. citation standing for the case name of the
+/// full case citation `next` that directly follows it, as in "In re Murray
+/// (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S.
+/// 645, 651. Id., (1990), 52 Ohio St.3d 155" or "Grain Cleaner Co. v.
+/// Smith, 110 N. Y. 83; Id., 34 Hun, 91" (#78). The search for `next`'s
+/// case name took the id. citation in, so `next`'s full span starts at or
+/// before it, and that name is the id. citation and at most a court or
+/// year in parentheses or an old circuit ("Id., 9 Cir., 152 F.2d 298").
+/// Anything else after it, such as "Id. See also Benoit v. Turner" or
+/// "Id. [15]", a footnote marker, makes the id. citation its own.
+fn names_next_citation(citation: &Citation, next: &Citation) -> bool {
+    static ID_AS_NAME_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"^(?i:id|ibid)\.?(?:[\s,]|\([^()\[\]]*\)?|\d+(?:st|nd|rd|th)?\s+Cir\.)*$",
+        )
+        .unwrap()
+    });
+    let (Citation::Id(id), Citation::FullCase(full)) = (citation, next) else {
+        return false;
+    };
+    if id.metadata.pin_cite.is_some() || full.metadata.plaintiff.is_some() {
+        return false;
+    }
+    let (id_start, id_end) = citation.span();
+    full.resource
+        .common
+        .full_span_start
+        .is_some_and(|start| start <= id_start && id_end <= next.span().0)
+        && full
+            .metadata
+            .defendant
+            .as_deref()
+            .is_some_and(|name| ID_AS_NAME_RE.is_match(name.trim()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,5 +1123,109 @@ mod tests {
             .find(|(_, cites)| cites.iter().any(|c| c.span() == reference.span()))
             .map(|(resource, _)| resource.citation.matched_text().to_string());
         assert_eq!(resource.as_deref(), Some("314 Conn. 303"));
+    }
+
+    // #78: an id. citation that stands for the case name of the full
+    // citation after it is an id. of that citation (courtlistener-10pct/
+    // 3759943, footnotes 3 and 4), not of Stanley v. Illinois before it.
+    #[test]
+    fn test_id_as_case_name_of_the_next_citation() {
+        let text = "In re Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), \
+                    405 U.S. 645, 651. Id., (1990), 52 Ohio St.3d 155, 157, citing, Santosky v. \
+                    Kramer (1982), 455 U.S. 745, 753.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("52 Ohio St.3d 155")),
+                ("FullCaseCitation", to("405 U.S. 645")),
+                ("IdCitation", to("52 Ohio St.3d 155")),
+                ("FullCaseCitation", to("52 Ohio St.3d 155")),
+                ("FullCaseCitation", to("455 U.S. 745")),
+            ]
+        );
+    }
+
+    // The same in markup, with the id. citation before the full one in its
+    // group, as in the text.
+    #[test]
+    fn test_markup_id_as_case_name_keeps_text_order() {
+        let markup = "<p><em>In re Murray</em> (1990), 52 Ohio St.3d 155, 157; <em>Stanley v. \
+                      Illinois</em> (1972), 405 U.S. 645, 651.</p><p><em>Id.,</em> (1990), 52 Ohio \
+                      St.3d 155, 157, citing, <em>Santosky v. Kramer</em> (1982), 455 U.S. 745, \
+                      753.</p>";
+        let citations = crate::find::get_citations(
+            "",
+            false,
+            markup,
+            &[crate::CleanStep::Html, crate::CleanStep::InlineWhitespace],
+        );
+        let resolutions = resolve_citations(&citations);
+        let murray = resolutions
+            .iter()
+            .find(|(resource, _)| resource.citation.matched_text() == "52 Ohio St.3d 155")
+            .map(|(_, cites)| cites.iter().map(|c| c.type_name()).collect::<Vec<_>>());
+        assert_eq!(
+            murray,
+            Some(vec!["FullCaseCitation", "IdCitation", "FullCaseCitation"])
+        );
+    }
+
+    /// What the one id. citation in `text` resolves to.
+    fn id_resolution(text: &str) -> Option<String> {
+        resolved(text)
+            .into_iter()
+            .find(|(kind, _)| *kind == "IdCitation")
+            .and_then(|(_, resource)| resource)
+    }
+
+    // "Id." for the same case name before another decision in the same case
+    // (courtlistener-10pct/5509821, 225404).
+    #[test]
+    fn test_id_as_case_name_of_a_later_decision() {
+        let text = "Grain Cleaner Co. v. Smith, 110 N. Y. 83, 17 N. E. 671; Id., 34 Hun, 91.";
+        assert_eq!(id_resolution(text), to("34 Hun, 91"));
+        let text = "First National Benefit Society v. Stuart, 9 Cir., 134 F.2d 438; Id., 9 Cir., \
+                    152 F.2d 298; Commissioner v. National Reserve Ins. Co., 7 Cir., 129 F.2d 1.";
+        assert_eq!(id_resolution(text), to("152 F.2d 298"));
+        let text = "Duckworth v. Thompson (Tex.Com.App.) 37 S.W.2d 731, 733; Id. (Tex.Civ.App.) \
+                    22 S.W.2d 528, 530.";
+        assert_eq!(id_resolution(text), to("22 S.W.2d 528"));
+    }
+
+    // An id. citation followed by another case's name is an id. of the
+    // citation before it (courtlistener-10pct/2966729, 1937908).
+    #[test]
+    fn test_id_before_another_case_is_its_own() {
+        let text = "Smith v. Jones, 1 U.S. 1 (1990). It may award whatever damages are incident \
+                    to the complaint. Id. Soviero v. United States, 967 F.2d 791, 793 (2d Cir. \
+                    1992).";
+        assert_eq!(id_resolution(text), to("1 U.S. 1"));
+        let text = "Smith v. Jones, 1 U.S. 1 (1990). We will strike the reply brief. Id., Jacober \
+                    v. High Hill Realty, Inc., 22 Md. App. 115, 321 A.2d 838 (1974).";
+        assert_eq!(id_resolution(text), to("1 U.S. 1"));
+    }
+
+    // A resolver of its own resolves each full citation once, and the id.
+    // citation follows the citation it names.
+    #[test]
+    fn test_id_as_case_name_with_a_custom_resolver() {
+        struct ById(Vec<String>);
+        impl Resolver for ById {
+            type Resource = String;
+            fn resolve_full(&mut self, citation: &Citation) -> Option<String> {
+                self.0.push(citation.matched_text().to_string());
+                Some(format!("case:{}", citation.matched_text()))
+            }
+        }
+        let text = "Grain Cleaner Co. v. Smith, 110 N. Y. 83, 17 N. E. 671; Id., 34 Hun, 91.";
+        let citations = crate::find::get_citations(text, false, "", &[]);
+        let mut resolver = ById(Vec::new());
+        let groups = resolve_citations_with(&citations, &mut resolver);
+        assert_eq!(resolver.0, ["110 N. Y. 83", "17 N. E. 671", "34 Hun, 91"]);
+        let hun: Vec<_> = groups["case:34 Hun, 91"]
+            .iter()
+            .map(|c| c.type_name())
+            .collect();
+        assert_eq!(hun, ["IdCitation", "FullCaseCitation"]);
     }
 }
