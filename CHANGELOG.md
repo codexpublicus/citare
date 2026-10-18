@@ -4,6 +4,12 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.1 - 2026-10-18
+
+### Fixes
+
+- *(core)* Take a year between the case name and the volume as the citation's own ([#89](https://github.com/codexpublicus/citare/pull/89))
+
 ## v0.7.0 - 2026-10-18
 
 ### Breaking changes
