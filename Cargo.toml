@@ -5,6 +5,7 @@ members = [
     "crates/citare-wasm",
     "crates/citare-data-build",
     "crates/citare-cli",
+    "crates/citare-py",
 ]
 
 [workspace.package]

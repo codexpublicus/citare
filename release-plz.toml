@@ -20,13 +20,13 @@ git_release_enable = false
 semver_check = false
 allow_dirty = false
 
-# All four crates share the workspace version and release together.
+# All five crates share the workspace version and release together.
 [[package]]
 name = "citare-core"
 version_group = "citare"
 git_tag_enable = true
 git_release_enable = true
-changelog_include = ["citare-data-build", "citare-wasm", "citare-cli"]
+changelog_include = ["citare-data-build", "citare-wasm", "citare-cli", "citare-py"]
 
 [[package]]
 name = "citare-data-build"
@@ -40,6 +40,15 @@ changelog_update = false
 
 [[package]]
 name = "citare-cli"
+version_group = "citare"
+changelog_update = false
+
+# The Python package (crates/citare-py). maturin takes the wheel's version
+# from this crate's, so the wheel is versioned with the rest. Its Cargo.toml
+# also says publish = false, and its pyproject.toml has the "Private :: Do
+# Not Upload" classifier, so neither crates.io nor PyPI gets it.
+[[package]]
+name = "citare-py"
 version_group = "citare"
 changelog_update = false
 
