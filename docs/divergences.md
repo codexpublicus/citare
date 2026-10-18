@@ -23,6 +23,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [Supra after parallel citations](#supra-after-parallel) | #60 | drafted in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 | [Codes cited by subject keep the subject](#law-subject-split) | #49 | drafted in [`law-subject-split.md`](eyecite-issue-drafts/law-subject-split.md) |
 | [State-code statute forms](#state-code-forms) | #69 | drafted in [`state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md) (reporters-db) |
+| [Parallel citation groups stay within one decision](#parallel-groups) | #66 | drafted in [`parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -424,3 +425,121 @@ changes 81 `U.S.C.` citations in the ten-percent sample.
 
 The forms belong in reporters-db's laws data, where they would reach eyecite too; a draft
 issue is in [`eyecite-issue-drafts/state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md).
+
+<a id="parallel-groups"></a>
+## Parallel citation groups stay within one decision
+
+A decision cited in parallel is one full case citation per reporter, and eyecite and citare
+give them all the case name: `Smith v. Jones, 275 Conn. 38, 881 A.2d 194` is two citations of
+one decision, named `Smith v. Jones` and with one full span start. That shared start is what
+marks a parallel group, for the name and year copied across in `find` and for the
+[supra rule](#supra-after-parallel) in `resolve`. eyecite finds a citation's case name by
+searching back from it for a `v.` or another stop word, and the search passes over any
+citations on the way. A citation of a second decision that has no `v.` of its own between it
+and the first decision's citations takes the first decision's name, start and year, and the
+two read as one decision.
+
+citare's search passes over an earlier citation only when nothing but pin cites and
+punctuation stand between them (pages and ranges, `n. 6`, `¶ 19`, `418(II)`, brackets and
+parentheses, a reporter citare doesn't know such as `2 OBR 380` or `27 L.R.A. (N.S.) 435`) and
+the two are in different reporters, since a decision is printed once in each. Anything else
+between them, such as `affd.`, `cert. den.`, `and`, a short case name, `Matter of`, or a year
+in parentheses that closes the first citation, ends the search, and the case name is whatever
+follows the earlier citation, if anything does. The search for a plaintiff after a `v.`
+stops at an earlier citation the same way, as does an emphasis tag that holds an earlier
+citation or a semicolon. A full case citation that directly follows another with only pin
+cites and punctuation between them joins its group, even when its own search for a name ends
+elsewhere. The search looks back only 28 words, so in `Texas Industries, 451 U.S. at 629, 101
+S.Ct. at 2061, and Northwest Airlines, Inc. v. Transport Workers Union of America, 451 U.S. 77,
+101 S.Ct. 1571, 67 L.Ed.2d 750` the first two citations stop at `101 S.Ct. at 2061` and find
+`Northwest Airlines, Inc.`, while the third runs out of words first and finds `Inc.`, as eyecite
+does for all three.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `(citing <i>Sutton v. Elrod,</i> 724 So.2d 551 (Ala.Civ.App.1998); <i>Beasley,</i> 564 So.2d 959 (Ala.Civ.App.1990))` | one group; `564 So.2d 959` is `Sutton v. Elrod` | two decisions; `564 So.2d 959` is `Beasley` |
+| `(<i>see Matter of Jamal B. v Danielle C.,</i> 38 AD3d 908 [2007]; <i>Matter of Marie H,</i> 25 AD3d 704 [2006])` | one group, both `Matter of Jamal B. v Danielle C.` | two; `25 AD3d 704` is `Matter of Marie H` |
+| `<i>Zink v. McManus</i> (49 Hun, 583; affd., 121 N. Y. 259)` | one group | two; the affirmance has no case name |
+| `<i>Flaksa v. Little River Marine Construction Co.,</i> 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968)` | one group of four | the court of appeals' citation alone; the three certiorari citations have no case name |
+| `See <i>Commonwealth v. Hart,</i> 470 Mass. 837 and 472 Mass. 448 (2015)` | one group | two |
+| `Perry v. Beverage, 121 Wash. 652, 209 P. 1102 (1922), 214 P. 146 (1923)` | one group of three | `121 Wash. 652` and `209 P. 1102`; `214 P. 146`, the opinion on rehearing, alone |
+| `in Daubert, 509 U.S. 579, 113 S.Ct. 2786, 125 L.Ed.2d 469, and Kumho Tire, 526 U.S. 137, 119 S.Ct. 1167, 143 L.Ed.2d 238` | one group of six, all `Daubert` | `Daubert` and `Kumho Tire`, three each |
+| `McMann v. Richardson, 397 U.S. 759, 90 S.Ct. 1441, 25 L.Ed.2d 763 (1970) and Brady v. United States, 397 U.S. 742, 90 S.Ct. 1463, 25 L.Ed.2d 747 (1970)` | `397 U.S. 742` and `90 S.Ct. 1463` are `Richardson`, plaintiff `""`; `25 L.Ed.2d 747` alone is `Brady v. United States` | two groups of three, `McMann v. Richardson` and `Brady v. United States` |
+| `Northwest Airlines, Inc. v. Transport Workers Union of America, 451 U.S. 77, 101 S.Ct. 1571, 67 L.Ed.2d 750`, after `Texas Industries, 451 U.S. at 629, 101 S.Ct. at 2061, and` | one group, plaintiff `Inc.` | one group, plaintiff `Northwest Airlines, Inc.` |
+| `Wade v. State, 236 Ind. 350, 140 N.E.2d 98, and Hughes v. State, 212 Ind. 577, 10 N.E.2d 629` | two groups; the second has plaintiff `""` | two; the second is `Hughes v. State` |
+| `<em>Bate v. Hill, 1 Car. & P., 100; Turnpike Co. v. Loomis, 32 N. Y., 127; La Beau v. The People, 34 N. Y., 223; Com. v. Jennings, 107 Mass., 488.</em>` | one group of three, all plaintiff `Bate` | three decisions, each with its own name |
+| `Celotex Corp. v. Catrett, 477 U.S. 317, 322, 106 S.Ct. 2548; Anderson v. Liberty Lobby, Inc., 477 U.S. 242, 248, 106 S.Ct. 2505` | two groups | the same |
+| `People v Smith, 392 Mich 30, 35; 219 NW2d 41 (1974)`, in markup | one group | the same |
+
+The last two rows are the forms that stay as they were: the citing list from #66 already gave
+two groups, and Michigan separates parallel citations with a semicolon. Two things are left
+out. A later decision's own parallel citations in subsequent history (`cert. den., 392 U.S.
+928, 88 S.Ct. 2287, 20 L.Ed.2d 1387`) have no case name, so they form no group; eyecite put
+them in the first decision's group. And an opinion and its rehearing in one reporter (`86 Cal.
+449 [25 P. 16, 26 P. 800]`) are split, though one case.
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), I counted groups as runs of full
+case citations, in output order, with one full span start. There were 19,518 before and are
+19,666 after. I flagged a group as spanning two decisions when some pair of its citations has
+subsequent history, a new case name or a closing year between them: 448 groups before, 3
+after, and those 3 are one correct group (`Housel v. Pacific Elec. Ry. Co., 167 Cal. 245 [139
+P. 73, Ann.Cas. 1915C 665, 51 L.R.A.N.S. 1105]`) that the flag misreads. eyecite 2.7.8's
+search is the same as citare's was, so it has the same 448.
+
+787 pairs of citations are no longer in one group:
+
+| Between the two citations | Pairs |
+|---|---:|
+| subsequent history (`affd.`, `cert. den.`, `rev. den.`, `modified`) | 297 |
+| a new case name (`; Matter of Daniel C.,`, `, and Troxel,`) | 158 |
+| a closing year (`(1922),`, `[2007];`) | 21 |
+| other text (court parentheticals, footnote markers, a sentence break, `and`) | 91 |
+| only pin cites and punctuation, in one reporter (rehearings, repeated citations, two annotations) | 95 |
+| only pin cites and punctuation, the parallel citations of a later decision in subsequent history | 108 |
+| only pin cites and punctuation, otherwise | 17 |
+
+The 17 are a typo (`305 U.S. 197. 229, 59 S.Ct. 206`), nameless citations after an earlier
+decision (`and 20 N.J. 537, 120 A.2d 442`), a bracketed year in the middle of a group (`3 N.J.
+450, [1950], 70 A.2d 736`) and a run of nameless authorities (`1 Edw. Ch. 396; 11 Wheat. 78`).
+784 pairs are newly in one group. I read 25 of them, drawn at random, in context: all 25 are
+parallel citations of one decision, most of them Michigan's semicolons in plain text, which
+eyecite's plain-text search stops at, and citations past the 28-word window. In all, the
+plaintiff changes on 1,641 citations, the defendant on 1,800, the full span on 1,975 and the
+year on 352, and 5 opinions gain 6 reference or supra citations that a wrong case name or an
+overlong full span had hidden; none loses one.
+
+In `resolve`, 60 short, supra and reference citations resolve that didn't (37 supras, 20
+references, 3 short cites); I read 16 of them, drawn at random, and each resolves to the case
+the text names (`Keko Industries, supra` to `192 Ct.Cl. 773`, `Cimino` to `54 AD2d 843`, `First
+Nationwide` to `27 F.3d 763`). 20 no longer resolve. 13 are references to a decision that is
+now one group of several citations, which the rule for references doesn't cover yet (#67). Two
+are a supra of `Brown v. Liberty Loan Corp. of Duval`, now two decisions with one name (`392
+F.Supp. 1023 (M.D.Fla.1975), rev'd, 539 F.2d 1355`), which leaves a bare supra ambiguous by
+the [supra rule](#supra-after-parallel). Two are a page typo in the opinion (`169 So. 39` and
+`169 So. 40` for one decision), two are short cites after a pin cite read as a full citation
+(`Id., 340 U.S. 478, 479, 71 S.Ct., 460`), and one is an id. citation. 4 resolve to a different
+citation: a supra of `Stanford v. Texas` moves to the first citation of the same decision, and
+three id. citations used as "the same case name" before another decision's citation (`In re
+Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S. 645, 651. Id.,
+(1990), 52 Ohio St.3d 155`) now follow eyecite's rule and resolve to the citation before them.
+For two of them that is another decision in the same case; for Murray it is Stanley v.
+Illinois, which is wrong. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
+opinions against 1.83 to 1.94 before).
+
+### Tests
+
+- `crates/citare-core/tests/parallel_groups.rs`: each row of the table, the pin cite forms
+  that must stay grouped (`301(4)(b)`, `703 and n. 6`, `136-160`, `418(II)`, `74 PUR4th 464`,
+  `----`, `et seq.`, `syllabus ¶ 3`, `Ann. Cas. 1918C, 529`, `s.c.`, `27 L.R.A. (N.S.) 435`, a
+  bracketed pin `[1082]`), a citation past the search window, and two citations in one
+  reporter.
+- citation-bench `vectors/divergences/`: 11 `find` vectors and 2 `resolve` vectors
+  (`parallel-groups/...`), the `resolve` ones a supra of `Kumho Tire` and of `Beasley`, which
+  eyecite leaves unresolved. eyecite's misses are in `baselines/eyecite.known-differences`.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md).
