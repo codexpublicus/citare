@@ -47,9 +47,16 @@ changelog_update = false
 # from this crate's, so the wheel is versioned with the rest. Its Cargo.toml
 # also says publish = false, and its pyproject.toml has the "Private :: Do
 # Not Upload" classifier, so neither crates.io nor PyPI gets it.
+#
+# release = false until a release tag contains this crate. With the
+# shared `v{{ version }}` tag name, release-plz takes v0.6.0 as its last
+# release and looks for it in a worktree of that tag, which predates the
+# crate (#83), so release-pr fails with "cannot find package". The crate's
+# version comes from the workspace, so it still moves with the others.
+# Remove this line after the first release that includes crates/citare-py.
 [[package]]
 name = "citare-py"
-version_group = "citare"
+release = false
 changelog_update = false
 
 [changelog]
