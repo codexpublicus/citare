@@ -26,6 +26,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [Parallel citation groups stay within one decision](#parallel-groups) | #66 | drafted in [`parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md) |
 | [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 | [An id. citation as a case name](#id-as-case-name) | #78 | drafted in [`id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md) |
+| [A year between the case name and the volume](#year-before-volume) | #85 | drafted in [`year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -678,3 +679,64 @@ No other citation's resolution changes.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md).
+
+<a id="year-before-volume"></a>
+## A year between the case name and the volume
+
+Ohio, California, Illinois, Indiana, Montana and other state courts print the year between the
+case name and the volume: `Stanley v. Illinois (1972), 405 U.S. 645, 651` or `Boller v. Signal
+Oil & Gas Co. (1964) 230 Cal. App.2d 648`. That year is the citation's own. eyecite takes it
+when it finds the case name in plain text, but not when it finds the name in emphasis tags,
+and then takes the year of the next parenthetical, which can belong to another decision. In
+plain text it takes a year from any word that starts with one in parentheses, so a sentence
+that ends `(1911).` gives its year to the next sentence's citation.
+
+citare takes the year right before the volume, alone (`(1964)`) or with a comma (`(1972),`),
+in plain text and in markup, ahead of any year after the citation, and leaves it out of the
+defendant. A year in parentheses with other punctuation, or with a comma but further back,
+isn't the citation's year.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `<em>Stanley v. Illinois</em> (1972), 405 U.S. 645, 651.</p><p>4 <em>Id.,</em> (1990), 52 Ohio St.3d 155` | year **1990** | 1972 |
+| `( <em>Boller v. Signal Oil &amp; Gas Co.</em> (1964) 230 Cal. App.2d 648, 656 [41 Cal. Rptr. 206].)` | **no year** | 1964, both citations |
+| `this Court. <em>Holm; In Re Carroll's Estate</em> (1921), 59 Mont. 403, 413.` | **no year** | 1921 |
+| `Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).` | year **1911**, defendant **`Dr. Miles`** | 1967 |
+| `See Troop A Riding Academy v. Miller (1934), 127 Ohio 545, 189 N.E. 650.` | 1934, defendant `Miller` | 1934, defendant `Miller` |
+
+Before #85 citare matched only a year that was a word of its own, so in plain text it missed
+`(1934),` too, gave the defendant `Miller (1934)` and took no year or a later one.
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions, all markup), 4,258 citations in 264
+opinions change year: 3,703 get a year where they had none and 555 change from one year to
+another. I read 50 of each, drawn at random, in context, and all 100 now have the year printed
+before their volume, which is the decision's year (`People v. Berry (1967), 37 Ill.2d 329` was
+1975, `Webster v. Doe (1988), 486 U.S. 592` was 1979, `Phoenix Ins. Co. v. Quinette (1912), 36
+Okla. 384` was 1894). The parallel citations after the volume get the year too, as they get
+the case name. 491 defendants lose a trailing year (`Ohio (1968)` becomes `Ohio`), 30
+defendants such as `1977)` in `cert. denied (1977), 434 U.S. 894` become none, and with them
+the full spans of those 30 start at the volume. Three `Wash.` citations are no longer
+ambiguous, because the year picks their edition.
+
+eyecite's own test `test_markup_plaintiff_and_antecedent_guesses` checks the parties of
+`<em>Holm; In Re Carroll's Estate</em> (1921), 59 Mont. 403`, not its year; the citation-bench
+vector captured from it (`eyecite-2.7.8/find/test_markup_plaintiff_and_antecedent_guesses/21`)
+records eyecite's missing year, and citare now fails it.
+
+### Tests
+
+- `crates/citare-core/src/find.rs`: `test_year_before_volume_plain` (Murray and Stanley v.
+  Illinois, Troop A Riding Academy v. Miller, and two years that end an earlier sentence or
+  name) and `test_year_before_volume_markup` (Stanley v. Illinois and Santosky v. Kramer in
+  markup, a parallel citation, a year that ends an earlier sentence, and a year that closes an
+  earlier citation).
+- citation-bench: none yet. The `test_markup_plaintiff_and_antecedent_guesses/21` vector
+  needs a place in `baselines/citare.known-failures`, and the table's rows can become
+  `vectors/divergences/` vectors.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md).
