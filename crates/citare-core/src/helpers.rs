@@ -161,6 +161,38 @@ pub(crate) fn joins_parallel_cites(words: &Tokens, earlier: usize, later: usize)
     !re_closing_year().is_match(&between) && re_parallel_glue().is_match(&between)
 }
 
+/// Whether the citation token at word `index`, or one before it, starts
+/// at byte `start`.
+pub(crate) fn start_of_citation(words: &Tokens, index: usize, start: usize) -> bool {
+    for word in words[..=index.min(words.len().saturating_sub(1))]
+        .iter()
+        .rev()
+    {
+        let TokenOrStr::Token(token) = word else {
+            continue;
+        };
+        if token.start() < start {
+            return false;
+        }
+        if token.start() == start {
+            return matches!(token, Token::Citation(_));
+        }
+    }
+    false
+}
+
+/// Whether two full case citations without a case name, at words `earlier`
+/// and `later`, are parallel citations of one decision (#78): what
+/// [`joins_parallel_cites`] allows, without a semicolon. A run like "cert.
+/// den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387" is one decision in
+/// three reporters, and has no name because the subsequent history before
+/// it ends the search for one. A semicolon between nameless citations
+/// separates authorities in a string cite ("1 Edw. Ch. 396; 11 Wheat. 78").
+pub(crate) fn joins_nameless_parallel_cites(words: &Tokens, earlier: usize, later: usize) -> bool {
+    joins_parallel_cites(words, earlier, later)
+        && !extract_text(words, earlier + 1, later).contains(';')
+}
+
 // ---------------------------------------------------------------------------
 // Courts data
 // ---------------------------------------------------------------------------

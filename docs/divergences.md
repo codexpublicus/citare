@@ -25,6 +25,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [State-code statute forms](#state-code-forms) | #69 | drafted in [`state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md) (reporters-db) |
 | [Parallel citation groups stay within one decision](#parallel-groups) | #66 | drafted in [`parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md) |
 | [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
+| [An id. citation as a case name](#id-as-case-name) | #78 | drafted in [`id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -461,7 +462,7 @@ does for all three.
 | `(citing <i>Sutton v. Elrod,</i> 724 So.2d 551 (Ala.Civ.App.1998); <i>Beasley,</i> 564 So.2d 959 (Ala.Civ.App.1990))` | one group; `564 So.2d 959` is `Sutton v. Elrod` | two decisions; `564 So.2d 959` is `Beasley` |
 | `(<i>see Matter of Jamal B. v Danielle C.,</i> 38 AD3d 908 [2007]; <i>Matter of Marie H,</i> 25 AD3d 704 [2006])` | one group, both `Matter of Jamal B. v Danielle C.` | two; `25 AD3d 704` is `Matter of Marie H` |
 | `<i>Zink v. McManus</i> (49 Hun, 583; affd., 121 N. Y. 259)` | one group | two; the affirmance has no case name |
-| `<i>Flaksa v. Little River Marine Construction Co.,</i> 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968)` | one group of four | the court of appeals' citation alone; the three certiorari citations have no case name |
+| `<i>Flaksa v. Little River Marine Construction Co.,</i> 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968)` | one group of four | the court of appeals' citation alone; the three certiorari citations a group of their own, with no case name |
 | `See <i>Commonwealth v. Hart,</i> 470 Mass. 837 and 472 Mass. 448 (2015)` | one group | two |
 | `Perry v. Beverage, 121 Wash. 652, 209 P. 1102 (1922), 214 P. 146 (1923)` | one group of three | `121 Wash. 652` and `209 P. 1102`; `214 P. 146`, the opinion on rehearing, alone |
 | `in Daubert, 509 U.S. 579, 113 S.Ct. 2786, 125 L.Ed.2d 469, and Kumho Tire, 526 U.S. 137, 119 S.Ct. 1167, 143 L.Ed.2d 238` | one group of six, all `Daubert` | `Daubert` and `Kumho Tire`, three each |
@@ -473,11 +474,19 @@ does for all three.
 | `People v Smith, 392 Mich 30, 35; 219 NW2d 41 (1974)`, in markup | one group | the same |
 
 The last two rows are the forms that stay as they were: the citing list from #66 already gave
-two groups, and Michigan separates parallel citations with a semicolon. Two things are left
-out. A later decision's own parallel citations in subsequent history (`cert. den., 392 U.S.
-928, 88 S.Ct. 2287, 20 L.Ed.2d 1387`) have no case name, so they form no group; eyecite put
-them in the first decision's group. And an opinion and its rehearing in one reporter (`86 Cal.
-449 [25 P. 16, 26 P. 800]`) are split, though one case.
+two groups, and Michigan separates parallel citations with a semicolon.
+
+A later decision's own parallel citations in subsequent history (`cert. den., 392 U.S. 928, 88
+S.Ct. 2287, 20 L.Ed.2d 1387`) have no case name, because the history phrase ends the search for
+one. Since #78 they are a group of their own and take nothing from the decision before them:
+two full case citations without a case name join when only commas, pin cites and punctuation
+stand between them, and the run's full span starts at its first citation. A semicolon ends a
+nameless run, since between nameless citations it separates authorities in a string cite
+(`cert. denied, 439 U.S. 868, 99 S.Ct. 195, 58 L.Ed.2d 179; 436 U.S. 929, 98 S.Ct. 2828`). In
+markup eyecite puts the certiorari citations in the first decision's group; in plain text it
+gives each its own full span, so they form no group, and each copies the year of the nameless
+citation before it, whatever stands between them. One thing is left out: an opinion and its
+rehearing in one reporter (`86 Cal. 449 [25 P. 16, 26 P. 800]`) are split, though one case.
 
 ### Evidence
 
@@ -526,8 +535,25 @@ three id. citations used as "the same case name" before another decision's citat
 Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S. 645, 651. Id.,
 (1990), 52 Ohio St.3d 155`) now follow eyecite's rule and resolve to the citation before them.
 For two of them that is another decision in the same case; for Murray it is Stanley v.
-Illinois, which is wrong. Speed is unchanged (1.79 to 1.81 ms/KB on the 30 largest
-opinions against 1.83 to 1.94 before).
+Illinois, which is wrong. #78 resolves all three to the citation the id. citation names (see
+[an id. citation as a case name](#id-as-case-name)). Speed is unchanged (1.79 to 1.81 ms/KB on
+the 30 largest opinions against 1.83 to 1.94 before).
+
+Nameless runs (#78), on the same sample: 2,679 pairs of citations are newly in one group and
+none leave one, so there are 21,335 groups of two or more citations, up from 19,666. 2,004 of
+the pairs follow a history phrase I could match (`cert. denied`, `aff'd`, `rev'd`, `reh. den.`,
+`disc. review denied`, `on remand`); most of the other 675 follow one my pattern missed
+(`cert. denied, ___ U.S. ___,`), and the rest are an opinion's own parallel citations in its
+header (`301 F.2d 506 112 U.S.App.D.C. 182`) or nameless citations in a quotation or
+parenthetical (`(400 U.S. 74, 87-88, 27 L.Ed.2d 213, 226, 91 S.Ct. 210, 219.)`). I read 30 of
+the 2,679, drawn at random, in context, and 40 of the 675: each is the parallel citations of
+one decision. The full span changes on the 2,679 later citations of each run and on nothing
+else. The year changes on 65 citations, because eyecite's rule copied the year of whatever
+nameless citation came before: 46 now have the year the text gives their decision
+(`cert. dismissed, 329 U.S. 694, 67 S.Ct. 629, 91 L.Ed. 607 (1947)` had 1946, from the
+certiorari denial before it), 5 have a wrong year where they had none (a run with no year of
+its own takes one from a parenthetical later in the sentence), and 14 were wrong or missing
+before and still are. In `resolve`, no short, supra or reference citation changes.
 
 ### Tests
 
@@ -535,7 +561,9 @@ opinions against 1.83 to 1.94 before).
   that must stay grouped (`301(4)(b)`, `703 and n. 6`, `136-160`, `418(II)`, `74 PUR4th 464`,
   `----`, `et seq.`, `syllabus ¶ 3`, `Ann. Cas. 1918C, 529`, `s.c.`, `27 L.R.A. (N.S.) 435`, a
   bracketed pin `[1082]`), a citation past the search window, and two citations in one
-  reporter.
+  reporter; for #78, nameless runs after `cert. den.` in markup and plain text (with their
+  full span starts and years), two runs in a row, a run that stops at a semicolon, and a
+  header's semicolon-separated citations that stay grouped.
 - citation-bench `vectors/divergences/`: 11 `find` vectors and 2 `resolve` vectors
   (`parallel-groups/...`), the `resolve` ones a supra of `Kumho Tire` and of `Beasley`, which
   eyecite leaves unresolved. eyecite's misses are in `baselines/eyecite.known-differences`.
@@ -593,3 +621,60 @@ v. Puksar (597 Pa. 240 and 559 Pa. 358).
 Not filed; it is the same fix as the supra case, and the draft in
 [`eyecite-issue-drafts/supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md)
 covers both.
+
+<a id="id-as-case-name"></a>
+## An id. citation as a case name
+
+Older opinions, and some Ohio ones, write `Id.` for "the same case name" before a full citation
+of another decision: `Grain Cleaner Co. v. Smith, 110 N. Y. 83, 17 N. E. 671; Id., 34 Hun, 91`
+cites the Court of Appeals' decision and then the General Term's decision in the same case. The
+id. citation stands for the name of the citation after it, and refers to that citation's
+decision. eyecite resolves every id. citation to the citation before it in its output, which
+here is `17 N. E. 671`, the other decision. Whether it gets the right one depends on how the
+citations sort: in `In re Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972),
+405 U.S. 645, 651. Id., (1990), 52 Ohio St.3d 155` eyecite names the second Ohio citation
+`Stanley v. Illinois`, its full span then starts before the id. citation and sorts first, and
+the id. citation resolves to Murray. citare's case name stops at the id. citation (#66), the id.
+citation sorts first, and by eyecite's rule it resolved to Stanley v. Illinois.
+
+citare resolves an id. citation without a pin cite to the full case citation right after it
+when that citation's case name is the id. citation and at most a court or year in parentheses
+or an old circuit (`Id., (1990),`, `Id. (Tex.Civ.App.)`, `Id., 9 Cir.,`). The id. citation then
+goes before that citation in its group, as in the text. An id. citation followed by another
+case's name (`Id. Soviero v. United States, 967 F.2d 791`, `Id., Jacober v. High Hill Realty`)
+is an id. of the citation before it, as in eyecite.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Grain Cleaner Co. v. Smith, 110 N. Y. 83, 17 N. E. 671; Id., 34 Hun, 91.` | `Id.` resolves to `17 N. E. 671` | `34 Hun, 91` |
+| `First National Benefit Society v. Stuart, 9 Cir., 134 F.2d 438; Id., 9 Cir., 152 F.2d 298` | `134 F.2d 438` | `152 F.2d 298` |
+| `In re Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), 405 U.S. 645, 651. Id., (1990), 52 Ohio St.3d 155, 157` | `52 Ohio St.3d 155`, with the second Ohio citation named `Stanley v. Illinois` | `52 Ohio St.3d 155` |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), 13 id. citations resolve differently,
+and I read each in context. 10 move from the citation before them to the decision they name:
+Murray (`courtlistener-10pct/3759943`), Grain Cleaner, First National Benefit Society, `Quill v.
+Railroad Co., 16 Daly, 313, 11 N. Y. Supp. 80; Id., 126 N. Y. 629`, `Duckworth v. Thompson
+(Tex.Com.App.) 37 S.W.2d 731; Id. (Tex.Civ.App.) 22 S.W.2d 528`, `Green v. M. P. Ry. Co., 38
+Iowa 100; Id., 41 Iowa 410`, `Wright v. Gardner, 98 Ky. 454, 33 S.W. 622; Id., 98 Ky. 463`,
+`Smith v. Ojerholm, 93 Tex. 35, 53 S.W. 341; Id., 51 S.W. 37, Id., 18 Tex. Civ. App. 111`
+(two) and `Thompson v. Thompson, 218 U. S. 611, ..., affirming Id., 31 App. D. C. 557`. One
+(`Id., 883 N.Y.S.2d 763, 911 N.E.2d at 829-31`) moves to another reporter's citation of the
+same decision. Two resolve where they didn't: `Id., 340 U.S. 478, 479, 71 S.Ct., 460` and
+`Id., 340 U.S. 488, 71 S.Ct. at 464` now go with the citation after them, which citare reads
+as a full citation though it is a pin cite into Universal Camera Corp. v. NLRB, 340 U.S. 474.
+No other citation's resolution changes.
+
+### Tests
+
+- `crates/citare-core/src/resolve.rs`: the three rows of the table, `Id. (Tex.Civ.App.)`,
+  Murray in markup with the id. citation's place in its group, two id. citations followed by
+  another case's name, and a resolver of its own, which resolves each full citation once.
+- citation-bench: none yet; vectors are proposed in
+  [citation-bench#32](https://github.com/codexpublicus/citation-bench/issues/32).
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md).

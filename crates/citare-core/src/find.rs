@@ -10,7 +10,8 @@ use crate::helpers::{
     add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation,
     disambiguate_reporters, extract_pin_cite, extract_section_pin_cite, filter_citations,
     find_case_name, find_case_name_in_html, find_case_name_in_html_short, find_case_name_short,
-    guess_court, guess_edition, joins_parallel_cites,
+    guess_court, guess_edition, joins_nameless_parallel_cites, joins_parallel_cites,
+    start_of_citation,
 };
 use crate::models::citation::{
     normalize_blank_page, CaseMetadata, Citation, CitationCommon, FullCaseCitationData,
@@ -191,14 +192,10 @@ pub fn get_citations_from_document_with(
 
                     // Check for parallel citations
                     if !citations.is_empty() {
-                        if let (Citation::FullCase(_), Some(Citation::FullCase(_))) =
-                            (&citation, citations.last())
+                        if let (Citation::FullCase(_), Some(preceding @ Citation::FullCase(_))) =
+                            (&citation, citations.last_mut())
                         {
-                            handle_parallel_citation(
-                                &mut citation,
-                                citations.last().unwrap(),
-                                &document.words,
-                            );
+                            handle_parallel_citation(&mut citation, preceding, &document.words);
                         }
                     }
 
@@ -616,18 +613,47 @@ fn extract_id_citation(words: &Tokens, index: usize) -> (Citation, Vec<usize>) {
 /// between them (see [`joins_parallel_cites`]). The second case is for a
 /// citation whose own search for a case name ended elsewhere, such as past
 /// the 28 words it looks back.
-fn handle_parallel_citation(current: &mut Citation, preceding: &Citation, words: &Tokens) {
-    if let (Citation::FullCase(ref mut cur_data), Citation::FullCase(ref pre_data)) =
+///
+/// Two citations that found no case name join when only commas, pin cites
+/// and punctuation stand between them (see
+/// [`joins_nameless_parallel_cites`]): the run starts at the first
+/// citation's own text, which becomes the full span start of every
+/// citation in it (#78).
+fn handle_parallel_citation(current: &mut Citation, preceding: &mut Citation, words: &Tokens) {
+    if let (Citation::FullCase(ref mut cur_data), Citation::FullCase(ref mut pre_data)) =
         (current, preceding)
     {
-        let pre_start = pre_data.resource.common.full_span_start;
+        // A run of citations without a case name (#78), which may not cross
+        // a semicolon. Its full span starts at its first citation.
+        let pre_common = &pre_data.resource.common;
+        let pre_span_start = pre_common
+            .span_start
+            .unwrap_or_else(|| pre_common.token.start());
+        let nameless = cur_data.resource.common.full_span_start.is_none()
+            && pre_data.metadata.plaintiff.is_none()
+            && pre_data.metadata.defendant.is_none()
+            && pre_common
+                .full_span_start
+                .is_none_or(|start| start_of_citation(words, pre_common.index, start));
+        let (pre_index, cur_index) = (
+            pre_data.resource.common.index,
+            cur_data.resource.common.index,
+        );
+        let joins = if nameless {
+            joins_nameless_parallel_cites(words, pre_index, cur_index)
+        } else {
+            joins_parallel_cites(words, pre_index, cur_index)
+        };
+        let pre_common = &mut pre_data.resource.common;
+        if joins
+            && pre_common.full_span_start.is_none()
+            && cur_data.resource.common.full_span_start.is_none()
+        {
+            pre_common.full_span_start = Some(pre_span_start);
+        }
+        let pre_start = pre_common.full_span_start;
         let same_start = cur_data.resource.common.full_span_start == pre_start;
-        let adjacent = pre_start.is_some()
-            && joins_parallel_cites(
-                words,
-                pre_data.resource.common.index,
-                cur_data.resource.common.index,
-            );
+        let adjacent = pre_start.is_some() && joins;
         if same_start || adjacent {
             cur_data.resource.common.full_span_start = pre_start;
             cur_data.metadata.defendant = pre_data.metadata.defendant.clone();
