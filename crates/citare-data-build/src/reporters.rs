@@ -240,8 +240,31 @@ pub struct LocalReporter {
     pub notes: String,
 }
 
+/// A variation in `data/reporters-local.json`: another abbreviation for an
+/// edition, named as in [`LocalEdition`], that matches only through its own
+/// regexes. reporters-db's variations take their edition's regexes, so they
+/// can't be limited to some volumes; `127 Ohio 545` is the Ohio State
+/// Reports only because the Ohio Reports have no volume 127.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalVariation {
+    pub reporter: String,
+    pub name: String,
+    pub edition: String,
+    pub variation: String,
+    pub regexes: Vec<String>,
+    /// As [`LocalEdition::examples`].
+    #[serde(default)]
+    pub examples: Vec<LocalExample>,
+    /// As [`LocalEdition::rejects`].
+    #[serde(default)]
+    pub rejects: Vec<String>,
+    /// Why the entry exists.
+    pub notes: String,
+}
+
 /// The supplement file: a comment, the editions whose regexes it replaces,
-/// and the reporters it adds.
+/// the reporters it adds, and the variations it adds.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalReporters {
@@ -250,6 +273,8 @@ pub struct LocalReporters {
     pub editions: Vec<LocalEdition>,
     #[serde(default)]
     pub reporters: Vec<LocalReporter>,
+    #[serde(default)]
+    pub variations: Vec<LocalVariation>,
 }
 
 /// Parse `data/reporters-local.json`.
@@ -258,14 +283,16 @@ pub fn parse_local_reporters(json_str: &str) -> Result<LocalReporters, serde_jso
 }
 
 /// Replace the regexes of each supplement edition in `reporters`, then add
-/// each supplement reporter. Fails when an edition entry names no edition, so
-/// a reporters-db rename can't drop one silently, and when reporters-db
-/// already has a reporter the supplement adds.
+/// each supplement reporter. Fails when an edition or variation entry names
+/// no edition, so a reporters-db rename can't drop one silently, and when
+/// reporters-db already has a reporter or variation the supplement adds.
+/// The variations themselves are added by the build, with their own regexes.
 pub fn apply_local_reporters(
     reporters: &mut ReportersMap,
     local: &LocalReporters,
 ) -> Result<(), String> {
     apply_local_editions(reporters, local)?;
+    check_local_variations(reporters, local)?;
     for l in &local.reporters {
         let clusters = reporters.entry(l.reporter.clone()).or_default();
         if clusters.iter().any(|c| c.name == l.name) {
@@ -323,6 +350,34 @@ fn apply_local_editions(
     Ok(())
 }
 
+fn check_local_variations(reporters: &ReportersMap, local: &LocalReporters) -> Result<(), String> {
+    for v in &local.variations {
+        let cluster = reporters
+            .get(&v.reporter)
+            .and_then(|clusters| clusters.iter().find(|c| c.name == v.name))
+            .filter(|c| c.editions.contains_key(&v.edition))
+            .ok_or_else(|| {
+                format!(
+                    "reporters-local.json: no edition {:?} of {:?} under {:?}",
+                    v.edition, v.name, v.reporter
+                )
+            })?;
+        if cluster.variations.contains_key(&v.variation) {
+            return Err(format!(
+                "reporters-local.json: reporters-db now has variation {:?} of {:?}; drop the local one",
+                v.variation, v.name
+            ));
+        }
+        if v.regexes.is_empty() {
+            return Err(format!(
+                "reporters-local.json: variation {:?} needs regexes",
+                v.variation
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Parse journals.json into a map of journal key → list of clusters.
 pub fn parse_journals(json_str: &str) -> Result<JournalsMap, serde_json::Error> {
     serde_json::from_str(json_str)
@@ -348,6 +403,28 @@ mod tests {
             .map(|c| c.editions.len())
             .sum();
         assert_eq!(total_editions, 1368);
+    }
+
+    fn local_variation(edition: &str, variation: &str) -> LocalReporters {
+        parse_local_reporters(&format!(
+            r##"{{"#": [], "editions": [], "variations": [{{"reporter": "Ohio St.",
+               "name": "Ohio State Reports", "edition": "{edition}", "variation": "{variation}",
+               "regexes": ["$full_cite"], "notes": ""}}]}}"##
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn local_variation_must_name_an_edition_and_be_new() {
+        let data = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
+        let mut reporters = parse_reporters(data).unwrap();
+        apply_local_reporters(&mut reporters, &local_variation("Ohio St.", "Ohio")).unwrap();
+        let err = apply_local_reporters(&mut reporters, &local_variation("Ohio St. 4th", "Ohio"))
+            .unwrap_err();
+        assert!(err.contains("no edition"), "{err}");
+        let err = apply_local_reporters(&mut reporters, &local_variation("Ohio St.", "O.S."))
+            .unwrap_err();
+        assert!(err.contains("now has variation"), "{err}");
     }
 
     #[test]
