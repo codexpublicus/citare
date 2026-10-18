@@ -11,10 +11,9 @@ test_api.py checks citare's base Tokenizer on a sample.
 from copy import copy
 
 import pytest
-
-from citare import get_citations
 from citare.tokenizers import EXTRACTORS, Tokenizer
 
+from citare import get_citations
 from eyecite_port.factories import (
     case_citation,
     comparison_attrs,
@@ -913,7 +912,9 @@ def _params(pairs, name):
         if q in DIVERGENCES:
             marks.append(pytest.mark.xfail(reason=DIVERGENCES[q], strict=True))
         out.append(
-            pytest.param(q, expected, kwargs[0] if kwargs else {}, id=f"{name}-{i}", marks=marks)
+            pytest.param(
+                q, expected, kwargs[0] if kwargs else {}, id=f"{name}-{i}", marks=marks
+            )
         )
     return out
 

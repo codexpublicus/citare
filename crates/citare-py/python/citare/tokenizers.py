@@ -16,7 +16,7 @@ TokenExtractor = _citare.TokenExtractor
 __all__ = [
     "AhocorasickTokenizer",
     "EDITIONS_LOOKUP",
-    "EXTRACTORS",
+    "EXTRACTORS",  # noqa: F822 - built on first use by __getattr__
     "HyperscanTokenizer",
     "TokenExtractor",
     "Tokenizer",

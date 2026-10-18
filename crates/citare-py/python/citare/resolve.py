@@ -31,7 +31,9 @@ def resolve_full_citation(full_citation: FullCitation) -> Resource:
 
 def resolve_citations(
     citations: Iterable[CitationBase],
-    resolve_full_citation: Callable[[FullCitation], ResourceType] = resolve_full_citation,
+    resolve_full_citation: Callable[
+        [FullCitation], ResourceType
+    ] = resolve_full_citation,
     resolve_shortcase_citation: Callable[
         [ShortCaseCitation, ResolvedFullCites], ResourceType | None
     ]

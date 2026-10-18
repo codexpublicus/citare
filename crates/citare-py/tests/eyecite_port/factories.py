@@ -12,8 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from citare import models
 from citare.tokenizers import EDITIONS_LOOKUP
+
+from citare import models
 
 
 @dataclass

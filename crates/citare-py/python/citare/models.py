@@ -448,4 +448,3 @@ class Resource(ResourceType):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, Resource) and self.citation == other.citation
-
