@@ -436,3 +436,102 @@ fn semicolon_after_the_name_tag_keeps_the_name() {
     });
     assert_eq!(plaintiff.as_deref(), Some("Bentley"));
 }
+
+// --- Nameless parallel runs (#78) -------------------------------------------
+
+/// The full span start and year `find` gives each full case citation.
+fn starts_and_years(cites: &[Citation]) -> Vec<(String, Option<usize>, Option<i32>)> {
+    cites
+        .iter()
+        .filter_map(|c| match c {
+            Citation::FullCase(d) => Some((
+                c.matched_text().to_string(),
+                d.resource.common.full_span_start,
+                d.resource.year,
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+// courtlistener-10pct/1706597: the certiorari denial is one decision in
+// three reporters, with no case name of its own, and takes nothing from
+// the court of appeals' decision before it.
+#[test]
+fn nameless_run_in_subsequent_history_is_its_own_group() {
+    let text = "<p><i>Flaksa v. Little River Marine Construction Co.,</i> 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).</p>";
+    expect(
+        markup(text),
+        &[&["392 U.S. 928", "88 S.Ct. 2287", "20 L.Ed.2d 1387"]],
+    );
+    let cites = get_citations(
+        "",
+        false,
+        text,
+        &[CleanStep::Html, CleanStep::InlineWhitespace],
+    );
+    assert_eq!(defendant(&cites, "88 S.Ct. 2287"), None);
+    let plain_text = "Flaksa v. Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).";
+    let cert = plain_text.find("392 U.S.").unwrap();
+    assert_eq!(
+        starts_and_years(&get_citations(plain_text, false, "", &[])),
+        [
+            ("389 F.2d 885".to_string(), Some(0), None),
+            ("392 U.S. 928".to_string(), Some(cert), Some(1968)),
+            ("88 S.Ct. 2287".to_string(), Some(cert), Some(1968)),
+            ("20 L.Ed.2d 1387".to_string(), Some(cert), Some(1968)),
+        ]
+    );
+}
+
+// courtlistener-10pct/2464190 and 1447928: plain text, and two decisions in
+// subsequent history, each its own group with its own year.
+#[test]
+fn each_nameless_run_takes_its_own_year() {
+    expect(
+        plain("Downer v. Aquamarine Operators, Inc., 701 S.W.2d 238, 241-42 (Tex.1985), cert. denied, 476 U.S. 1159, 106 S.Ct. 2279, 90 L.Ed.2d 721 (1986)."),
+        &[&["476 U.S. 1159", "106 S.Ct. 2279", "90 L.Ed.2d 721"]],
+    );
+    let text = "cert. denied, 329 U.S. 704, 67 S.Ct. 187, 91 L.Ed. 613 (1946), cert. dismissed, 329 U.S. 694, 67 S.Ct. 629, 91 L.Ed. 607 (1947).";
+    expect(
+        plain(text),
+        &[
+            &["329 U.S. 704", "67 S.Ct. 187", "91 L.Ed. 613"],
+            &["329 U.S. 694", "67 S.Ct. 629", "91 L.Ed. 607"],
+        ],
+    );
+    let years: Vec<_> = starts_and_years(&get_citations(text, false, "", &[]))
+        .into_iter()
+        .map(|(_, _, year)| year)
+        .collect();
+    assert_eq!(
+        years,
+        [Some(1946); 3]
+            .into_iter()
+            .chain([Some(1947); 3])
+            .collect::<Vec<_>>()
+    );
+}
+
+// courtlistener-10pct/433585: a semicolon between nameless citations
+// separates two decisions.
+#[test]
+fn nameless_run_stops_at_a_semicolon() {
+    expect(
+        plain("United States v. Pope, 574 F.2d 320 (6th Cir.), cert. denied, 439 U.S. 868, 99 S.Ct. 195, 58 L.Ed.2d 179; 436 U.S. 929, 949, 98 S.Ct. 2828, 2856, 56 L.Ed.2d 774, 792 (1978)."),
+        &[
+            &["439 U.S. 868", "99 S.Ct. 195", "58 L.Ed.2d 179"],
+            &["436 U.S. 929", "98 S.Ct. 2828", "56 L.Ed.2d 774"],
+        ],
+    );
+}
+
+// courtlistener-10pct/4592185: a header's semicolon-separated parallel
+// citations, which already shared a full span start, stay grouped.
+#[test]
+fn header_parallel_cites_with_semicolons_stay_grouped() {
+    expect(
+        plain("United States Board of Tax Appeals 13 B.T.A. 1248 ; 1928 BTA LEXIS 3080 ; October 26, 1928 , Promulgated"),
+        &[&["13 B.T.A. 1248", "1928 BTA LEXIS 3080"]],
+    );
+}
