@@ -113,6 +113,50 @@ jobs:
       - name: Build WASM without embedded data
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm --no-default-features
 
+  # The Python package (crates/citare-py): build the abi3 wheel with maturin, then
+  # run its pytest suite (citare's tests and the eyecite tests it ports) against
+  # the installed wheel on the oldest and newest CPython it supports. Nothing is
+  # published.
+  python:
+    name: Python package
+    runs-on: homelab
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/homelab-setup
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-homelab-cargo-python-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-homelab-cargo-python-
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Build the wheel
+        run: uvx --from 'maturin>=1.9,<2' maturin build --release -m crates/citare-py/Cargo.toml --out dist
+
+      - name: Test the wheel
+        run: |
+          set -euo pipefail
+          for py in 3.10 3.13; do
+            echo "::group::CPython $py"
+            uv venv --python "$py" "$RUNNER_TEMP/venv-$py"
+            VIRTUAL_ENV="$RUNNER_TEMP/venv-$py" uv pip install dist/*.whl 'pytest>=8'
+            "$RUNNER_TEMP/venv-$py/bin/python" -m pytest crates/citare-py/tests -q
+            echo "::endgroup::"
+          done
+
   # Conformance ratchet (#12) and benchmark report (#35). The ratchet runs
   # citation-bench's vectors against this checkout and fails on any vector that isn't in
   # citation-bench's baselines/citare.known-failures, listing the listed ones that now
