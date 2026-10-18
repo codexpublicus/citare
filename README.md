@@ -14,7 +14,7 @@ Part of the [stare.pub](https://stare.pub) project family.
   your own resources (database ids, URLs) through pluggable resolvers
 - Annotate source text with citation markers
 - Harvard CAP slug mapping — resolve citations to [Caselaw Access Project](https://case.law) data
-- Runs natively or as WASM in browsers/Node.js
+- Runs natively, as WASM in browsers/Node.js, or from Python with eyecite's API
 
 ## Citation Types
 
@@ -44,7 +44,8 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Span offsets in UTF-8 bytes, code points or UTF-16 units (CLI `--offsets`,
   WASM `chars`/`utf16`; see [Span offsets](#span-offsets))
 - Harvard CAP slug mapping (366/399 reporters matched)
-- CLI, native Rust library, and WASM bindings
+- CLI, native Rust library, WASM bindings, and a Python package with eyecite's
+  API ([crates/citare-py](crates/citare-py/README.md))
 - Matches eyecite 2.7.8 on citation-bench: 202/202 find vectors, 269/278 on
   the v2 set; 278 tests
 - Deliberate differences from eyecite, each with its evidence from real
@@ -52,6 +53,7 @@ Part of the [stare.pub](https://stare.pub) project family.
 
 **Deferred:**
 - npm package publishing
+- PyPI publishing (the Python package builds from a checkout)
 
 Release notes are in [CHANGELOG.md](CHANGELOG.md).
 
@@ -196,6 +198,20 @@ plain.slice(...cites[0].utf16.span);        // "410 U.S. 113"
 html.slice(...cites[0].markup.utf16.span);  // "410 U.S. 113"
 ```
 
+## Quick Start (Python)
+
+```python
+# Not on PyPI. Build from a checkout: uv sync --project crates/citare-py
+from citare import get_citations, resolve_citations
+
+citations = get_citations("Foo v. Bar, 1 U.S. 1 (1999). Id. at 2.")
+resolve_citations(citations, resolve_full_citation=lambda c: lookup_id(c))
+```
+
+The package has eyecite's functions, arguments and citation classes, so code written
+against eyecite runs with `import citare` in its place; behaviour is citare's. Its
+[README](crates/citare-py/README.md) maps the API onto eyecite's and lists the gaps.
+
 ## Span offsets
 
 citare's spans are UTF-8 byte offsets, so `&text[start..end]` is free in
@@ -252,6 +268,9 @@ cargo build --release
 # WASM
 rustup target add wasm32-unknown-unknown
 cargo build --release --target wasm32-unknown-unknown -p citare-wasm
+
+# Python (a wheel in target/wheels; uv sync builds it into a venv instead)
+uvx maturin build --release -m crates/citare-py/Cargo.toml
 ```
 
 ## Conformance (citation-bench)
