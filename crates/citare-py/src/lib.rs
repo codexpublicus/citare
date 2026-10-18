@@ -95,7 +95,7 @@ fn clean_steps(steps: Option<&Bound<'_, PyAny>>, errors: &ErrorSlot) -> PyResult
                 Python::attach(|py| {
                     match func
                         .call1(py, (text,))
-                        .and_then(|r| r.extract::<String>(py).map_err(PyErr::from))
+                        .and_then(|r| r.extract::<String>(py))
                     {
                         Ok(s) => s,
                         Err(e) => {
@@ -283,9 +283,7 @@ impl CharSpans {
         let c = citation.common();
         let conv = |o: Option<usize>| o.map(|o| to_chars(map, o));
         let bytes = CitationSpans::from_citation(citation);
-        let spans = bytes
-            .convert(map, OffsetUnit::Chars)
-            .unwrap_or(bytes);
+        let spans = bytes.convert(map, OffsetUnit::Chars).unwrap_or(bytes);
         CharSpans {
             token: (to_chars(map, c.token.start()), to_chars(map, c.token.end())),
             span_start: conv(c.span_start),
@@ -449,9 +447,9 @@ impl RawCitation {
 }
 
 fn raw_of<'py>(citation: &Bound<'py, PyAny>) -> PyResult<Bound<'py, RawCitation>> {
-    let raw = citation.getattr("_raw").map_err(|_| {
-        PyTypeError::new_err("expected citations returned by citare.get_citations")
-    })?;
+    let raw = citation
+        .getattr("_raw")
+        .map_err(|_| PyTypeError::new_err("expected citations returned by citare.get_citations"))?;
     raw.cast_into::<RawCitation>()
         .map_err(|_| PyTypeError::new_err("expected citations returned by citare.get_citations"))
 }
@@ -559,14 +557,19 @@ fn extractors_of(list: Option<Vec<PyRef<'_, PyTokenExtractor>>>) -> Option<Vec<T
 /// citare's built-in extractors, eyecite's `EXTRACTORS`.
 #[pyfunction]
 fn extractors() -> Vec<PyTokenExtractor> {
-    build_extractors().into_iter().map(PyTokenExtractor).collect()
+    build_extractors()
+        .into_iter()
+        .map(PyTokenExtractor)
+        .collect()
 }
 
 /// The editions a reporter string (canonical or a variation) names:
 /// eyecite's `EDITIONS_LOOKUP[reporter]`.
 #[pyfunction]
 fn editions_lookup(reporter: &str) -> Vec<PyEdition> {
-    EDITIONS_LOOKUP.get(reporter).map_or_else(Vec::new, |e| editions(e))
+    EDITIONS_LOOKUP
+        .get(reporter)
+        .map_or_else(Vec::new, |e| editions(e))
 }
 
 /// eyecite's base `Tokenizer`: runs every extractor on every text. With no
@@ -763,12 +766,7 @@ impl Hash for PyResource {
 impl PartialEq for PyResource {
     fn eq(&self, other: &Self) -> bool {
         self.hash == other.hash
-            && Python::attach(|py| {
-                self.obj
-                    .bind(py)
-                    .eq(other.obj.bind(py))
-                    .unwrap_or(false)
-            })
+            && Python::attach(|py| self.obj.bind(py).eq(other.obj.bind(py)).unwrap_or(false))
     }
 }
 
@@ -1081,7 +1079,7 @@ fn annotate<'py>(
         }
         match annotator
             .call1((back(before), span, back(after)))
-            .and_then(|r| r.extract::<String>().map_err(PyErr::from))
+            .and_then(|r| r.extract::<String>())
         {
             Ok(s) => s,
             Err(e) => {
@@ -1090,7 +1088,14 @@ fn annotate<'py>(
             }
         }
     };
-    let out = annotate_citations(plain_text, &mut list, source_text, unbalanced, Some(&call), None);
+    let out = annotate_citations(
+        plain_text,
+        &mut list,
+        source_text,
+        unbalanced,
+        Some(&call),
+        None,
+    );
     errors.check()?;
     Ok(out)
 }
