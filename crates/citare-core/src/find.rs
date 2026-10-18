@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::clean::CleanStep;
 use crate::helpers::{
-    add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation,
+    add_journal_metadata, add_law_metadata, add_post_citation, add_pre_citation, add_pre_cite_year,
     disambiguate_reporters, extract_pin_cite, extract_section_pin_cite, filter_citations,
     find_case_name, find_case_name_in_html, find_case_name_in_html_short, find_case_name_short,
     guess_court, guess_edition, joins_nameless_parallel_cites, joins_parallel_cites,
@@ -385,6 +385,8 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
         find_case_name_in_html(&mut data, document);
         if data.metadata.defendant.is_none() {
             find_case_name(&mut data, &document.words, false);
+        } else {
+            add_pre_cite_year(&mut data, &document.words);
         }
 
         // Add pre-citation metadata (antecedent before repeated full cite)
@@ -1665,6 +1667,117 @@ mod tests {
         );
         assert_eq!(cites.len(), 1);
         assert!(matches!(cites[0], Citation::FullCase(_)));
+    }
+
+    /// Years of the full case citations in `cites`, keyed by matched text.
+    fn case_years(cites: &[Citation]) -> Vec<(String, Option<i32>, Option<String>)> {
+        cites
+            .iter()
+            .filter_map(|c| match c {
+                Citation::FullCase(d) => Some((
+                    c.matched_text().to_string(),
+                    d.resource.year,
+                    d.metadata.case.year.clone(),
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// An Ohio-style year between the case name and the volume is the
+    /// citation's own, ahead of a year in a later parenthetical (#85).
+    /// eyecite reads "(1972)," the same way; it matches the year at the
+    /// start of the word.
+    #[test]
+    fn test_year_before_volume_plain() {
+        let text = "In re Murray (1990), 52 Ohio St.3d 155, 157; Stanley v. Illinois (1972), \
+                    405 U.S. 645, 651. Id., (1990), 52 Ohio St.3d 155, 157.";
+        let years = case_years(&get_citations(text, false, "", &[]));
+        assert_eq!(
+            years[0],
+            ("52 Ohio St.3d 155".into(), Some(1990), Some("1990".into()))
+        );
+        assert_eq!(
+            years[1],
+            ("405 U.S. 645".into(), Some(1972), Some("1972".into()))
+        );
+
+        let cites = get_citations("Foo v. Bar (1972), 1 U.S. 1 (1999).", false, "", &[]);
+        let Citation::FullCase(d) = &cites[0] else {
+            panic!("expected FullCase");
+        };
+        assert_eq!(d.resource.year, Some(1972));
+        assert_eq!(d.metadata.defendant.as_deref(), Some("Bar"));
+
+        // citation-bench find/ohio_state_variation/0, from CourtListener
+        // opinion 1612618: the year isn't part of the defendant.
+        let text = "See Troop A Riding Academy v. Miller (1934), 127 Ohio 545, 189 N.E. 650.";
+        for c in get_citations(text, false, "", &[]) {
+            let Citation::FullCase(d) = &c else {
+                panic!("expected FullCase");
+            };
+            assert_eq!(d.resource.year, Some(1934), "{}", c.matched_text());
+            assert_eq!(d.metadata.defendant.as_deref(), Some("Miller"));
+            assert_eq!(
+                d.metadata.plaintiff.as_deref(),
+                Some("Troop A Riding Academy")
+            );
+        }
+
+        // A year that ends an earlier sentence or name isn't the next
+        // citation's.
+        for text in [
+            "Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).",
+            "Dr. Miles (1911), and United States v. Arnold, 388 U.S. 365 (1967).",
+        ] {
+            let years = case_years(&get_citations(text, false, "", &[]));
+            assert_eq!(years[0].1, Some(1967), "{text}");
+        }
+    }
+
+    /// The same in markup, where the case name comes from emphasis tags and
+    /// eyecite doesn't look for a year before the volume (#85).
+    #[test]
+    fn test_year_before_volume_markup() {
+        let markup = "<p><em>In re Murray</em> (1990), 52 Ohio St.3d 155, 157; \
+                      <em>Stanley v. Illinois</em>\n(1972), 405 U.S. 645, 651.</p>\
+                      <p>4 <em>Id.,</em> (1990), 52 Ohio St.3d 155, 157, citing, \
+                      <em>Santosky v. Kramer</em>\n(1982), 455 U.S. 745.</p>";
+        let years = case_years(&markup_cites(markup));
+        let year_of = |text: &str| {
+            years
+                .iter()
+                .find(|(t, _, _)| t == text)
+                .map(|(_, y, _)| *y)
+                .unwrap()
+        };
+        assert_eq!(year_of("405 U.S. 645"), Some(1972));
+        assert_eq!(year_of("455 U.S. 745"), Some(1982));
+        assert_eq!(years[0].1, Some(1990));
+
+        // A parallel citation after the year has it too.
+        let cites = markup_cites(
+            "<p><em>Stanley v. Illinois</em> (1972), 405 U.S. 645, 92 S.Ct. 1208, 651. \
+             <em>Id.,</em> (1990), 52 Ohio St.3d 155.</p>",
+        );
+        let years = case_years(&cites);
+        assert_eq!(years[0].1, Some(1972), "{years:?}");
+        assert_eq!(years[1].1, Some(1972), "{years:?}");
+
+        // A year that ends an earlier sentence or name isn't the next
+        // citation's.
+        let cites = markup_cites(
+            "<p>Standard Oil Co. v. United States, 221 U.S. 1 (1911); <em>Dr. Miles</em> \
+             (1911), (1912). <em>United States v. Arnold, Schwinn &amp; Co.</em>, 388 U.S. \
+             365 (1967).</p>",
+        );
+        let years = case_years(&cites);
+        assert_eq!(years[1].1, Some(1967), "{years:?}");
+
+        // A year that closes an earlier citation isn't the next one's.
+        let cites = markup_cites("<p><em>Foo v. Bar</em>, 1 U.S. 1 (1950), 2 F.2d 3.</p>");
+        let years = case_years(&cites);
+        assert_eq!(years[1].1, None, "{years:?}");
     }
 
     #[test]

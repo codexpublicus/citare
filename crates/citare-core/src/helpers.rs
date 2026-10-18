@@ -63,9 +63,45 @@ fn re_trailing_number() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r"\b\d+\b$").unwrap())
 }
 
+/// A year in parentheses as a word of its own, "(1972)", or with the comma
+/// of an Ohio-style citation, "(1972),", which counts only right before the
+/// volume (see [`year_before_volume`]).
 fn re_year_paren() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"^\(\d{4}\)$").unwrap())
+    RE.get_or_init(|| regex::Regex::new(r"^\((\d{4})\)(,?)$").unwrap())
+}
+
+/// The year of a word in parentheses ("(1972)"), or of one followed by a
+/// comma ("(1972),") when only whitespace and commas stand between word
+/// `i` and the citation at word `index`.
+///
+/// Ohio and some other courts print the year between the case name and the
+/// volume: "Stanley v. Illinois (1972), 405 U.S. 645, 651" (#85). eyecite
+/// takes any word that starts with a year in parentheses, which also gives
+/// "Arnold, Schwinn & Co., 388 U.S. 365" the 1912 of a sentence that ends
+/// "(1912)." before it; citare takes the comma form only right before the
+/// volume.
+fn year_paren_at(words: &Tokens, i: usize, index: usize) -> Option<String> {
+    let word = token_to_str(&words[i]);
+    let caps = re_year_paren().captures(&word)?;
+    if !caps[2].is_empty() && !(i + 1..index).all(|j| is_blank_word(&words[j])) {
+        return None;
+    }
+    Some(caps[1].to_string())
+}
+
+/// Whether a word is only whitespace and commas.
+fn is_blank_word(word: &TokenOrStr) -> bool {
+    token_to_str(word)
+        .trim_matches(|c: char| c == ',' || c.is_whitespace())
+        .is_empty()
+}
+
+/// The year in parentheses between a citation's case name and its volume,
+/// if the word right before the citation at word `index` is one.
+fn year_before_volume(words: &Tokens, index: usize) -> Option<String> {
+    let i = (0..index).rev().find(|&j| !is_blank_word(&words[j]))?;
+    year_paren_at(words, i, index)
 }
 
 fn re_v_split() -> &'static regex::Regex {
@@ -895,6 +931,31 @@ pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short
     }
 }
 
+/// Give a full case citation the year in parentheses between its case name
+/// and its volume ("<em>Stanley v. Illinois</em> (1972), 405 U.S. 645"),
+/// ahead of any year after the citation.
+///
+/// [`find_case_name`] does this for a case name it finds in plain text.
+/// This is for a case name taken from emphasis tags, which eyecite doesn't
+/// look for a year before (#85). Only a year right before the volume
+/// counts, as [`year_before_volume`] finds it.
+pub fn add_pre_cite_year(citation: &mut FullCaseCitationData, words: &Tokens) {
+    let state = SearchState {
+        pre_cite_year: year_before_volume(words, citation.resource.common.index),
+        ..initialize_search_state(citation)
+    };
+    set_pre_cite_year(citation, &state);
+}
+
+fn set_pre_cite_year(citation: &mut FullCaseCitationData, state: &SearchState) {
+    if let Some(ref year) = state.pre_cite_year {
+        citation.metadata.case.year = Some(year.clone());
+        if let Ok(y) = year.parse::<i32>() {
+            citation.resource.year = Some(y);
+        }
+    }
+}
+
 /// Find case name for a short case citation.
 pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens) {
     let index = citation.resource.common.index;
@@ -1076,7 +1137,6 @@ fn scan_for_case_boundaries(
         return;
     }
     let back_seek = index.saturating_sub(BACKWARD_SEEK);
-    let year_paren_re = re_year_paren();
     // The citation token the words scanned so far come before.
     let mut later_citation = index;
     // Where the case name ends, and its year, as they were when the "v."
@@ -1144,11 +1204,11 @@ fn scan_for_case_boundaries(
         }
 
         // Year before citation e.g. (2004)
-        if year_paren_re.is_match(&word_str) {
+        if let Some(year) = year_paren_at(words, i, index) {
             if i > 0 {
                 state.title_starting_index = i - 1;
             }
-            state.pre_cite_year = Some(word_str[1..5].to_string());
+            state.pre_cite_year = Some(year);
             continue;
         }
 
@@ -1320,12 +1380,7 @@ fn process_case_name(
         }
     }
 
-    if let Some(ref year) = state.pre_cite_year {
-        citation.metadata.case.year = Some(year.clone());
-        if let Ok(y) = year.parse::<i32>() {
-            citation.resource.year = Some(y);
-        }
-    }
+    set_pre_cite_year(citation, state);
 }
 
 // ---------------------------------------------------------------------------
