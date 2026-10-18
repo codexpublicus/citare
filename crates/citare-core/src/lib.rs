@@ -47,6 +47,11 @@ pub use find::get_citations;
 /// See [`find::get_citations_from_document`] for full documentation.
 pub use find::get_citations_from_document;
 
+/// Find citations with [`FindOptions`], including a custom tokenizer.
+///
+/// See [`find::get_citations_with`] for full documentation.
+pub use find::{get_citations_from_document_with, get_citations_with, FindOptions};
+
 /// Resolve a slice of citations to their resources.
 ///
 /// See [`resolve::resolve_citations`] for full documentation.
@@ -59,6 +64,12 @@ pub use resolve::resolve_full_citation;
 
 /// The resolved-citation map type: `HashMap<Resource, Vec<Citation>>`.
 pub use resolve::Resolutions;
+
+/// Resolve citations with a pluggable [`Resolver`] (eyecite's resolver
+/// callbacks).
+///
+/// See [`resolve::resolve_citations_with`] for full documentation.
+pub use resolve::{resolve_citations_with, DefaultResolver, ResolveContext, Resolver};
 
 /// Insert annotation markers around citation spans in text.
 ///
@@ -115,3 +126,13 @@ pub use tokenizer::AhocorasickTokenizer;
 
 /// The simple (non-Aho-Corasick) tokenizer.
 pub use tokenizer::Tokenizer;
+
+/// The interface every tokenizer implements; see [`FindOptions::tokenizer`].
+pub use tokenizer::{TokenExtractor, Tokenize};
+
+// ---------------------------------------------------------------------------
+// Debugging
+// ---------------------------------------------------------------------------
+
+/// Describe citations for debugging (eyecite's `dump_citations`).
+pub use utils::dump_citations;

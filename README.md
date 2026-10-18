@@ -10,7 +10,8 @@ Part of the [stare.pub](https://stare.pub) project family.
 - Statutes as state courts cite them (`General Statutes § 52-557n`, `42 Pa.C.S. § 5322`,
   `Penal Law § 160.05`), each with its jurisdiction, code and section in fields of their
   own ([docs/laws-local.md](docs/laws-local.md))
-- Resolve short-form citations (Id., supra, short case) to their full citations
+- Resolve short-form citations (Id., supra, short case) to their full citations, or to
+  your own resources (database ids, URLs) through pluggable resolvers
 - Annotate source text with citation markers
 - Harvard CAP slug mapping — resolve citations to [Caselaw Access Project](https://case.law) data
 - Runs natively or as WASM in browsers/Node.js
@@ -30,7 +31,12 @@ Part of the [stare.pub](https://stare.pub) project family.
 
 **Implemented:**
 - Full citation finding pipeline (case, law, journal, short, supra, id, reference)
-- Citation resolution (linking short forms to full citations)
+- Citation resolution (linking short forms to full citations), with pluggable
+  resolvers (Rust `Resolver`, WASM `resolvers`)
+- eyecite's API shape: `get_citations_with` takes eyecite's `get_citations`
+  arguments including a custom tokenizer, `resolve_citations_with` its resolver
+  callbacks, and `dump_citations` its debug output (see
+  [eyecite's API in citare](#eyecites-api-in-citare))
 - Text annotation with citation markers
 - Text cleaning (HTML extraction, whitespace normalization)
 - HTML-aware case name and reference extraction (`markup_text` input; CLI
@@ -77,7 +83,16 @@ citare annotate --html --unbalanced-tags skip < opinion.html
 # spans then index the cleaned text, which `clean` prints
 citare find --clean-steps all_whitespace,underscores < opinion.txt
 citare clean --html --clean-steps all_whitespace < opinion.html
+
+# Debug output: each citation's line, spans, groups and metadata
+citare dump --text "Foo v. Bar, 1 U.S. 1, 2 (1999). Id. at 3."
+
+# Run every extractor, without the Aho-Corasick prefilter (slow; a check on it)
+citare find --tokenizer simple < opinion.txt
 ```
+
+The CLI resolves with citare's built-in rules; resolving to your own resources is a
+library feature (Rust and WASM, below).
 
 ## Quick Start (Rust)
 
@@ -103,6 +118,52 @@ let mut annotations: Vec<_> = citations.iter()
 let annotated = annotate_citations(text, &mut annotations, "", UnbalancedTags::Unchecked, None, None);
 ```
 
+### eyecite's API in citare
+
+| eyecite | citare-core |
+|---|---|
+| `get_citations(plain_text, remove_ambiguous, tokenizer, markup_text, clean_steps)` | `get_citations_with(plain_text, &FindOptions)`; `get_citations` without a tokenizer |
+| `Tokenizer(extractors)`, `AhocorasickTokenizer(extractors)` | `Tokenizer::from_extractors`, `AhocorasickTokenizer::from_extractors`, both `Tokenize` |
+| `EXTRACTORS`, `TokenExtractor(...)`, `copy(extractor)` | `build_extractors()`, `TokenExtractor::new`, `clone()` |
+| `resolve_citations(citations, resolve_full_citation=..., ...)` | `resolve_citations_with(&citations, &mut resolver)` with a `Resolver` |
+| `clean_text(text, steps)` | `clean_text(text, &steps)`, `CleanStep::Custom` for a callable |
+| `annotate_citations(...)` | `annotate_citations(...)` |
+| `dump_citations(citations, text, context_chars)` | `dump_citations(&citations, text, context_chars, color)` |
+
+The shape follows eyecite so code written against it carries over; what citare finds and
+how it resolves follow citare's own rules, which differ from eyecite's where
+[docs/divergences.md](docs/divergences.md) says so.
+
+```rust
+use citare_core::{get_citations_with, resolve_citations_with, FindOptions, Citation, Resolver};
+use citare_core::tokenizer::build_extractors;
+use citare_core::Tokenizer;
+
+// eyecite's test_custom_tokenizer: reporters with commas for periods.
+let extractors = build_extractors()
+    .iter()
+    .map(|e| {
+        let mut e = e.clone();
+        e.regex = e.regex.replace(r"\.", "[.,]");
+        e
+    })
+    .collect();
+let tokenizer = Tokenizer::from_extractors(extractors);
+let citations = get_citations_with("1 U,S, 1", &FindOptions::new().tokenizer(&tokenizer));
+
+// Resolve to your own ids. Only full citations need a rule: short, supra,
+// reference and id citations follow citare's rules over the ids you return,
+// unless you override resolve_shortcase, resolve_supra and the rest.
+struct ById;
+impl Resolver for ById {
+    type Resource = u64;
+    fn resolve_full(&mut self, citation: &Citation) -> Option<u64> {
+        lookup(citation) // None leaves it unresolved
+    }
+}
+let groups = resolve_citations_with(&citations, &mut ById);
+```
+
 ## Quick Start (WASM/JavaScript)
 
 ```javascript
@@ -118,6 +179,13 @@ console.log(citations);
 const resolutions = resolveCitations("1 U.S. 1 (1999). Id. at 2.", false);
 console.log(resolutions);
 // [{resource_text: "1 U.S. 1", citations: [...]}]
+
+// Your own resources: each callback returns an id, null (unresolved) or
+// undefined (citare's rule). Short forms follow the ids `full` returns.
+const byId = resolveCitations(text, false, undefined, {
+  full: (citation) => index.lookup(citation.slug, citation.groups),
+});
+// [{resource: "case-7", resource_text: "1 U.S. 1", citations: [...]}]
 
 // HTML input. `options` is optional: { format: "plain" | "html", cleanSteps: [...] }
 const html = "<p>In <i>Roe v. Wade</i>, 410 U.S. 113 (1973). Later, in <i>Roe</i>, ...</p>";

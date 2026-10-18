@@ -57,6 +57,38 @@
 //! can start or end next to a tag it only half covers: a case name set in
 //! `<i>` gives a `full_span` that runs from inside the `<i>` past its `</i>`,
 //! and a reference citation can begin at the opening `<i>`.
+//!
+//! # Resolvers
+//!
+//! `resolveCitations(text, removeAmbiguous, options?, resolvers?)` takes
+//! eyecite's resolver callbacks as an optional object, so citations can be
+//! grouped by the caller's own resources (database ids, URLs):
+//!
+//! ```js
+//! resolveCitations(text, false, undefined, {
+//!   full: (citation) => lookup(citation),             // string | null | undefined
+//!   shortcase: (citation, fullCitations) => undefined,
+//!   supra: (citation, fullCitations) => undefined,
+//!   reference: (citation, fullCitations) => undefined,
+//!   id: (citation, lastResource) => undefined,
+//! });
+//! ```
+//!
+//! Every callback is optional and gets citations in the same form as
+//! `getCitations`. It returns a resource id (a string), `null` to leave the
+//! citation unresolved, or `undefined` for citare's built-in rule. The
+//! built-in rules for short forms work on whatever `full` returned, so a
+//! resolver that only maps full citations to ids gets their short, supra,
+//! reference and id citations grouped under those ids too.
+//! `fullCitations` is the full citations so far, in document order, as
+//! `{ citation, resource }` with `resource` the id `full` gave it (`null`
+//! when it gave none); it grows as resolution goes on, so copy it to keep
+//! it. `lastResource` is the id the citation before resolved to, or `null`.
+//! A callback that throws makes `resolveCitations` throw.
+//!
+//! With resolvers, each group also has `resource`, its id, unless it is a
+//! built-in resource; `resource_text` is then the group's first full
+//! citation.
 
 use std::collections::BTreeMap;
 
@@ -129,8 +161,14 @@ impl JsSpans {
 }
 
 /// A resolution group: one resource and all citations that point to it.
+///
+/// Non-exhaustive, so fields can be added without breaking Rust callers.
 #[derive(Serialize)]
+#[non_exhaustive]
 pub struct JsResolution {
+    /// The caller's resource id, when a resolver gave one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource: Option<String>,
     pub resource_text: String,
     pub citations: Vec<JsCitation>,
 }
@@ -175,11 +213,35 @@ export interface FindOptions {
 }
 "#;
 
+#[wasm_bindgen(typescript_custom_section)]
+const RESOLVERS_TS: &str = r#"
+/** A full citation seen so far, with the resource `full` gave it. */
+export interface ResolvedFullCitation {
+    citation: any;
+    resource: string | null;
+}
+/**
+ * Resolver callbacks for `resolveCitations`. Each returns a resource id,
+ * `null` for unresolved, or `undefined` for citare's built-in rule.
+ */
+export interface Resolvers {
+    full?: (citation: any) => string | null | undefined;
+    shortcase?: (citation: any, fullCitations: ResolvedFullCitation[]) => string | null | undefined;
+    supra?: (citation: any, fullCitations: ResolvedFullCitation[]) => string | null | undefined;
+    reference?: (citation: any, fullCitations: ResolvedFullCitation[]) => string | null | undefined;
+    id?: (citation: any, lastResource: string | null) => string | null | undefined;
+}
+"#;
+
 #[wasm_bindgen]
 extern "C" {
     /// The JS `FindOptions` object, read with serde.
     #[wasm_bindgen(typescript_type = "FindOptions")]
     pub type FindOptionsJs;
+
+    /// The JS `Resolvers` object.
+    #[wasm_bindgen(typescript_type = "Resolvers")]
+    pub type ResolversJs;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,16 +298,34 @@ pub fn get_citations(
 /// Find and resolve citations in `text` in one call.
 ///
 /// Returns an array of `{ resource_text, citations }` objects, one per
-/// distinct resource. `options` is as for `getCitations`.
+/// distinct resource, in document order. `options` is as for
+/// `getCitations`. `resolvers` are optional callbacks that resolve
+/// citations to the caller's own resource ids; see the module docs. Throws
+/// if a callback throws or returns something other than a string, `null`
+/// or `undefined`.
 #[wasm_bindgen(js_name = "resolveCitations")]
 pub fn resolve_citations(
     text: &str,
     remove_ambiguous: bool,
     options: Option<FindOptionsJs>,
+    resolvers: Option<ResolversJs>,
 ) -> Result<JsValue, JsError> {
     require_data()?;
     let options = parse_options(options)?;
-    let js_resolutions = resolve(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
+    let resolvers = resolvers
+        .map(JsValue::from)
+        .filter(|r| !r.is_null() && !r.is_undefined());
+    let js_resolutions = match resolvers {
+        None => resolve(text, remove_ambiguous, &options),
+        Some(resolvers) => {
+            let (document, citations) =
+                prepare(text, remove_ambiguous, &options).map_err(|e| JsError::new(&e))?;
+            let converter = Converter::new(&document);
+            let mut callbacks = JsCallbacks::new(&resolvers, &converter)?;
+            resolve_with(&citations, &converter, &mut callbacks)
+        }
+    }
+    .map_err(|e| JsError::new(&e))?;
     Ok(serde_wasm_bindgen::to_value(&js_resolutions).unwrap_or(JsValue::NULL))
 }
 
@@ -392,20 +472,307 @@ fn resolve(
     options: &FindOptions,
 ) -> Result<Vec<JsResolution>, String> {
     let (document, citations) = prepare(text, remove_ambiguous, options)?;
-    let resolutions = citare_core::resolve_citations(&citations);
     let converter = Converter::new(&document);
+    // The built-in rules, through the one resolver the module compiles in.
+    resolve_with(&citations, &converter, &mut Builtins)
+}
 
-    // Document order of each resource's full citation, the order eyecite's
-    // insertion-ordered dict returns them in.
+// ---------------------------------------------------------------------------
+// Resolver callbacks
+// ---------------------------------------------------------------------------
+
+/// A resource `resolveCitations` groups by: citare's own, or an id a
+/// resolver callback returned.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Key {
+    Builtin(Box<citare_core::Resource>),
+    Id(String),
+}
+
+/// Which resolver callback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    Full,
+    Shortcase,
+    Supra,
+    Reference,
+    Id,
+}
+
+/// What a resolver callback returned.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Answer {
+    /// A resource id.
+    Id(String),
+    /// `null`: leave the citation unresolved.
+    Unresolved,
+    /// `undefined`, or no callback: citare's built-in rule.
+    Builtin,
+}
+
+/// The callbacks behind a [`CallbackResolver`]: JavaScript functions in the
+/// browser, Rust closures in the native tests.
+trait Callbacks {
+    /// Call the `kind` callback on `citation`. `last` is the last
+    /// resolution, passed to the `id` callback.
+    fn call(
+        &mut self,
+        kind: Kind,
+        citation: &citare_core::Citation,
+        last: Option<&Key>,
+    ) -> Result<Answer, String>;
+
+    /// Record a full citation's resource for the short-form callbacks'
+    /// `fullCitations`.
+    fn full_resolved(&mut self, citation: &citare_core::Citation, resource: Option<&Key>);
+}
+
+/// No callbacks: citare's built-in rules for everything.
+struct Builtins;
+
+impl Callbacks for Builtins {
+    fn call(
+        &mut self,
+        _: Kind,
+        _: &citare_core::Citation,
+        _: Option<&Key>,
+    ) -> Result<Answer, String> {
+        Ok(Answer::Builtin)
+    }
+
+    fn full_resolved(&mut self, _: &citare_core::Citation, _: Option<&Key>) {}
+}
+
+/// A core [`Resolver`](citare_core::Resolver) over [`Callbacks`]. The first
+/// callback error stops further callbacks and is reported after resolution.
+/// The callbacks are a trait object so that one copy of the resolution
+/// code serves `resolve` and the JS callbacks.
+struct CallbackResolver<'c> {
+    callbacks: &'c mut dyn Callbacks,
+    error: Option<String>,
+}
+
+impl CallbackResolver<'_> {
+    fn ask(
+        &mut self,
+        kind: Kind,
+        citation: &citare_core::Citation,
+        last: Option<&Key>,
+        builtin: impl FnOnce() -> Option<Key>,
+    ) -> Option<Key> {
+        if self.error.is_some() {
+            return None;
+        }
+        match self.callbacks.call(kind, citation, last) {
+            Ok(Answer::Id(id)) => Some(Key::Id(id)),
+            Ok(Answer::Unresolved) => None,
+            Ok(Answer::Builtin) => builtin(),
+            Err(e) => {
+                self.error = Some(e);
+                None
+            }
+        }
+    }
+}
+
+impl citare_core::Resolver for CallbackResolver<'_> {
+    type Resource = Key;
+
+    fn resolve_full(&mut self, citation: &citare_core::Citation) -> Option<Key> {
+        let key = self.ask(Kind::Full, citation, None, || {
+            Some(Key::Builtin(Box::new(citare_core::resolve_full_citation(
+                citation,
+            ))))
+        });
+        self.callbacks.full_resolved(citation, key.as_ref());
+        key
+    }
+
+    fn resolve_shortcase(
+        &mut self,
+        citation: &citare_core::Citation,
+        context: &citare_core::ResolveContext<'_, Key>,
+    ) -> Option<Key> {
+        self.ask(Kind::Shortcase, citation, None, || {
+            context.resolve_shortcase(citation)
+        })
+    }
+
+    fn resolve_supra(
+        &mut self,
+        citation: &citare_core::Citation,
+        context: &citare_core::ResolveContext<'_, Key>,
+    ) -> Option<Key> {
+        self.ask(Kind::Supra, citation, None, || {
+            context.resolve_supra(citation)
+        })
+    }
+
+    fn resolve_reference(
+        &mut self,
+        citation: &citare_core::Citation,
+        context: &citare_core::ResolveContext<'_, Key>,
+    ) -> Option<Key> {
+        self.ask(Kind::Reference, citation, None, || {
+            context.resolve_reference(citation)
+        })
+    }
+
+    fn resolve_id(
+        &mut self,
+        citation: &citare_core::Citation,
+        context: &citare_core::ResolveContext<'_, Key>,
+    ) -> Option<Key> {
+        let last = context.last_resolution();
+        self.ask(Kind::Id, citation, last, || context.resolve_id(citation))
+    }
+}
+
+/// Resolve `citations` through `callbacks` and convert the groups.
+fn resolve_with(
+    citations: &[citare_core::Citation],
+    converter: &Converter<'_>,
+    callbacks: &mut dyn Callbacks,
+) -> Result<Vec<JsResolution>, String> {
+    let mut resolver = CallbackResolver {
+        callbacks,
+        error: None,
+    };
+    let resolutions = citare_core::resolve_citations_with(citations, &mut resolver);
+    if let Some(error) = resolver.error {
+        return Err(error);
+    }
+
+    // Document order, the order eyecite's insertion-ordered dict returns
+    // resources in: a built-in resource by its own citation, an id by its
+    // group's first citation.
     let mut resolutions: Vec<_> = resolutions.into_iter().collect();
-    resolutions.sort_by_key(|(resource, _)| resource.citation.span());
+    resolutions.sort_by_key(|(key, cites)| match key {
+        Key::Builtin(resource) => resource.citation.span(),
+        Key::Id(_) => cites[0].span(),
+    });
     Ok(resolutions
         .into_iter()
-        .map(|(resource, cites)| JsResolution {
-            resource_text: resource.citation.matched_text().to_string(),
-            citations: cites.iter().map(|c| converter.convert(c)).collect(),
+        .map(|(key, cites)| {
+            let (resource, resource_text) = match key {
+                Key::Builtin(resource) => (None, resource.citation.matched_text().to_string()),
+                Key::Id(id) => {
+                    let first = cites.iter().find(|c| c.is_full()).unwrap_or(&cites[0]);
+                    (Some(id), first.matched_text().to_string())
+                }
+            };
+            JsResolution {
+                resource,
+                resource_text,
+                citations: cites.iter().map(|c| converter.convert(c)).collect(),
+            }
         })
         .collect())
+}
+
+/// The JavaScript `Resolvers` object's functions.
+struct JsCallbacks<'a> {
+    full: Option<js_sys::Function>,
+    shortcase: Option<js_sys::Function>,
+    supra: Option<js_sys::Function>,
+    reference: Option<js_sys::Function>,
+    id: Option<js_sys::Function>,
+    /// `fullCitations`: `{ citation, resource }` for each full citation so far.
+    full_citations: js_sys::Array,
+    converter: &'a Converter<'a>,
+}
+
+impl<'a> JsCallbacks<'a> {
+    fn new(resolvers: &JsValue, converter: &'a Converter<'a>) -> Result<Self, JsError> {
+        let get = |name: &str| -> Result<Option<js_sys::Function>, JsError> {
+            let value = js_sys::Reflect::get(resolvers, &JsValue::from_str(name))
+                .map_err(|_| JsError::new("resolvers must be an object"))?;
+            if value.is_undefined() || value.is_null() {
+                return Ok(None);
+            }
+            value
+                .dyn_into::<js_sys::Function>()
+                .map(Some)
+                .map_err(|_| JsError::new(&format!("resolvers.{name} must be a function")))
+        };
+        Ok(JsCallbacks {
+            full: get("full")?,
+            shortcase: get("shortcase")?,
+            supra: get("supra")?,
+            reference: get("reference")?,
+            id: get("id")?,
+            full_citations: js_sys::Array::new(),
+            converter,
+        })
+    }
+
+    fn to_js<T: Serialize>(value: &T) -> JsValue {
+        serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL)
+    }
+
+    fn key_to_js(key: Option<&Key>) -> JsValue {
+        match key {
+            Some(Key::Id(id)) => JsValue::from_str(id),
+            _ => JsValue::NULL,
+        }
+    }
+}
+
+impl Callbacks for JsCallbacks<'_> {
+    fn call(
+        &mut self,
+        kind: Kind,
+        citation: &citare_core::Citation,
+        last: Option<&Key>,
+    ) -> Result<Answer, String> {
+        let (name, function) = match kind {
+            Kind::Full => ("full", &self.full),
+            Kind::Shortcase => ("shortcase", &self.shortcase),
+            Kind::Supra => ("supra", &self.supra),
+            Kind::Reference => ("reference", &self.reference),
+            Kind::Id => ("id", &self.id),
+        };
+        let Some(function) = function else {
+            return Ok(Answer::Builtin);
+        };
+        let js_citation = Self::to_js(&self.converter.convert(citation));
+        let result = match kind {
+            Kind::Full => function.call1(&JsValue::NULL, &js_citation),
+            Kind::Id => function.call2(&JsValue::NULL, &js_citation, &Self::key_to_js(last)),
+            _ => function.call2(&JsValue::NULL, &js_citation, &self.full_citations),
+        };
+        let value = result.map_err(|e| {
+            let message = e
+                .dyn_ref::<js_sys::Error>()
+                .map(|e| String::from(e.message()))
+                .or_else(|| e.as_string())
+                .unwrap_or_else(|| format!("{e:?}"));
+            format!("resolvers.{name} threw: {message}")
+        })?;
+        if value.is_undefined() {
+            Ok(Answer::Builtin)
+        } else if value.is_null() {
+            Ok(Answer::Unresolved)
+        } else if let Some(id) = value.as_string() {
+            Ok(Answer::Id(id))
+        } else {
+            Err(format!(
+                "resolvers.{name} must return a string, null or undefined"
+            ))
+        }
+    }
+
+    fn full_resolved(&mut self, citation: &citare_core::Citation, resource: Option<&Key>) {
+        let entry = js_sys::Object::new();
+        let citation = Self::to_js(&self.converter.convert(citation));
+        let _ = js_sys::Reflect::set(&entry, &JsValue::from_str("citation"), &citation);
+        let _ = js_sys::Reflect::set(
+            &entry,
+            &JsValue::from_str("resource"),
+            &Self::key_to_js(resource),
+        );
+        self.full_citations.push(&entry);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -463,95 +830,13 @@ fn citation_to_js(citation: &citare_core::Citation, map: &OffsetMap<'_>) -> JsCi
     }
 }
 
-/// Flatten per-variant metadata structs into a uniform string map.
+/// The citation's metadata as a uniform string map.
 fn extract_metadata(citation: &citare_core::Citation) -> BTreeMap<String, Option<String>> {
-    let mut map: BTreeMap<String, Option<String>> = BTreeMap::new();
-
-    match citation {
-        citare_core::Citation::FullCase(d) => {
-            let m = &d.metadata;
-            let c = &m.case;
-            insert_opt(&mut map, "parenthetical", &c.parenthetical);
-            insert_opt(&mut map, "pin_cite", &c.pin_cite);
-            insert_opt(&mut map, "year", &c.year);
-            insert_opt(&mut map, "month", &c.month);
-            insert_opt(&mut map, "day", &c.day);
-            insert_opt(&mut map, "court", &c.court);
-            insert_opt(&mut map, "plaintiff", &m.plaintiff);
-            insert_opt(&mut map, "defendant", &m.defendant);
-            insert_opt(&mut map, "extra", &m.extra);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-            insert_opt(
-                &mut map,
-                "resolved_case_name_short",
-                &m.resolved_case_name_short,
-            );
-            insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
-        }
-        citare_core::Citation::ShortCase(d) => {
-            let m = &d.metadata;
-            let c = &m.case;
-            insert_opt(&mut map, "parenthetical", &c.parenthetical);
-            insert_opt(&mut map, "pin_cite", &c.pin_cite);
-            insert_opt(&mut map, "year", &c.year);
-            insert_opt(&mut map, "month", &c.month);
-            insert_opt(&mut map, "day", &c.day);
-            insert_opt(&mut map, "court", &c.court);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-        }
-        citare_core::Citation::FullLaw(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "year", &m.year);
-            insert_opt(&mut map, "month", &m.month);
-            insert_opt(&mut map, "day", &m.day);
-            insert_opt(&mut map, "publisher", &m.publisher);
-        }
-        citare_core::Citation::FullJournal(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "year", &m.year);
-            insert_opt(&mut map, "month", &m.month);
-            insert_opt(&mut map, "day", &m.day);
-        }
-        citare_core::Citation::Supra(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "antecedent_guess", &m.antecedent_guess);
-            insert_opt(&mut map, "volume", &m.volume);
-        }
-        citare_core::Citation::Id(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-        }
-        citare_core::Citation::Reference(d) => {
-            let m = &d.metadata;
-            insert_opt(&mut map, "parenthetical", &m.parenthetical);
-            insert_opt(&mut map, "pin_cite", &m.pin_cite);
-            insert_opt(&mut map, "plaintiff", &m.plaintiff);
-            insert_opt(&mut map, "defendant", &m.defendant);
-            insert_opt(
-                &mut map,
-                "resolved_case_name_short",
-                &m.resolved_case_name_short,
-            );
-            insert_opt(&mut map, "resolved_case_name", &m.resolved_case_name);
-        }
-        citare_core::Citation::Unknown(_) => {}
-    }
-
-    map
-}
-
-/// Insert `key -> value.clone()` into `map`.  The value is `None` when the
-/// `Option` is `None`, so the key is still present for schema consistency.
-#[inline]
-fn insert_opt(map: &mut BTreeMap<String, Option<String>>, key: &str, value: &Option<String>) {
-    map.insert(key.to_string(), value.clone());
+    citation
+        .metadata_fields()
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.map(str::to_string)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -756,5 +1041,179 @@ mod tests {
             assert!(js.utf16.unwrap().span.0 < js.span.0);
             assert!(js.chars.unwrap().span.0 < js.utf16.unwrap().span.0);
         }
+    }
+
+    /// Rust stand-ins for the JS resolver callbacks.
+    struct FakeCallbacks<F> {
+        answer: F,
+        calls: Vec<(Kind, String, Option<Key>)>,
+        full: Vec<(String, Option<Key>)>,
+    }
+
+    impl<F: FnMut(Kind, &citare_core::Citation) -> Result<Answer, String>> Callbacks
+        for FakeCallbacks<F>
+    {
+        fn call(
+            &mut self,
+            kind: Kind,
+            citation: &citare_core::Citation,
+            last: Option<&Key>,
+        ) -> Result<Answer, String> {
+            self.calls
+                .push((kind, citation.matched_text().to_string(), last.cloned()));
+            (self.answer)(kind, citation)
+        }
+
+        fn full_resolved(&mut self, citation: &citare_core::Citation, resource: Option<&Key>) {
+            self.full
+                .push((citation.matched_text().to_string(), resource.cloned()));
+        }
+    }
+
+    fn fake<F>(answer: F) -> FakeCallbacks<F>
+    where
+        F: FnMut(Kind, &citare_core::Citation) -> Result<Answer, String>,
+    {
+        FakeCallbacks {
+            answer,
+            calls: vec![],
+            full: vec![],
+        }
+    }
+
+    const RESOLVE_TEXT: &str = "Foo v. Bar, 1 U.S. 1, 3 (1999). Id. at 2. See Baz v. Qux, \
+        2 U.S. 50 (2000). Foo, 1 U.S., at 4. Baz, supra, at 52.";
+
+    fn run<F>(callbacks: &mut FakeCallbacks<F>) -> Result<Vec<JsResolution>, String>
+    where
+        F: FnMut(Kind, &citare_core::Citation) -> Result<Answer, String>,
+    {
+        let (document, citations) = prepare(RESOLVE_TEXT, false, &FindOptions::default())?;
+        let converter = Converter::new(&document);
+        resolve_with(&citations, &converter, callbacks)
+    }
+
+    fn texts(groups: &[JsResolution]) -> Vec<(Option<&str>, &str, Vec<&str>)> {
+        groups
+            .iter()
+            .map(|g| {
+                (
+                    g.resource.as_deref(),
+                    g.resource_text.as_str(),
+                    g.citations
+                        .iter()
+                        .map(|c| c.matched_text.as_str())
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn resolvers_that_defer_match_the_built_in_resolution() {
+        let mut callbacks = fake(|_, _| Ok(Answer::Builtin));
+        let with = run(&mut callbacks).unwrap();
+        let without = resolve(RESOLVE_TEXT, false, &FindOptions::default()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&with).unwrap(),
+            serde_json::to_value(&without).unwrap()
+        );
+        assert!(serde_json::to_value(&with).unwrap()[0]
+            .get("resource")
+            .is_none());
+
+        // ... and core's resolve_citations.
+        let citations = citare_core::get_citations(RESOLVE_TEXT, false, "", &[]);
+        let mut core: Vec<_> = citare_core::resolve_citations(&citations)
+            .into_iter()
+            .collect();
+        core.sort_by_key(|(resource, _)| resource.citation.span());
+        let core: Vec<(Option<&str>, &str, Vec<&str>)> = core
+            .iter()
+            .map(|(resource, cites)| {
+                (
+                    None,
+                    resource.citation.matched_text(),
+                    cites.iter().map(|c| c.matched_text()).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(texts(&with), core);
+        let kinds: Vec<Kind> = callbacks.calls.iter().map(|c| c.0).collect();
+        assert_eq!(
+            kinds,
+            [
+                Kind::Full,
+                Kind::Id,
+                Kind::Full,
+                Kind::Shortcase,
+                Kind::Supra
+            ]
+        );
+    }
+
+    #[test]
+    fn full_resolver_ids_group_the_short_forms() {
+        let mut callbacks = fake(|kind, c: &citare_core::Citation| {
+            Ok(match (kind, c.matched_text()) {
+                (Kind::Full, "1 U.S. 1") => Answer::Id("case-7".into()),
+                (Kind::Full, "2 U.S. 50") => Answer::Id("case-9".into()),
+                _ => Answer::Builtin,
+            })
+        });
+        let groups = run(&mut callbacks).unwrap();
+        assert_eq!(
+            texts(&groups),
+            [
+                (
+                    Some("case-7"),
+                    "1 U.S. 1",
+                    vec!["1 U.S. 1", "Id.", "1 U.S., at 4"]
+                ),
+                (Some("case-9"), "2 U.S. 50", vec!["2 U.S. 50", "supra,"]),
+            ]
+        );
+        // The id callback sees the last resolution.
+        let id_call = callbacks.calls.iter().find(|c| c.0 == Kind::Id).unwrap();
+        assert_eq!(id_call.2, Some(Key::Id("case-7".into())));
+        assert_eq!(
+            callbacks.full,
+            [
+                ("1 U.S. 1".to_string(), Some(Key::Id("case-7".into()))),
+                ("2 U.S. 50".to_string(), Some(Key::Id("case-9".into()))),
+            ]
+        );
+    }
+
+    #[test]
+    fn null_leaves_a_citation_unresolved_and_ids_can_mix() {
+        let mut callbacks = fake(|kind, c: &citare_core::Citation| {
+            Ok(match (kind, c.matched_text()) {
+                (Kind::Full, "2 U.S. 50") => Answer::Unresolved,
+                (Kind::Id, _) => Answer::Unresolved,
+                (Kind::Shortcase, _) => Answer::Id("short".into()),
+                _ => Answer::Builtin,
+            })
+        });
+        let groups = run(&mut callbacks).unwrap();
+        assert_eq!(
+            texts(&groups),
+            [
+                (None, "1 U.S. 1", vec!["1 U.S. 1"]),
+                (Some("short"), "1 U.S., at 4", vec!["1 U.S., at 4"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_callback_error_fails_resolution() {
+        let mut callbacks = fake(|kind, _: &citare_core::Citation| match kind {
+            Kind::Supra => Err("resolvers.supra threw: no".to_string()),
+            _ => Ok(Answer::Builtin),
+        });
+        assert_eq!(
+            run(&mut callbacks).err().as_deref(),
+            Some("resolvers.supra threw: no")
+        );
     }
 }

@@ -7,6 +7,7 @@
 //! Ported from eyecite's `resolve.py`.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::LazyLock;
 
 use crate::models::{
@@ -24,17 +25,21 @@ const MAX_OPINION_PAGE_COUNT: i32 = 150;
 // Type aliases
 // ---------------------------------------------------------------------------
 
-/// Maps each resolved [`Resource`] to all [`Citation`]s that point to it.
+/// Maps each resolved resource to all [`Citation`]s that point to it.
+///
+/// The resource type is citare's [`Resource`] unless a [`Resolver`] with
+/// its own resource type was used ([`resolve_citations_with`]).
 ///
 /// Iteration order is a `HashMap`'s, so it varies per process. Sort by
-/// `resource.citation.span()` for document order, which is the order
-/// eyecite's dict returns resources in.
-pub type Resolutions = HashMap<Resource, Vec<Citation>>;
+/// `resource.citation.span()` (or by each group's first citation) for
+/// document order, which is the order eyecite's dict returns resources in.
+pub type Resolutions<R = Resource> = HashMap<R, Vec<Citation>>;
 
 /// A full citation seen so far, with what the later citations match on.
-struct ResolvedFullCite {
+struct ResolvedFullCite<R> {
     citation: Citation,
-    resource: Resource,
+    /// `None` when the resolver's `resolve_full` left it unresolved.
+    resource: Option<R>,
     /// Equal for equal resources (see [`resource_key`]).
     key: u64,
     /// The corrected reporter, for choosing among parallel citations.
@@ -48,9 +53,8 @@ struct ResolvedFullCite {
 /// earlier full citation. Looked up here by reporter and volume, or by
 /// party name, short and reference citations cost the same however long the
 /// document is (#44).
-#[derive(Default)]
-struct ResolvedFullCites {
-    cites: Vec<ResolvedFullCite>,
+struct ResolvedFullCites<R> {
+    cites: Vec<ResolvedFullCite<R>>,
     /// Full case citations by (corrected reporter, volume).
     by_reporter_volume: HashMap<(Option<String>, Option<String>), Vec<usize>>,
     /// Full citations by each of their metadata values (see
@@ -70,10 +74,25 @@ struct ResolvedFullCites {
     max_decision_len: usize,
 }
 
-impl ResolvedFullCites {
+impl<R> Default for ResolvedFullCites<R> {
+    fn default() -> Self {
+        ResolvedFullCites {
+            cites: Vec::new(),
+            by_reporter_volume: HashMap::new(),
+            by_metadata_value: HashMap::new(),
+            current_decision: Vec::new(),
+            decisions: Vec::new(),
+            decision_ids: HashMap::new(),
+            decisions_by_key: HashMap::new(),
+            max_decision_len: 0,
+        }
+    }
+}
+
+impl<R: Hash> ResolvedFullCites<R> {
     /// Add a full citation. `parallel` says it is cited in parallel with
     /// the last one added.
-    fn push(&mut self, citation: &Citation, resource: Resource, parallel: bool) {
+    fn push(&mut self, citation: &Citation, resource: Option<R>, parallel: bool) {
         let index = self.cites.len();
         let key = resource_key(&resource);
         let (reporter, _) = reporter_volume(citation);
@@ -125,9 +144,11 @@ impl ResolvedFullCites {
 }
 
 /// A hash equal for equal resources, as [`Resource`]'s `PartialEq` compares
-/// them.
-fn resource_key(resource: &Resource) -> u64 {
-    use std::hash::{Hash, Hasher};
+/// them. Unresolved full citations (`None`) all share one key, so a short
+/// form matching one of them and a resolved citation is ambiguous, as in
+/// eyecite.
+fn resource_key<R: Hash>(resource: &Option<R>) -> u64 {
+    use std::hash::Hasher;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     resource.hash(&mut hasher);
     hasher.finish()
@@ -165,11 +186,11 @@ fn is_parallel(previous: &Citation, citation: &Citation) -> bool {
 /// When they are different resources but all one decision cited in
 /// parallel, the matched citation in `reporter` (the short form's), or
 /// else the first one. Otherwise none: the citation is ambiguous.
-fn decision_resource<'a>(
-    resolved: &'a ResolvedFullCites,
+fn decision_resource<'a, R: Hash>(
+    resolved: &'a ResolvedFullCites<R>,
     mut matches: impl Iterator<Item = usize>,
     reporter: Option<&str>,
-) -> Option<&'a Resource> {
+) -> Option<&'a R> {
     let first = &resolved.cites[matches.next()?];
     let mut keys = vec![first.key];
     let mut in_reporter =
@@ -188,9 +209,9 @@ fn decision_resource<'a>(
         }
     }
     if keys.len() == 1 {
-        Some(&first.resource)
+        first.resource.as_ref()
     } else if resolved.one_decision(first.key, &keys) {
-        Some(&in_reporter.unwrap_or(first).resource)
+        in_reporter.unwrap_or(first).resource.as_ref()
     } else {
         None
     }
@@ -210,39 +231,240 @@ pub fn resolve_full_citation(citation: &Citation) -> Resource {
 /// Resolve a slice of citations (in document order) to their resources.
 ///
 /// Returns a map from each distinct [`Resource`] to the list of [`Citation`]s
-/// that were resolved to it.
+/// that were resolved to it. This is [`resolve_citations_with`] and the
+/// [`DefaultResolver`].
 pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
-    let mut resolutions: Resolutions = HashMap::new();
+    resolve_citations_with(citations, &mut DefaultResolver::default())
+}
+
+/// How [`resolve_citations_with`] resolves each kind of citation to a
+/// resource: eyecite's `resolve_full_citation`, `resolve_shortcase_citation`,
+/// `resolve_supra_citation`, `resolve_reference_citation` and
+/// `resolve_id_citation` callbacks, as one trait.
+///
+/// A resource is whatever the caller groups citations by: citare's own
+/// [`Resource`], a database id, a URL. Only [`resolve_full`] is required.
+/// Every other method defaults to citare's built-in rules, applied to the
+/// resources `resolve_full` returned, so a resolver that maps full
+/// citations to its own ids gets short, supra, reference and id citations
+/// grouped under those ids without reimplementing them. An override can
+/// still call the built-in rule through the [`ResolveContext`] (for
+/// instance, to post-filter it).
+///
+/// Returning `None` leaves a citation unresolved: it appears in no group.
+/// An unresolved full citation still counts when a later short form is
+/// matched against the full citations, so a short form that matches it and
+/// a resolved one is ambiguous rather than resolved to the other.
+///
+/// [`resolve_full`]: Resolver::resolve_full
+///
+/// # Example
+///
+/// Group citations by a caller's own case ids:
+///
+/// ```rust
+/// use citare_core::resolve::{resolve_citations_with, Resolver};
+/// use citare_core::{get_citations, Citation};
+///
+/// struct ById;
+///
+/// impl Resolver for ById {
+///     type Resource = String;
+///
+///     fn resolve_full(&mut self, citation: &Citation) -> Option<String> {
+///         // Look the citation up in your own index here.
+///         Some(format!("case:{}", citation.matched_text()))
+///     }
+/// }
+///
+/// let text = "Foo v. Bar, 1 U.S. 1 (1999). Id. at 2. Foo, 1 U.S., at 3.";
+/// let citations = get_citations(text, false, "", &[]);
+/// let groups = resolve_citations_with(&citations, &mut ById);
+/// assert_eq!(groups["case:1 U.S. 1"].len(), 3);
+/// ```
+pub trait Resolver {
+    /// What citations are grouped by. Equal resources are one group.
+    type Resource: Clone + Eq + Hash;
+
+    /// Resolve a full case, law or journal citation.
+    fn resolve_full(&mut self, citation: &Citation) -> Option<Self::Resource>;
+
+    /// Resolve a short case citation (`Foo, 1 U.S., at 2`). The default is
+    /// [`ResolveContext::resolve_shortcase`].
+    fn resolve_shortcase(
+        &mut self,
+        citation: &Citation,
+        context: &ResolveContext<'_, Self::Resource>,
+    ) -> Option<Self::Resource> {
+        context.resolve_shortcase(citation)
+    }
+
+    /// Resolve a supra citation (`Foo, supra, at 2`). The default is
+    /// [`ResolveContext::resolve_supra`].
+    fn resolve_supra(
+        &mut self,
+        citation: &Citation,
+        context: &ResolveContext<'_, Self::Resource>,
+    ) -> Option<Self::Resource> {
+        context.resolve_supra(citation)
+    }
+
+    /// Resolve a reference citation (`In Foo at 2`). The default is
+    /// [`ResolveContext::resolve_reference`].
+    fn resolve_reference(
+        &mut self,
+        citation: &Citation,
+        context: &ResolveContext<'_, Self::Resource>,
+    ) -> Option<Self::Resource> {
+        context.resolve_reference(citation)
+    }
+
+    /// Resolve an id. citation (`Id. at 2`). The default is
+    /// [`ResolveContext::resolve_id`].
+    fn resolve_id(
+        &mut self,
+        citation: &Citation,
+        context: &ResolveContext<'_, Self::Resource>,
+    ) -> Option<Self::Resource> {
+        context.resolve_id(citation)
+    }
+}
+
+/// The resolver [`resolve_citations`] uses: each full citation is its own
+/// [`Resource`] ([`resolve_full_citation`]) and every other kind follows
+/// citare's built-in rules.
+#[derive(Debug, Default, Clone, Copy)]
+#[non_exhaustive]
+pub struct DefaultResolver;
+
+impl Resolver for DefaultResolver {
+    type Resource = Resource;
+
+    fn resolve_full(&mut self, citation: &Citation) -> Option<Resource> {
+        Some(resolve_full_citation(citation))
+    }
+}
+
+/// What a [`Resolver`] can see when resolving a short form: the full
+/// citations before it, with their resources (eyecite's
+/// `resolved_full_cites`), the last citation's resolution and the groups so
+/// far. Its `resolve_*` methods are citare's built-in rules over that state.
+pub struct ResolveContext<'a, R> {
+    resolved_full_cites: &'a ResolvedFullCites<R>,
+    last_resolution: Option<&'a R>,
+    resolutions: &'a Resolutions<R>,
+}
+
+impl<'a, R: Clone + Eq + Hash> ResolveContext<'a, R> {
+    /// The full citations so far, in document order, each with the resource
+    /// [`Resolver::resolve_full`] gave it (`None` if it left it unresolved).
+    pub fn full_citations(&self) -> impl Iterator<Item = (&'a Citation, Option<&'a R>)> + 'a {
+        self.resolved_full_cites
+            .cites
+            .iter()
+            .map(|c| (&c.citation, c.resource.as_ref()))
+    }
+
+    /// The resource the citation just before this one resolved to, if any.
+    pub fn last_resolution(&self) -> Option<&'a R> {
+        self.last_resolution
+    }
+
+    /// The groups so far.
+    pub fn resolutions(&self) -> &'a Resolutions<R> {
+        self.resolutions
+    }
+
+    /// citare's rule for a short case citation: the full case citations
+    /// with its reporter and volume, if they are one resource, or one
+    /// decision cited in parallel (then the one in the short form's
+    /// reporter); otherwise those whose party names contain its antecedent,
+    /// under the same condition. `None` for any other kind of citation.
+    pub fn resolve_shortcase(&self, citation: &Citation) -> Option<R> {
+        let Citation::ShortCase(data) = citation else {
+            return None;
+        };
+        resolve_shortcase_citation(citation, data, self.resolved_full_cites)
+    }
+
+    /// citare's rule for a supra citation: the full case citations whose
+    /// party names contain its antecedent, if they are one resource or one
+    /// decision cited in parallel (then the first). `None` for any other
+    /// kind of citation.
+    pub fn resolve_supra(&self, citation: &Citation) -> Option<R> {
+        let Citation::Supra(data) = citation else {
+            return None;
+        };
+        resolve_supra_citation(data, self.resolved_full_cites)
+    }
+
+    /// citare's rule for a reference citation: the full citations whose
+    /// party or case names equal one of its names, if they are one
+    /// resource. `None` for any other kind of citation.
+    pub fn resolve_reference(&self, citation: &Citation) -> Option<R> {
+        let Citation::Reference(data) = citation else {
+            return None;
+        };
+        resolve_reference_citation(data, self.resolved_full_cites)
+    }
+
+    /// citare's rule for an id. citation: the last citation's resource,
+    /// unless its pin cite can't be in the first citation of that resource
+    /// (see `docs/divergences.md` for section pin cites). `None` for any
+    /// other kind of citation.
+    pub fn resolve_id(&self, citation: &Citation) -> Option<R> {
+        let Citation::Id(data) = citation else {
+            return None;
+        };
+        resolve_id_citation(data, self.last_resolution, self.resolutions)
+    }
+}
+
+/// Resolve a slice of citations (in document order) with `resolver`.
+///
+/// eyecite's `resolve_citations` with its resolver callbacks. Returns a map
+/// from each distinct resource to the citations resolved to it, in document
+/// order. Unknown citations are never resolved.
+pub fn resolve_citations_with<V: Resolver + ?Sized>(
+    citations: &[Citation],
+    resolver: &mut V,
+) -> Resolutions<V::Resource> {
+    let mut resolutions: Resolutions<V::Resource> = HashMap::new();
     let mut resolved_full_cites = ResolvedFullCites::default();
-    let mut last_resolution: Option<Resource> = None;
+    let mut last_resolution: Option<V::Resource> = None;
     let mut previous: Option<&Citation> = None;
 
     for citation in citations {
         let resolution = match citation {
             // Full citations create new resources.
             Citation::FullCase(_) | Citation::FullLaw(_) | Citation::FullJournal(_) => {
-                let resource = resolve_full_citation(citation);
+                let resource = resolver.resolve_full(citation);
                 let parallel = previous.is_some_and(|p| is_parallel(p, citation));
                 resolved_full_cites.push(citation, resource.clone(), parallel);
-                Some(resource)
+                resource
             }
-
-            // Short case: match by reporter + volume.
-            Citation::ShortCase(data) => {
-                resolve_shortcase_citation(citation, data, &resolved_full_cites)
-            }
-
-            // Supra: match by antecedent.
-            Citation::Supra(data) => resolve_supra_citation(data, &resolved_full_cites),
-
-            // Reference: match by plaintiff/defendant/resolved names.
-            Citation::Reference(data) => resolve_reference_citation(data, &resolved_full_cites),
-
-            // Id: resolve to last resolution if the pin cite is plausible.
-            Citation::Id(data) => resolve_id_citation(data, &last_resolution, &resolutions),
 
             // Unknown: skip.
             Citation::Unknown(_) => None,
+
+            _ => {
+                let context = ResolveContext {
+                    resolved_full_cites: &resolved_full_cites,
+                    last_resolution: last_resolution.as_ref(),
+                    resolutions: &resolutions,
+                };
+                match citation {
+                    // Short case: match by reporter + volume.
+                    Citation::ShortCase(_) => resolver.resolve_shortcase(citation, &context),
+                    // Supra: match by antecedent.
+                    Citation::Supra(_) => resolver.resolve_supra(citation, &context),
+                    // Reference: match by plaintiff/defendant/resolved names.
+                    Citation::Reference(_) => resolver.resolve_reference(citation, &context),
+                    // Id: resolve to last resolution if the pin cite is plausible.
+                    Citation::Id(_) => resolver.resolve_id(citation, &context),
+                    _ => None,
+                }
+            }
         };
         previous = Some(citation);
 
@@ -262,11 +484,11 @@ pub fn resolve_citations(citations: &[Citation]) -> Resolutions {
 // Per-variant resolution helpers
 // ---------------------------------------------------------------------------
 
-fn resolve_shortcase_citation(
+fn resolve_shortcase_citation<R: Clone + Hash>(
     citation: &Citation,
     data: &ShortCaseCitationData,
-    resolved_full_cites: &ResolvedFullCites,
-) -> Option<Resource> {
+    resolved_full_cites: &ResolvedFullCites<R>,
+) -> Option<R> {
     let candidates: &[usize] = resolved_full_cites
         .by_reporter_volume
         .get(&reporter_volume(citation))
@@ -295,10 +517,10 @@ fn resolve_shortcase_citation(
     None
 }
 
-fn resolve_supra_citation(
+fn resolve_supra_citation<R: Clone + Hash>(
     data: &SupraCitationData,
-    resolved_full_cites: &ResolvedFullCites,
-) -> Option<Resource> {
+    resolved_full_cites: &ResolvedFullCites<R>,
+) -> Option<R> {
     let antecedent = data.metadata.antecedent_guess.as_ref()?;
     filter_by_matching_antecedent(
         resolved_full_cites,
@@ -308,12 +530,12 @@ fn resolve_supra_citation(
     )
 }
 
-fn resolve_id_citation(
+fn resolve_id_citation<R: Clone + Eq + Hash>(
     data: &IdCitationData,
-    last_resolution: &Option<Resource>,
-    resolutions: &Resolutions,
-) -> Option<Resource> {
-    let last = last_resolution.as_ref()?;
+    last_resolution: Option<&R>,
+    resolutions: &Resolutions<R>,
+) -> Option<R> {
+    let last = last_resolution?;
 
     // Retrieve the full citation that created this resource.
     let full_cite_list = resolutions.get(last)?;
@@ -326,10 +548,10 @@ fn resolve_id_citation(
     Some(last.clone())
 }
 
-fn resolve_reference_citation(
+fn resolve_reference_citation<R: Clone + Hash>(
     data: &ReferenceCitationData,
-    resolved_full_cites: &ResolvedFullCites,
-) -> Option<Resource> {
+    resolved_full_cites: &ResolvedFullCites<R>,
+) -> Option<R> {
     // Full citations whose metadata holds any of this citation's values.
     let mut matches: Vec<usize> = [
         &data.metadata.defendant,
@@ -359,12 +581,12 @@ fn resolve_reference_citation(
 /// citation's defendant or plaintiff contains `antecedent_guess`. Returns
 /// a resource only when the matches are one decision (see
 /// [`decision_resource`]), preferring a citation in `reporter`.
-fn filter_by_matching_antecedent(
-    resolved_full_cites: &ResolvedFullCites,
+fn filter_by_matching_antecedent<R: Clone + Hash>(
+    resolved_full_cites: &ResolvedFullCites<R>,
     candidates: impl Iterator<Item = usize>,
     antecedent_guess: &str,
     reporter: Option<&str>,
-) -> Option<Resource> {
+) -> Option<R> {
     use crate::utils::strip_punct;
 
     let ag = strip_punct(antecedent_guess);

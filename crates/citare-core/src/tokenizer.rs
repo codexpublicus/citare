@@ -73,7 +73,50 @@ impl std::fmt::Debug for TokenExtractor {
     }
 }
 
+impl Clone for TokenExtractor {
+    /// Copy the extractor without its compiled regex, so a copy whose
+    /// `regex` is then changed compiles the new pattern (eyecite's
+    /// `copy(extractor)` plus `del e._compiled_regex`).
+    fn clone(&self) -> Self {
+        TokenExtractor {
+            regex: self.regex.clone(),
+            compiled_regex: OnceLock::new(),
+            token_type: self.token_type,
+            extra: self.extra.clone(),
+            strings: self.strings.clone(),
+            case_insensitive: self.case_insensitive,
+        }
+    }
+}
+
 impl TokenExtractor {
+    /// Create an extractor.
+    ///
+    /// `regex` is compiled on first use (a pattern that fails to compile
+    /// logs a warning and matches nothing). Capture group 1, if any, is the
+    /// token's text, and named groups (`volume`, `reporter`, `page`, ...)
+    /// become the token's groups. `strings` are the literal strings a text
+    /// must contain for [`AhocorasickTokenizer`] to run the extractor
+    /// (whitespace is ignored when matching them); with none, it always
+    /// runs. A [`TokenType::Citation`] extractor's `extra` lists the
+    /// editions its citations can be in.
+    pub fn new(
+        regex: impl Into<String>,
+        token_type: TokenType,
+        extra: ExtractorExtra,
+        strings: Vec<String>,
+        case_insensitive: bool,
+    ) -> Self {
+        TokenExtractor {
+            regex: regex.into(),
+            compiled_regex: OnceLock::new(),
+            token_type,
+            extra,
+            strings,
+            case_insensitive,
+        }
+    }
+
     /// Whether every edition this extractor finds is a law (laws.json).
     fn is_law(&self) -> bool {
         let mut eds = self
@@ -314,6 +357,35 @@ fn build_editions_lookup() -> HashMap<String, Vec<Edition>> {
 }
 
 // ---------------------------------------------------------------------------
+// Tokenize trait
+// ---------------------------------------------------------------------------
+
+/// Something that turns text into tokens for the citation finder: eyecite's
+/// `Tokenizer` interface.
+///
+/// [`Tokenizer`] and [`AhocorasickTokenizer`] implement it. Pass one to
+/// [`crate::find::FindOptions::tokenizer`] to find citations with your own
+/// extractors (see [`build_extractors`] and [`TokenExtractor::new`]).
+pub trait Tokenize {
+    /// Tokenize `text`: every token and the text between tokens, in order,
+    /// and the citation tokens (citation, id, supra and section) with their
+    /// index in the first list.
+    fn tokenize(&self, text: &str) -> (Tokens, Vec<(usize, Token)>);
+}
+
+impl Tokenize for Tokenizer {
+    fn tokenize(&self, text: &str) -> (Tokens, Vec<(usize, Token)>) {
+        Tokenizer::tokenize(self, text)
+    }
+}
+
+impl Tokenize for AhocorasickTokenizer {
+    fn tokenize(&self, text: &str) -> (Tokens, Vec<(usize, Token)>) {
+        AhocorasickTokenizer::tokenize(self, text)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tokenizer (base)
 // ---------------------------------------------------------------------------
 
@@ -335,6 +407,16 @@ impl Tokenizer {
         Self {
             extractors: build_extractors(),
         }
+    }
+
+    /// Create a `Tokenizer` that runs `extractors`, every one on every text.
+    pub fn from_extractors(extractors: Vec<TokenExtractor>) -> Self {
+        Self { extractors }
+    }
+
+    /// The extractors this tokenizer runs.
+    pub fn extractors(&self) -> &[TokenExtractor] {
+        &self.extractors
     }
 
     /// Tokenize `text` and return (all_tokens, citation_tokens_with_positions).
@@ -398,8 +480,9 @@ impl AhocorasickTokenizer {
         Self::from_extractors(extractors)
     }
 
-    /// Build from a list of extractors (useful for testing).
-    fn from_extractors(extractors: Vec<TokenExtractor>) -> Self {
+    /// Create an `AhocorasickTokenizer` that runs `extractors`, each only on
+    /// texts that contain one of its `strings`.
+    pub fn from_extractors(extractors: Vec<TokenExtractor>) -> Self {
         let mut unfiltered_indices = Vec::new();
         // Ordered maps, so the automata's pattern ids are the same in every
         // process.
@@ -533,6 +616,11 @@ impl AhocorasickTokenizer {
             }
         }
         tokens
+    }
+
+    /// The extractors this tokenizer can run.
+    pub fn extractors(&self) -> &[TokenExtractor] {
+        &self.extractors
     }
 
     /// Debug: return the number of extractors selected for text.

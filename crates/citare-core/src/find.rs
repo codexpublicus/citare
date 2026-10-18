@@ -22,7 +22,7 @@ use crate::models::document::Document;
 use crate::models::edition::ReporterSource;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{SUPRA_ANTECEDENT_GROUPS, SUPRA_ANTECEDENT_REGEX};
-use crate::tokenizer::DEFAULT_TOKENIZER;
+use crate::tokenizer::{Tokenize, DEFAULT_TOKENIZER};
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -65,8 +65,102 @@ pub fn get_citations_from_document(
     document: &mut Document,
     remove_ambiguous: bool,
 ) -> Vec<Citation> {
+    get_citations_from_document_with(document, remove_ambiguous, &*DEFAULT_TOKENIZER)
+}
+
+/// The options of [`get_citations_with`]: eyecite's `get_citations`
+/// keyword arguments.
+///
+/// Build one with [`FindOptions::new`] (or `default()`) and the builder
+/// methods. New options may be added in minor releases, so the struct
+/// can't be built with a literal outside citare.
+///
+/// ```rust
+/// use citare_core::{get_citations_with, CleanStep, FindOptions};
+///
+/// let steps = [CleanStep::Html, CleanStep::AllWhitespace];
+/// let options = FindOptions::new()
+///     .markup_text("<p>See <i>Foo v. Bar</i>, 1 U.S. 1 (1999).</p>")
+///     .clean_steps(&steps);
+/// let citations = get_citations_with("", &options);
+/// assert_eq!(citations[0].matched_text(), "1 U.S. 1");
+/// ```
+#[derive(Clone, Copy, Default)]
+#[non_exhaustive]
+pub struct FindOptions<'a> {
+    /// Drop citations that might refer to more than one reporter and can't
+    /// be narrowed down by date.
+    pub remove_ambiguous: bool,
+    /// HTML or XML to find citations in, instead of the plain text (see
+    /// [`get_citations`]).
+    pub markup_text: &'a str,
+    /// Cleanup steps applied before tokenization.
+    pub clean_steps: &'a [CleanStep],
+    /// The tokenizer to use; `None` is the shared [`DEFAULT_TOKENIZER`].
+    pub tokenizer: Option<&'a dyn Tokenize>,
+}
+
+impl<'a> FindOptions<'a> {
+    /// The defaults: plain text, no cleaning, ambiguous citations kept, the
+    /// default tokenizer.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set [`remove_ambiguous`](Self::remove_ambiguous).
+    pub fn remove_ambiguous(mut self, remove_ambiguous: bool) -> Self {
+        self.remove_ambiguous = remove_ambiguous;
+        self
+    }
+
+    /// Set [`markup_text`](Self::markup_text).
+    pub fn markup_text(mut self, markup_text: &'a str) -> Self {
+        self.markup_text = markup_text;
+        self
+    }
+
+    /// Set [`clean_steps`](Self::clean_steps).
+    pub fn clean_steps(mut self, clean_steps: &'a [CleanStep]) -> Self {
+        self.clean_steps = clean_steps;
+        self
+    }
+
+    /// Set [`tokenizer`](Self::tokenizer).
+    pub fn tokenizer(mut self, tokenizer: &'a dyn Tokenize) -> Self {
+        self.tokenizer = Some(tokenizer);
+        self
+    }
+}
+
+impl std::fmt::Debug for FindOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FindOptions")
+            .field("remove_ambiguous", &self.remove_ambiguous)
+            .field("markup_text", &self.markup_text)
+            .field("clean_steps", &self.clean_steps.len())
+            .field("tokenizer", &self.tokenizer.map(|_| "custom"))
+            .finish()
+    }
+}
+
+/// Extract citations from legal text with [`FindOptions`].
+///
+/// eyecite's `get_citations` with all of its arguments, including a custom
+/// `tokenizer`. [`get_citations`] is this with the default tokenizer.
+pub fn get_citations_with(plain_text: &str, options: &FindOptions<'_>) -> Vec<Citation> {
+    let mut document = Document::new(plain_text, options.markup_text, options.clean_steps);
+    let tokenizer = options.tokenizer.unwrap_or(&*DEFAULT_TOKENIZER);
+    get_citations_from_document_with(&mut document, options.remove_ambiguous, tokenizer)
+}
+
+/// [`get_citations_from_document`] with a custom tokenizer.
+pub fn get_citations_from_document_with(
+    document: &mut Document,
+    remove_ambiguous: bool,
+    tokenizer: &dyn Tokenize,
+) -> Vec<Citation> {
     // 1. Tokenize
-    document.tokenize(&DEFAULT_TOKENIZER);
+    document.tokenize_with(tokenizer);
 
     // 2. For each citation token, extract citation
     let mut citations: Vec<Citation> = Vec::new();
