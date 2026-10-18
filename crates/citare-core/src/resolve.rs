@@ -143,18 +143,6 @@ fn reporter_volume(citation: &Citation) -> (Option<String>, Option<String>) {
     (citation.corrected_reporter(), volume)
 }
 
-/// The resource of the matched full citations, if they are all one
-/// resource. eyecite resolves only when exactly one resource matches.
-fn single_resource(
-    resolved: &ResolvedFullCites,
-    mut matches: impl Iterator<Item = usize>,
-) -> Option<&Resource> {
-    let first = &resolved.cites[matches.next()?];
-    matches
-        .all(|i| resolved.cites[i].key == first.key)
-        .then_some(&first.resource)
-}
-
 /// Whether `citation` is cited in parallel with `previous`, the citation
 /// just before it: both are full case citations under one case name, as
 /// in "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005)". These are the
@@ -358,7 +346,9 @@ fn resolve_reference_citation(
     matches.sort_unstable();
     matches.dedup();
 
-    single_resource(resolved_full_cites, matches.into_iter()).cloned()
+    // One decision cited in parallel is several resources; resolve to its
+    // first citation, as for a supra (#67).
+    decision_resource(resolved_full_cites, matches.into_iter(), None).cloned()
 }
 
 // ---------------------------------------------------------------------------
@@ -758,5 +748,72 @@ mod tests {
                     See also Smith v. Jones, 280 Conn. 1, 900 A.2d 1 (2006). \
                     Smith, supra, at 46.";
         assert_eq!(resolved(text).last(), Some(&("SupraCitation", None)));
+    }
+
+    // #67: a reference to a decision cited in parallel resolves to its
+    // first citation, as a supra does (#60).
+    #[test]
+    fn test_reference_after_parallel_state_cites() {
+        let text = "Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). The court \
+                    agreed. In Haynes at 312, the court held that the statute applied.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("314 Conn. 303")),
+                ("FullCaseCitation", to("101 A.3d 249")),
+                ("ReferenceCitation", to("314 Conn. 303")),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_reference_after_parallel_federal_cites() {
+        let text = "Ankenbrandt v. Richards, 504 U.S. 689, 112 S.Ct. 2206, 119 L.Ed.2d 468 \
+                    (1992). The court agreed. Under Ankenbrandt at 703, the exception is narrow.";
+        assert_eq!(
+            resolved(text).last(),
+            Some(&("ReferenceCitation", to("504 U.S. 689")))
+        );
+    }
+
+    // Two decisions with the same name leave a reference ambiguous, cited
+    // singly or in parallel.
+    #[test]
+    fn test_reference_after_two_parallel_cases_with_one_name_is_unresolved() {
+        let text = "Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). The court \
+                    agreed. See also Haynes v. Middletown, 320 Conn. 1, 120 A.3d 1 (2015). \
+                    In Haynes at 312, the court held.";
+        assert_eq!(resolved(text).last(), Some(&("ReferenceCitation", None)));
+    }
+
+    #[test]
+    fn test_reference_after_two_cases_with_one_name_is_unresolved() {
+        let text = "Haynes v. Middletown, 314 Conn. 303 (2014). The court agreed. See also \
+                    Haynes v. Middletown, 320 Conn. 1 (2015). In Haynes at 312, the court held.";
+        assert_eq!(resolved(text).last(), Some(&("ReferenceCitation", None)));
+    }
+
+    // A reference in markup, an emphasized name after the decision's
+    // parallel citations.
+    #[test]
+    fn test_markup_reference_after_parallel_cites() {
+        let markup = "<p><i>Haynes v. Middletown,</i> 314 Conn. 303, 101 A.3d 249 (2014). The \
+                      court agreed. In <i>Haynes,</i> the court held that the statute applied.</p>";
+        let citations = crate::find::get_citations(
+            "",
+            false,
+            markup,
+            &[crate::CleanStep::Html, crate::CleanStep::InlineWhitespace],
+        );
+        let resolutions = resolve_citations(&citations);
+        let reference = citations
+            .iter()
+            .find(|c| matches!(c, Citation::Reference(_)))
+            .expect("a reference citation");
+        let resource = resolutions
+            .iter()
+            .find(|(_, cites)| cites.iter().any(|c| c.span() == reference.span()))
+            .map(|(resource, _)| resource.citation.matched_text().to_string());
+        assert_eq!(resource.as_deref(), Some("314 Conn. 303"));
     }
 }

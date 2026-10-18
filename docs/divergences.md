@@ -24,6 +24,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [Codes cited by subject keep the subject](#law-subject-split) | #49 | drafted in [`law-subject-split.md`](eyecite-issue-drafts/law-subject-split.md) |
 | [State-code statute forms](#state-code-forms) | #69 | drafted in [`state-code-forms.md`](eyecite-issue-drafts/state-code-forms.md) (reporters-db) |
 | [Parallel citation groups stay within one decision](#parallel-groups) | #66 | drafted in [`parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md) |
+| [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -543,3 +544,52 @@ opinions against 1.83 to 1.94 before).
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/parallel-groups.md`](eyecite-issue-drafts/parallel-groups.md).
+
+<a id="reference-after-parallel"></a>
+## Reference citations after parallel citations
+
+A reference citation names a case already cited in full, by a party name and a pin cite in
+plain text (`In Haynes at 312`) or by an emphasized name in markup (`In <i>Haynes,</i> the
+court held`). eyecite resolves it to the earlier full citations whose metadata holds the name,
+and only when they are all one resource. A decision cited in parallel is two or three
+resources, so the reference resolves to nothing, as a supra did before
+[#60](#supra-after-parallel), and so does an id. citation after it.
+
+citare applies the supra rule: when every match is one decision cited in parallel (one
+[parallel group](#parallel-groups)), the reference resolves to the first match. Two decisions
+with one name still leave it unresolved, and two groups that share a citation aren't merged.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … In Haynes at 312, the court held` | **unresolved** | `314 Conn. 303` |
+| `Ankenbrandt v. Richards, 504 U.S. 689, 112 S.Ct. 2206, 119 L.Ed.2d 468 (1992). … Under Ankenbrandt at 703` | **unresolved** | `504 U.S. 689` |
+| `<i>Haynes v. Middletown,</i> 314 Conn. 303, 101 A.3d 249 (2014). … In <i>Haynes,</i> the court held … <i>Id.</i> at 313.` | reference and `Id.` **unresolved** | both resolve to `314 Conn. 303` |
+| `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … See also Haynes v. Middletown, 320 Conn. 1, 120 A.3d 1 (2015). In Haynes at 312` | unresolved | unresolved (two decisions) |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), the citare CLI's `resolve` resolves
+6,128 of 6,363 reference citations, up from 3,060 with [parallel groups](#parallel-groups) alone
+and 3,053 on `main` before either, and 9,021 id. citations, up from 8,753 (the ones after a
+newly resolved reference). No citation that resolved before stops resolving or resolves to a
+different resource. I read 20 of the 3,068 newly resolved references, drawn at random, in
+context: each names the case it resolves to (`Gates` to `462 U.S. 213`, Illinois v. Gates;
+`Tinker` to `393 U.S. 503`; `Schlunk` to `486 U.S. 694`, Volkswagenwerk Aktiengesellschaft v.
+Schlunk; `Mayl at ¶ 56` to `106 Ohio St.3d 207`). References are rare in the CAP plain text
+stare serves: 138 A.3d 1012 (Brooks v. Powers) has none, and the 38-opinion sample from #60
+has one, `Puksar at 292`, which stays unresolved because two decisions are named Commonwealth
+v. Puksar (597 Pa. 240 and 559 Pa. 358).
+
+### Tests
+
+- `crates/citare-core/src/resolve.rs`: a reference after Conn. and A.3d cites, after U.S.,
+  S.Ct. and L.Ed.2d cites, an emphasized reference in markup, and two decisions with one name,
+  cited singly and in parallel, whose reference stays unresolved.
+- citation-bench `vectors/divergences/`: the first three rows of the table as `resolve` vectors
+  (`reference-after-parallel`). eyecite's misses are in `baselines/eyecite.known-differences`.
+
+### Upstream
+
+Not filed; it is the same fix as the supra case, and the draft in
+[`eyecite-issue-drafts/supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md)
+covers both.
