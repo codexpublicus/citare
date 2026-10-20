@@ -1780,6 +1780,73 @@ mod tests {
         assert_eq!(years[1].1, None, "{years:?}");
     }
 
+    /// A parenthetical with a court and no year gives the citation its
+    /// court and ends its full span (#88), usually before subsequent
+    /// history whose citations carry the year.
+    #[test]
+    fn test_court_parenthetical_without_year() {
+        let court_and_span = |cites: &[Citation], i: usize| {
+            let Citation::FullCase(d) = &cites[i] else {
+                panic!("expected FullCase: {cites:?}");
+            };
+            (
+                d.metadata.case.court.clone(),
+                cites[i].full_span(),
+                d.resource.year,
+            )
+        };
+
+        // citation-bench curated find/nameless_parallel_run/0
+        // (CourtListener 1706597).
+        let text = "Flaksa v. Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), \
+                    cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(
+            court_and_span(&cites, 0),
+            (Some("ca5".into()), (0, 71), None)
+        );
+        assert_eq!(court_and_span(&cites, 1).1, (85, 136));
+
+        // curated find/runs_split_at_semicolon/0 (CourtListener 433585).
+        let text = "United States v. Pope, 574 F.2d 320 (6th Cir.), cert. denied, 439 U.S. \
+                    868, 99 S.Ct. 195, 58 L.Ed.2d 179; 436 U.S. 929 (1978)";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(
+            court_and_span(&cites, 0),
+            (Some("ca6".into()), (0, 46), None)
+        );
+
+        // With a pin cite, and in markup.
+        let text = "Foo v. Bar, 389 F.2d 885, 887 (5th Cir.), aff'd.";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(
+            court_and_span(&cites, 0),
+            (Some("ca5".into()), (0, 40), None)
+        );
+        let Citation::FullCase(d) = &cites[0] else {
+            panic!("expected FullCase");
+        };
+        assert_eq!(d.metadata.case.pin_cite.as_deref(), Some("887"));
+        let cites = markup_cites("<p><i>Foo v. Bar,</i> 389 F.2d 885 (5th Cir.), aff'd.</p>");
+        let Citation::FullCase(d) = &cites[0] else {
+            panic!("expected FullCase");
+        };
+        assert_eq!(d.metadata.case.court.as_deref(), Some("ca5"));
+        assert!(cites[0].matched_text().ends_with("885"));
+
+        // A parenthetical that isn't a court changes nothing, and a court
+        // with a year is read as before.
+        for (text, court, end) in [
+            ("Foo v. Bar, 389 F.2d 885 (per curiam).", None, 24),
+            ("Foo v. Bar, 389 F.2d 885 (a).", None, 24),
+            ("Foo v. Bar, 389 F.2d 885 (5th Cir. 1968).", Some("ca5"), 40),
+        ] {
+            let cites = get_citations(text, false, "", &[]);
+            let (c, span, _) = court_and_span(&cites, 0);
+            assert_eq!((c.as_deref(), span.1), (court, end), "{text}");
+        }
+    }
+
     #[test]
     fn test_ambiguous_flag() {
         let cites = get_citations("1 U.S. 1", false, "", &[]);

@@ -16,9 +16,9 @@ use crate::models::citation::{
 use crate::models::document::Document;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{
-    POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX, POST_ID_SECTION_REGEX,
-    POST_JOURNAL_CITATION_REGEX, POST_LAW_CITATION_REGEX, POST_SHORT_CITATION_REGEX,
-    PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX, YEAR_REGEX,
+    POST_FULL_CITATION_COURT_REGEX, POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX,
+    POST_ID_SECTION_REGEX, POST_JOURNAL_CITATION_REGEX, POST_LAW_CITATION_REGEX,
+    POST_SHORT_CITATION_REGEX, PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX, YEAR_REGEX,
 };
 
 // ---------------------------------------------------------------------------
@@ -712,6 +712,15 @@ pub fn add_post_citation(citation: &mut FullCaseCitationData, words: &Tokens) {
         true,  // forward
     );
 
+    // Without a court and year parenthetical, the citation may still have
+    // one with only a court (#88).
+    let has_year = m
+        .as_ref()
+        .is_some_and(|m| ["year", "year_la"].iter().any(|name| m.get(name).is_some()));
+    if !has_year && add_court_parenthetical(citation, words, span_end) {
+        return;
+    }
+
     let m = match m {
         Some(m) => m,
         None => return,
@@ -786,6 +795,61 @@ pub fn add_post_citation(citation: &mut FullCaseCitationData, words: &Tokens) {
             citation.metadata.case.court = get_court_by_paren(court_str);
         }
     }
+}
+
+/// Give a full case citation the court of a parenthetical after it that
+/// has a court and no year, and end its full span after that
+/// parenthetical: "Flaksa v. Little River Marine Construction Co., 389 F.2d
+/// 885 (5th Cir.), cert. den., 392 U.S. 928 (1968)" (#88). eyecite reads a
+/// court only from a parenthetical with a year in it, so this is a
+/// deliberate difference (docs/divergences.md).
+///
+/// The parenthetical counts only when all of it is a court's citation
+/// string in courts-db ("5th Cir.", "Tex.Civ.App."), so "(per curiam)" or
+/// "(a)" doesn't. Returns whether it found one.
+fn add_court_parenthetical(
+    citation: &mut FullCaseCitationData,
+    words: &Tokens,
+    span_end: usize,
+) -> bool {
+    let index = citation.resource.common.index;
+    let Some(m) = match_on_tokens(
+        words,
+        (index + 1) as i64,
+        &POST_FULL_CITATION_COURT_REGEX,
+        "",
+        false, // not strings_only
+        true,  // forward
+    ) else {
+        return false;
+    };
+    let Some(court) = m.get("court").and_then(court_by_citation_string) else {
+        return false;
+    };
+    citation.metadata.case.court = Some(court);
+    citation.resource.common.full_span_end = Some(span_end + m.end);
+    let pin_cite_raw = m.get("pin_cite");
+    citation.metadata.case.pin_cite = clean_pin_cite(pin_cite_raw);
+    if let Some(pc) = pin_cite_raw {
+        citation.metadata.case.pin_cite_span_end = Some(span_end + pc.len());
+    }
+    true
+}
+
+/// The court whose whole citation string is `paren_string`, ignoring case,
+/// spaces and punctuation. Unlike [`get_court_by_paren`] there is no prefix
+/// match, which would read "(a)" as a court.
+fn court_by_citation_string(paren_string: &str) -> Option<String> {
+    let court_str = normalize_court_string(paren_string);
+    if court_str.is_empty() {
+        return None;
+    }
+    crate::data::get()
+        .bundle
+        .court_keys
+        .iter()
+        .find(|(s, _)| s.as_ref() == court_str)
+        .map(|(_, id)| id.to_string())
 }
 
 // ---------------------------------------------------------------------------
