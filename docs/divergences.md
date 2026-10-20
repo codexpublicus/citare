@@ -27,6 +27,8 @@ A new divergence goes in this file before it's merged, with all four.
 | [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 | [An id. citation as a case name](#id-as-case-name) | #78 | drafted in [`id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md) |
 | [A year between the case name and the volume](#year-before-volume) | #85 | drafted in [`year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md) |
+| [A court parenthetical without a year](#court-without-year) | #88 | drafted in [`court-without-year.md`](eyecite-issue-drafts/court-without-year.md) |
+| [`Am. Jur.` is American Jurisprudence](#am-jur) | #93 | drafted in [`am-jur.md`](eyecite-issue-drafts/am-jur.md) (reporters-db) |
 | [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
 
 <a id="id-section-pin"></a>
@@ -741,6 +743,99 @@ records eyecite's missing year, and citare now fails it.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md).
+
+<a id="court-without-year"></a>
+## A court parenthetical without a year
+
+A citation followed by subsequent history often leaves the year to the history: `Flaksa v.
+Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928 (1968)`.
+The parenthetical after `389 F.2d 885` names the court and nothing else. eyecite reads a court
+only from a parenthetical that ends in a year, so it gives that citation no court, and its full
+span stops before the parenthetical. citation-bench's protocol counts a citation's trailing
+parenthetical in its full span.
+
+citare reads the court from a parenthetical that is only a court, right after the citation or
+its pin cite, and ends the full span after it. The whole parenthetical has to be a court's
+citation string in courts-db (`5th Cir.`, `Tex. Crim. App.`, `E.D.La.`), so `(per curiam)` or
+`(a)` changes nothing, and so does a prefix of a court's string, which eyecite's
+`get_court_by_paren` accepts for a parenthetical with a year. The year stays empty.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Flaksa v. Little River Marine Construction Co., 389 F.2d 885 (5th Cir.), cert. den., 392 U.S. 928, 88 S.Ct. 2287, 20 L.Ed.2d 1387 (1968).` | `389 F.2d 885`: **no court**, full span **0-60** | `ca5`, full span 0-71 |
+| `United States v. Pope, 574 F.2d 320 (6th Cir.), cert. denied, 439 U.S. 868` | `574 F.2d 320`: **no court**, full span **0-35** | `ca6`, full span 0-46 |
+| `Foo v. Bar, 389 F.2d 885 (per curiam).` | no court, full span 0-24 | the same |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), 289 citations in 157 opinions get a
+court and a full span that ends after the parenthetical, and nothing else changes; no citation
+is gained or lost. 249 of them are federal courts of appeals (`(2d Cir.)` 50, `(5th Cir.)` 39,
+`(9th Cir.)` 35), most of them followed by `cert. denied`. I read all 40 that aren't a court of
+appeals and 30 of the 249, drawn at random, in context. 67 are the court the text names
+(`Penry v. State, 903 S.W.2d 715, 751 (Tex. Crim. App.)`, `Magwood, 426 So.2d 929, 931
+(Ala.)`, `Freedom Alarm Service, Inc. v. Simplex Time Recorder Co., 1999 WL 319212
+(E.D.La.)`). Three are wrong: `The Harold, 287 F. 757, 758 (D. C.)` and `Olsen v. Luckenbach,
+238 F. 237 (D. C.)`, where `D. C.` is a federal district court, and `United States v.
+Hubbard, 429 A.2d 1334, 1337-1338 (D.C.)`, the District of Columbia Court of Appeals, all read
+as `dccrimct`. courts-db gives `D.C.` to the District of Columbia's criminal court alone, and
+eyecite and citare give `(D.C. 1981)` that court too.
+
+### Tests
+
+- `crates/citare-core/src/find.rs`: `test_court_parenthetical_without_year` (Flaksa and Pope,
+  a pin cite before the parenthetical, markup, and parentheticals that aren't a court or have a
+  year).
+- citation-bench: the curated vectors `find/nameless_parallel_run/0` (Flaksa) and
+  `find/runs_split_at_semicolon/0` (Pope), from
+  [citation-bench#35](https://github.com/codexpublicus/citation-bench/pull/35).
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/court-without-year.md`](eyecite-issue-drafts/court-without-year.md).
+
+<a id="am-jur"></a>
+## `Am. Jur.` is American Jurisprudence
+
+reporters-db lists `Am. Jur.` once, as the American Jurist and Law Magazine (1829-1843), under
+its reporters, so eyecite reads every `Am. Jur.` citation as a case citation of it. Opinions from
+the late 1930s on cite American Jurisprudence, the encyclopedia, as `Am. Jur.`. citare adds
+American Jurisprudence as a secondary source in
+[`data/reporters-local.json`](../data/reporters-local.json) ([reporters-local.md](reporters-local.md#american-jurisprudence)),
+and reads an `Am. Jur.` citation as a journal citation, of the American Jurist only when its year
+falls in that magazine's run. A journal citation keeps a section pin cite, as a case citation does.
+
+eyecite doesn't join `13 Am.Jur. 383` to the citation before a semicolon; citare did, through its
+own parallel-citation rule (#66), and with this it doesn't either.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Smith v. United States ex rel. Gorlo, 7 Cir., 52 F.2d 848; 13 Am.Jur. 383.` | `13 Am.Jur. 383`: **case citation, American Jurist and Law Magazine** | journal citation, American Jurisprudence |
+| `27 Am.Jur. 476, § 32` | **case citation, American Jurist**, pin cite `§ 32` | journal citation, American Jurisprudence, pin cite `§ 32` |
+| `1 Am. Jur. 441 (1830)` | case citation, American Jurist | journal citation, American Jurist |
+
+### Evidence
+
+I read all 23 `Am. Jur.` citations in the CourtListener ten-percent sample (7,632 opinions) in
+context, in 18 opinions. All are the encyclopedia: 15 of the opinions cite second-series
+reporters, and the volumes match the encyclopedia's titles, often named with the section
+(`14 Am.Jur. 951, Criminal Law, Sec. 271`, `20 Am. Jur. 299, Evidence, § 318`). Before this change five had the
+name and full span of the case citation before them, three a junk defendant and two the year of
+a later citation; now none does, and none is newly wrong. American Jurist citations come from
+opinions of the 1830s to 1850s, which the sample doesn't have.
+
+### Tests
+
+- `crates/citare-core/src/find.rs`: `test_am_jur_is_a_secondary_source` (Ray v. Bruce, a year in
+  the American Jurist's run, a section pin cite, and resolution).
+- `crates/citare-core/tests/reporters_local.rs`: the entry's examples.
+- citation-bench: none yet.
+
+### Upstream
+
+Not filed; a draft for reporters-db is in
+[`eyecite-issue-drafts/am-jur.md`](eyecite-issue-drafts/am-jur.md).
 
 <a id="name-after-sentence"></a>
 ## A case name starts after a sentence that ends in a parenthetical

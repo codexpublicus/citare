@@ -323,6 +323,17 @@ pub static POST_FULL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// A parenthetical after a full case citation, and its pin cite, holding
+/// only a court and no year: "389 F.2d 885 (5th Cir.), cert. denied, 392
+/// U.S. 928 (1968)" (#88). Named groups: `pin_cite`, `court`. The caller
+/// keeps the match only when `court` is a court's citation string.
+pub static POST_FULL_CITATION_COURT_REGEX: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r"{pin}?,? ?\((?P<court>[^()\[\];]{{1,60}})\)",
+        pin = *PIN_CITE_REGEX,
+    )
+});
+
 /// Mapping from logical group names to branch-specific names for
 /// [`POST_FULL_CITATION_REGEX`].
 pub const POST_FULL_CITATION_GROUPS: &[(&str, &[&str])] = &[
@@ -500,6 +511,13 @@ pub static POST_JOURNAL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
         paren = PARENTHETICAL_REGEX,
     )
 });
+
+/// A pin cite after a journal citation that starts with a section sign,
+/// `13 Am. Jur. 383, § 12` (#93). [`POST_JOURNAL_CITATION_REGEX`] runs on
+/// the text up to the next token, and the tokenizer makes `§` a token of
+/// its own. Named group: `pin_cite`.
+pub static POST_JOURNAL_SECTION_PIN_REGEX: LazyLock<String> =
+    LazyLock::new(|| format!(r"(?=,? ?(?:at )?\u{{00A7}}){pin}", pin = *PIN_CITE_REGEX));
 
 /// Defendant + year regex (e.g. `Smith v. Jones (2012)`).
 /// Named groups: `defendant`, `year`.
