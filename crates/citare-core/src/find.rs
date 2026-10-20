@@ -1780,6 +1780,81 @@ mod tests {
         assert_eq!(years[1].1, None, "{years:?}");
     }
 
+    /// A sentence that ends in a parenthetical bounds the case name of the
+    /// citation after it (#95).
+    #[test]
+    fn test_case_name_stops_at_sentence_end() {
+        for (text, plaintiff, defendant, name_start) in [
+            (
+                "Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).",
+                Some("United States"),
+                "Arnold, Schwinn & Co.",
+                18,
+            ),
+            (
+                "as in Dr. Miles (5th Cir.). United States v. Arnold, 388 U.S. 365 (1967).",
+                Some("United States"),
+                "Arnold",
+                28,
+            ),
+            (
+                "Dr. Miles (1911)?\u{201D} United States v. Arnold, 388 U.S. 365 (1967).",
+                Some("United States"),
+                "Arnold",
+                21,
+            ),
+            (
+                "Dr. Miles (1911). Arnold, Schwinn & Co., 388 U.S. 365 (1967).",
+                None,
+                "Arnold, Schwinn & Co.",
+                18,
+            ),
+        ] {
+            let cites = get_citations(text, false, "", &[]);
+            let Citation::FullCase(d) = &cites[0] else {
+                panic!("expected FullCase: {cites:?}");
+            };
+            assert_eq!(
+                (
+                    d.metadata.plaintiff.as_deref(),
+                    d.metadata.defendant.as_deref(),
+                    d.resource.year,
+                ),
+                (plaintiff, Some(defendant), Some(1967)),
+                "{text}"
+            );
+            assert_eq!(cites[0].full_span().0, name_start, "{text}");
+        }
+
+        // A footnote number after the sentence isn't a case name.
+        let text = "33 L.Ed.2d 346 (1972). [2] 298 A.2d 761 (Del. 1972).";
+        let cites = get_citations(text, false, "", &[]);
+        let Citation::FullCase(d) = &cites[1] else {
+            panic!("expected FullCase: {cites:?}");
+        };
+        assert_eq!(d.metadata.defendant, None);
+        assert_eq!(cites[1].full_span(), (27, 51));
+
+        // Nor does such a citation take the year of the one before it, while
+        // the citations of a run after it share the run's year.
+        let text = "33 L.Ed.2d 346 (1972). [2] 298 A.2d 761 (Del. 1972). [3] 282 N.C. 431, \
+                    194 S.E.2d 19 (1973). [4] ___ U.S. ___, 112 S.Ct. 773, 116 L.Ed.2d 903 \
+                    (1992).";
+        let years = case_years(&get_citations(text, false, "", &[]));
+        let years: Vec<_> = years.iter().map(|(t, y, _)| (t.as_str(), *y)).collect();
+        assert_eq!(
+            years,
+            [
+                ("33 L.Ed.2d 346", Some(1972)),
+                ("298 A.2d 761", Some(1972)),
+                ("282 N.C. 431", Some(1973)),
+                ("194 S.E.2d 19", Some(1973)),
+                ("112 S.Ct. 773", Some(1992)),
+                ("116 L.Ed.2d 903", Some(1992)),
+            ]
+        );
+    }
+
     #[test]
     fn test_ambiguous_flag() {
         let cites = get_citations("1 U.S. 1", false, "", &[]);

@@ -104,6 +104,14 @@ fn year_before_volume(words: &Tokens, index: usize) -> Option<String> {
     year_paren_at(words, i, index)
 }
 
+/// A word that ends a sentence with a closing parenthesis or bracket:
+/// "(1911).", "Cir.).", "(1911)?" or "(1911).\u{201D}". A case name can't
+/// reach back past it.
+fn re_paren_sentence_end() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r#"[)\]][.?!]["'\u{201D}\u{2019}]*$"#).unwrap())
+}
+
 fn re_v_split() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| regex::Regex::new(r"\s+v\.?\s+").unwrap())
@@ -921,6 +929,16 @@ pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short
     let mut state = initialize_search_state(citation);
     scan_for_case_boundaries(words, citation, &mut state);
 
+    // A citation that starts a sentence, with no case name, starts its
+    // own full span. Without that, a full span start of none would be the
+    // same as that of a citation before it that has none either, and the
+    // two would be taken as parallel citations sharing a year ("(Del.
+    // 1972). [3] 282 N.C. 431 (1973)" got 1972).
+    if state.starts_sentence {
+        let common = &mut citation.resource.common;
+        common.full_span_start = Some(common.span_start.unwrap_or_else(|| common.token.start()));
+    }
+
     // eyecite only processes a truthy (non-empty) candidate.
     if state
         .candidate_case_name
@@ -975,6 +993,7 @@ pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens
         title_starting_index: if index > 0 { index - 1 } else { 0 },
         case_name_length: 0,
         plaintiff_length: 0,
+        starts_sentence: false,
     };
 
     // Scan backward
@@ -1111,6 +1130,9 @@ struct SearchState {
     title_starting_index: usize,
     case_name_length: usize,
     plaintiff_length: usize,
+    /// The search ended at the end of a sentence with no case name after
+    /// it, and passed over no parallel citation (#95).
+    starts_sentence: bool,
 }
 
 fn initialize_search_state(citation: &FullCaseCitationData) -> SearchState {
@@ -1124,6 +1146,7 @@ fn initialize_search_state(citation: &FullCaseCitationData) -> SearchState {
         title_starting_index: if index > 0 { index - 1 } else { 0 },
         case_name_length: 0,
         plaintiff_length: 0,
+        starts_sentence: false,
     }
 }
 
@@ -1210,6 +1233,27 @@ fn scan_for_case_boundaries(
             }
             state.pre_cite_year = Some(year);
             continue;
+        }
+
+        // The end of a sentence that ends in a parenthetical, "Dr. Miles
+        // (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365"
+        // (#95). eyecite takes the parenthetical's last word into the case
+        // name ("1911). United States"). The case name starts at the first
+        // capitalized word after it, which skips a footnote number ("(1972).
+        // [2] 298 A.2d 761").
+        if re_paren_sentence_end().is_match(&word_str) {
+            let end = state.title_starting_index;
+            let start = (i + 1..end).find(|&j| {
+                token_to_str(&words[j])
+                    .trim_start()
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_uppercase)
+            });
+            state.start_index = start;
+            state.candidate_case_name = start.map(|j| extract_text(words, j, end));
+            state.starts_sentence = start.is_none() && later_citation == index;
+            return;
         }
 
         // Opening paren after sufficient words
