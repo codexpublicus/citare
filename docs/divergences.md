@@ -27,6 +27,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 | [An id. citation as a case name](#id-as-case-name) | #78 | drafted in [`id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md) |
 | [A year between the case name and the volume](#year-before-volume) | #85 | drafted in [`year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md) |
+| [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -701,7 +702,7 @@ isn't the citation's year.
 | `<em>Stanley v. Illinois</em> (1972), 405 U.S. 645, 651.</p><p>4 <em>Id.,</em> (1990), 52 Ohio St.3d 155` | year **1990** | 1972 |
 | `( <em>Boller v. Signal Oil &amp; Gas Co.</em> (1964) 230 Cal. App.2d 648, 656 [41 Cal. Rptr. 206].)` | **no year** | 1964, both citations |
 | `this Court. <em>Holm; In Re Carroll's Estate</em> (1921), 59 Mont. 403, 413.` | **no year** | 1921 |
-| `Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).` | year **1911**, defendant **`Dr. Miles`** | 1967 |
+| `Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).` | year **1911**, defendant **`Dr. Miles`** | 1967 ([case name](#name-after-sentence) `United States v. Arnold, Schwinn & Co.`) |
 | `See Troop A Riding Academy v. Miller (1934), 127 Ohio 545, 189 N.E. 650.` | 1934, defendant `Miller` | 1934, defendant `Miller` |
 
 Before #85 citare matched only a year that was a word of its own, so in plain text it missed
@@ -740,3 +741,51 @@ records eyecite's missing year, and citare now fails it.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md).
+
+<a id="name-after-sentence"></a>
+## A case name starts after a sentence that ends in a parenthetical
+
+eyecite looks back from a citation for its case name and stops at a word that starts with a
+parenthesis once it has seen more than three words. When the sentence before the case name ends
+in a parenthetical, `(1911).` or `(Alaska 1987).`, that word is the end of the earlier sentence,
+and eyecite takes it, or the whole earlier sentence, into the case name. citare 0.7.1 gave
+`United States v. Arnold, Schwinn & Co.` the plaintiff `1911). United States`, and footnote
+numbers after a sentence became defendants (`1972). [3]`).
+
+citare stops the search at a word that ends a sentence with a closing parenthesis or bracket,
+`).`, `)?` or `).”`, and the case name starts at the first capitalized word after it, so a
+footnote number or a page break is skipped. When no capitalized word follows, the citation has
+no case name and its full span starts at the citation; then it doesn't take the year of a
+nameless citation before it either, which eyecite's rule for parallel citations (an equal full
+span start) would give it.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).` | plaintiff **empty**, defendant **`Dr. Miles`** | `United States`, `Arnold, Schwinn & Co.` |
+| `Witherspoon v. Illinois, 391 U.S. 510 (1968). Whan v. Texas, 403 U.S. 946 (1971).` | `403 U.S. 946`: plaintiff **empty**, defendant **`Illinois`**, year **1968** | `Whan`, `Texas`, 1971 |
+| `Gudenau & Co. v. Sweeney Ins., Inc., 736 P.2d 763, 767 (Alaska 1987). [63] 736 P.2d 763 (Alaska 1987).` | second citation: defendant **`Alaska 1987). [63]`** | none |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), 145 citations in 95 opinions change,
+and none is gained or lost: 74 defendants, 45 plaintiffs and 145 full span starts; no year
+changes. I read 40, drawn at random, in context. 34 are right now: the case name is the one the
+text gives (`Whan v. Texas`, `Ignacio v. United States`, `NLRB v. Gotham Industries, Inc.` for
+`D.C.Cir.1970). In NLRB`), a footnote number or a page header is no longer a name (`[24]`,
+`20180488-CA 20`), or the full span loses the end of the earlier sentence. 6 are still wrong,
+with less junk than before: `Unlike State` (twice), `Accord White` and `Accord State` keep the
+signal word, `Rule 12(c)(3) of the Massachusetts Rules of Criminal Procedure` is a rule, and in
+`Weaver v. State (Ala. App). 88 So. 362` the sentence end is inside the citation, which now has
+no name instead of `Ala. App).`. None is newly wrong.
+
+### Tests
+
+- `crates/citare-core/src/find.rs`: `test_case_name_stops_at_sentence_end` (Dr. Miles with and
+  without a `v.`, a court parenthetical, a closing quotation mark, a footnote number, and the
+  years of nameless citations after a sentence).
+- citation-bench: none yet; the table's rows can become `vectors/divergences/` vectors.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md).
