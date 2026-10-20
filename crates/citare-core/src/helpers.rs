@@ -17,8 +17,9 @@ use crate::models::document::Document;
 use crate::models::token::{Token, TokenOrStr, Tokens};
 use crate::regexes::{
     POST_FULL_CITATION_COURT_REGEX, POST_FULL_CITATION_GROUPS, POST_FULL_CITATION_REGEX,
-    POST_ID_SECTION_REGEX, POST_JOURNAL_CITATION_REGEX, POST_LAW_CITATION_REGEX,
-    POST_SHORT_CITATION_REGEX, PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX, YEAR_REGEX,
+    POST_ID_SECTION_REGEX, POST_JOURNAL_CITATION_REGEX, POST_JOURNAL_SECTION_PIN_REGEX,
+    POST_LAW_CITATION_REGEX, POST_SHORT_CITATION_REGEX, PRE_FULL_CITATION_REGEX, STOP_WORD_REGEX,
+    YEAR_REGEX,
 };
 
 // ---------------------------------------------------------------------------
@@ -923,6 +924,22 @@ pub fn add_journal_metadata(citation: &mut FullJournalCitationData, words: &Toke
     citation.metadata.pin_cite = clean_pin_cite(m.get("pin_cite"));
     citation.metadata.parenthetical = process_parenthetical(m.get("parenthetical"));
     citation.metadata.year = m.get("year").map(|s| s.to_string());
+
+    // A section pin cite, which runs into the `§` token, as a case
+    // citation's does: `13 Am. Jur. 383, § 12` (#93).
+    if m.end == 0 {
+        if let Some(section) = match_on_tokens(
+            words,
+            (index + 1) as i64,
+            &POST_JOURNAL_SECTION_PIN_REGEX,
+            "",
+            false, // not strings_only
+            true,  // forward
+        ) {
+            citation.resource.common.full_span_end = Some(span_end + section.end);
+            citation.metadata.pin_cite = clean_pin_cite(section.get("pin_cite"));
+        }
+    }
 
     if let Some(year_str) = m.get("year") {
         citation.resource.year = get_year(year_str);

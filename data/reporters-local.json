@@ -4,6 +4,7 @@
     "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
     "Each reporters entry adds a reporter reporters-db doesn't have, under its reporters.json key, as a cluster of its own with one edition.",
     "Each variations entry adds another abbreviation (variation) for one edition, named like an editions entry, that matches only through the entry's own regexes.",
+    "Each journals entry adds a secondary source journals.json doesn't have, such as an encyclopedia, to the journals under its abbreviation (edition), so a citation of it is a journal citation even when a reporter has the same abbreviation.",
     "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
     "Why each entry exists: docs/reporters-local.md."
   ],
@@ -114,6 +115,18 @@
       "examples": [{"cite": "127 Ohio 545", "volume": "127"}, {"cite": "36 Ohio, 201", "volume": "36"}],
       "rejects": ["14 Ohio 511", "178 Ohio 1", "2016 Ohio 2813"],
       "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often."
+    }
+  ],
+  "journals": [
+    {
+      "edition": "Am. Jur.",
+      "name": "American Jurisprudence",
+      "cite_type": "encyclopedia",
+      "start": "1936-01-01T00:00:00",
+      "end": null,
+      "regexes": ["$full_cite"],
+      "examples": [{"cite": "13 Am.Jur. 383", "volume": "13"}, {"cite": "42 Am. Jur. 541", "volume": "42"}],
+      "notes": "reporters-db's only `Am. Jur.` is the American Jurist and Law Magazine (1829-1843, 28 volumes). Opinions after the 1930s cite American Jurisprudence, the encyclopedia (first series 1936-1948, 58 volumes), as `Am. Jur.`: `Smith v. United States ex rel. Gorlo, 7 Cir., 52 F.2d 848; 13 Am.Jur. 383` in CAP a2d/31/0693-01 (#93). Both are secondary sources, so a citation of `Am. Jur.` is a journal citation; a year in the American Jurist's run picks it, and otherwise the citation is the encyclopedia."
     }
   ]
 }
