@@ -263,8 +263,32 @@ pub struct LocalVariation {
     pub notes: String,
 }
 
+/// A secondary source in `data/reporters-local.json` that reporters-db's
+/// journals.json doesn't have, such as an encyclopedia, added to the
+/// journals under key `edition`. A citation that matches it is a journal
+/// citation, even when the same abbreviation is also a reporter's.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalJournal {
+    pub edition: String,
+    pub name: String,
+    pub cite_type: String,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub regexes: Vec<String>,
+    /// As [`LocalEdition::examples`].
+    #[serde(default)]
+    pub examples: Vec<LocalExample>,
+    /// As [`LocalEdition::rejects`].
+    #[serde(default)]
+    pub rejects: Vec<String>,
+    /// Why the entry exists.
+    pub notes: String,
+}
+
 /// The supplement file: a comment, the editions whose regexes it replaces,
-/// the reporters it adds, and the variations it adds.
+/// the reporters it adds, the variations it adds, and the secondary sources
+/// it adds to the journals.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalReporters {
@@ -275,6 +299,8 @@ pub struct LocalReporters {
     pub reporters: Vec<LocalReporter>,
     #[serde(default)]
     pub variations: Vec<LocalVariation>,
+    #[serde(default)]
+    pub journals: Vec<LocalJournal>,
 }
 
 /// Parse `data/reporters-local.json`.
@@ -320,6 +346,40 @@ pub fn apply_local_reporters(
             cite_format: None,
             extra: HashMap::new(),
         });
+    }
+    Ok(())
+}
+
+/// Add the supplement's secondary sources to `journals`. Fails when
+/// journals.json already has the key, so the local entry can be dropped.
+pub fn merge_local_journals(
+    journals: &mut JournalsMap,
+    local: &LocalReporters,
+) -> Result<(), String> {
+    for l in &local.journals {
+        if journals.contains_key(&l.edition) {
+            return Err(format!(
+                "reporters-local.json: journals.json now has {:?}; drop the local one",
+                l.edition
+            ));
+        }
+        if l.regexes.is_empty() {
+            return Err(format!("reporters-local.json: {:?} needs regexes", l.name));
+        }
+        journals.insert(
+            l.edition.clone(),
+            vec![JournalCluster {
+                name: l.name.clone(),
+                cite_type: l.cite_type.clone(),
+                regexes: l.regexes.clone(),
+                jurisdiction: String::new(),
+                start: l.start.clone(),
+                end: l.end.clone(),
+                variations: Vec::new(),
+                strings: Vec::new(),
+                extra: HashMap::new(),
+            }],
+        );
     }
     Ok(())
 }

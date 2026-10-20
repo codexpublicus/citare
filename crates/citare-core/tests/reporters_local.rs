@@ -5,12 +5,12 @@
 
 use citare_core::{get_citations, Citation, Edition};
 
-/// The editions (exact and guessed) and volume of every full case citation
-/// in `text`.
+/// The editions (exact and guessed) and volume of every full case or journal
+/// citation in `text`.
 fn full_cites(text: &str) -> Vec<(Vec<Edition>, Option<String>)> {
     get_citations(text, false, "", &[])
         .iter()
-        .filter(|c| matches!(c, Citation::FullCase(_)))
+        .filter(|c| matches!(c, Citation::FullCase(_) | Citation::FullJournal(_)))
         .map(|c| {
             let rc = c.resource_common().expect("a full case citation");
             let mut eds = rc.all_editions.clone();
@@ -30,7 +30,8 @@ fn every_supplement_example_and_reject_holds() {
         .unwrap()
         .iter()
         .chain(local["reporters"].as_array().into_iter().flatten())
-        .chain(local["variations"].as_array().into_iter().flatten());
+        .chain(local["variations"].as_array().into_iter().flatten())
+        .chain(local["journals"].as_array().into_iter().flatten());
     for entry in entries {
         let (name, edition) = (
             entry["name"].as_str().unwrap(),

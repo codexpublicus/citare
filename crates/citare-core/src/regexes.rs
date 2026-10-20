@@ -501,6 +501,13 @@ pub static POST_JOURNAL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// A pin cite after a journal citation that starts with a section sign,
+/// `13 Am. Jur. 383, § 12` (#93). [`POST_JOURNAL_CITATION_REGEX`] runs on
+/// the text up to the next token, and the tokenizer makes `§` a token of
+/// its own. Named group: `pin_cite`.
+pub static POST_JOURNAL_SECTION_PIN_REGEX: LazyLock<String> =
+    LazyLock::new(|| format!(r"(?=,? ?(?:at )?\u{{00A7}}){pin}", pin = *PIN_CITE_REGEX));
+
 /// Defendant + year regex (e.g. `Smith v. Jones (2012)`).
 /// Named groups: `defendant`, `year`.
 pub const DEFENDANT_YEAR_REGEX: &str = r"(?P<defendant>.*)\s\((?P<year>\d{4})\)$";

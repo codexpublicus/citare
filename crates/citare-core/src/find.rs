@@ -348,11 +348,28 @@ fn extract_full_citation(document: &Document, index: usize) -> Citation {
 
         add_journal_metadata(&mut data, &document.words);
 
+        // An abbreviation that is both a journal's and a reporter's (`Am.
+        // Jur.`, American Jurisprudence and the American Jurist) is the
+        // journal unless the year places it in the reporter (#93).
         data.resource.edition_guess = guess_edition(
             &data.resource.exact_editions,
             &data.resource.variation_editions,
             data.resource.year,
-        );
+        )
+        .or_else(|| {
+            let editions = if data.resource.exact_editions.is_empty() {
+                &data.resource.variation_editions
+            } else {
+                &data.resource.exact_editions
+            };
+            let mut journals = editions
+                .iter()
+                .filter(|e| e.reporter.source == ReporterSource::Journals);
+            match (journals.next(), journals.next()) {
+                (Some(only), None) => Some(only.clone()),
+                _ => None,
+            }
+        });
 
         Citation::FullJournal(data)
     } else {
@@ -1778,6 +1795,60 @@ mod tests {
         let cites = markup_cites("<p><em>Foo v. Bar</em>, 1 U.S. 1 (1950), 2 F.2d 3.</p>");
         let years = case_years(&cites);
         assert_eq!(years[1].1, None, "{years:?}");
+    }
+
+    /// `Am. Jur.` is American Jurisprudence, the encyclopedia, unless a
+    /// year in the American Jurist's run (1829-1843) says otherwise, and as
+    /// a secondary source it doesn't join the case citation before it (#93).
+    #[test]
+    fn test_am_jur_is_a_secondary_source() {
+        // CAP a2d/31/0693-01 (Ray v. Bruce).
+        let text = "Smith v. United States ex rel. Gorlo, 7 Cir., 52 F.2d 848; 13 Am.Jur. 383. \
+                    See 1 Am. Jur. 441 (1830).";
+        let cites = get_citations(text, false, "", &[]);
+        assert_eq!(cites.len(), 3, "{cites:?}");
+        assert!(matches!(cites[0], Citation::FullCase(_)));
+        assert_eq!(cites[0].full_span(), (0, 57));
+        let journal = |c: &Citation| match c {
+            Citation::FullJournal(d) => (
+                c.matched_text().to_string(),
+                c.full_span(),
+                d.resource
+                    .edition_guess
+                    .as_ref()
+                    .map(|e| e.reporter.name.clone()),
+            ),
+            _ => panic!("expected FullJournal: {c:?}"),
+        };
+        assert_eq!(
+            journal(&cites[1]),
+            (
+                "13 Am.Jur. 383".into(),
+                (59, 73),
+                Some("American Jurisprudence".into())
+            )
+        );
+        assert_eq!(
+            journal(&cites[2]).2.as_deref(),
+            Some("American Jurist and Law Magazine")
+        );
+        assert!(!cites[1].is_ambiguous());
+
+        // A section pin cite stays the citation's, as it was when this was a
+        // case citation.
+        let cites = get_citations("See 27 Am.Jur. 476, § 32; and", false, "", &[]);
+        let Citation::FullJournal(d) = &cites[0] else {
+            panic!("expected FullJournal: {cites:?}");
+        };
+        assert_eq!(d.metadata.pin_cite.as_deref(), Some("§ 32"));
+        assert_eq!(cites[0].full_span(), (4, 25));
+
+        // It is its own resource, not a parallel citation of Smith.
+        let resolutions = crate::resolve::resolve_citations(&cites);
+        assert!(
+            resolutions.values().all(|group| group.len() == 1),
+            "{resolutions:?}"
+        );
     }
 
     #[test]

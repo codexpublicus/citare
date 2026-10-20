@@ -12,8 +12,8 @@ use citare_data_build::regexes::{
     stop_word_regex, supra_regex, PARAGRAPH_REGEX, SECTION_REGEX, STOP_WORDS,
 };
 use citare_data_build::reporters::{
-    apply_local_reporters, merge_local_laws, parse_journals, parse_laws, parse_local_laws,
-    parse_local_reporters, parse_reporters,
+    apply_local_reporters, merge_local_journals, merge_local_laws, parse_journals, parse_laws,
+    parse_local_laws, parse_local_reporters, parse_reporters,
 };
 use citare_data_build::slugs;
 use citare_data_build::template::process_variables;
@@ -173,7 +173,10 @@ fn main() {
     );
 
     let journals_json = include_str!("../../data/reporters-db/reporters_db/data/journals.json");
-    let journals = parse_journals(journals_json).expect("Failed to parse journals.json");
+    let mut journals = parse_journals(journals_json).expect("Failed to parse journals.json");
+    // citare's own supplement: secondary sources reporters-db lists as a
+    // reporter or not at all, like American Jurisprudence (docs/reporters-local.md).
+    merge_local_journals(&mut journals, &local_reporters).unwrap_or_else(|e| panic!("{e}"));
     println!("cargo::warning=Loaded {} journals", journals.len());
 
     let courts_json = include_str!("../../data/courts-db/courts_db/data/courts.json");
