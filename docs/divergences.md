@@ -27,6 +27,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [Reference citations after parallel citations](#reference-after-parallel) | #67 | drafted with the supra case in [`supra-after-parallel.md`](eyecite-issue-drafts/supra-after-parallel.md) |
 | [An id. citation as a case name](#id-as-case-name) | #78 | drafted in [`id-as-case-name.md`](eyecite-issue-drafts/id-as-case-name.md) |
 | [A year between the case name and the volume](#year-before-volume) | #85 | drafted in [`year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md) |
+| [`Am. Jur.` is American Jurisprudence](#am-jur) | #93 | drafted in [`am-jur.md`](eyecite-issue-drafts/am-jur.md) (reporters-db) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -740,3 +741,45 @@ records eyecite's missing year, and citare now fails it.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/year-before-volume.md`](eyecite-issue-drafts/year-before-volume.md).
+
+<a id="am-jur"></a>
+## `Am. Jur.` is American Jurisprudence
+
+reporters-db lists `Am. Jur.` once, as the American Jurist and Law Magazine (1829-1843), under
+its reporters, so eyecite reads every `Am. Jur.` citation as a case citation of it. Opinions from
+the late 1930s on cite American Jurisprudence, the encyclopedia, as `Am. Jur.`. citare adds
+American Jurisprudence as a secondary source in
+[`data/reporters-local.json`](../data/reporters-local.json) ([reporters-local.md](reporters-local.md#american-jurisprudence)),
+and reads an `Am. Jur.` citation as a journal citation, of the American Jurist only when its year
+falls in that magazine's run. A journal citation keeps a section pin cite, as a case citation does.
+
+eyecite doesn't join `13 Am.Jur. 383` to the citation before a semicolon; citare did, through its
+own parallel-citation rule (#66), and with this it doesn't either.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Smith v. United States ex rel. Gorlo, 7 Cir., 52 F.2d 848; 13 Am.Jur. 383.` | `13 Am.Jur. 383`: **case citation, American Jurist and Law Magazine** | journal citation, American Jurisprudence |
+| `27 Am.Jur. 476, § 32` | **case citation, American Jurist**, pin cite `§ 32` | journal citation, American Jurisprudence, pin cite `§ 32` |
+| `1 Am. Jur. 441 (1830)` | case citation, American Jurist | journal citation, American Jurist |
+
+### Evidence
+
+I read all 23 `Am. Jur.` citations in the CourtListener ten-percent sample (7,632 opinions) in
+context, in 18 opinions. All are the encyclopedia: 15 of the opinions cite second-series
+reporters, and the volumes match the encyclopedia's titles, often named with the section
+(`14 Am.Jur. 951, Criminal Law, Sec. 271`, `20 Am. Jur. 299, Evidence, § 318`). Before this change five had the
+name and full span of the case citation before them, three a junk defendant and two the year of
+a later citation; now none does, and none is newly wrong. American Jurist citations come from
+opinions of the 1830s to 1850s, which the sample doesn't have.
+
+### Tests
+
+- `crates/citare-core/src/find.rs`: `test_am_jur_is_a_secondary_source` (Ray v. Bruce, a year in
+  the American Jurist's run, a section pin cite, and resolution).
+- `crates/citare-core/tests/reporters_local.rs`: the entry's examples.
+- citation-bench: none yet.
+
+### Upstream
+
+Not filed; a draft for reporters-db is in
+[`eyecite-issue-drafts/am-jur.md`](eyecite-issue-drafts/am-jur.md).

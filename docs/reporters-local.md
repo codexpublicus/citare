@@ -57,6 +57,28 @@ case (the page in its official citation; CAP's `ohio` volumes are an 1872 reprin
 `first_page` differs) for 6,805 such citations against 520 that give only the first page of an Ohio State Reports
 case. A volume above 177 is neither and is no longer a citation.
 
+## American Jurisprudence
+
+reporters-db's only `Am. Jur.` is the American Jurist and Law Magazine, a reporter in
+reporters.json, which ran from 1829 to 1843 in 28 volumes. Opinions from the late 1930s on cite
+American Jurisprudence, the encyclopedia (first series 1936-1948, 58 volumes), as `Am. Jur.`, and
+citare read it as a case citation of the American Jurist. In `Smith v. United States ex rel.
+Gorlo, 7 Cir., 52 F.2d 848; 13 Am.Jur. 383` (CAP `a2d/31/0693-01`, Ray v. Bruce) it then joined
+Smith's parallel citations across the semicolon and took Smith's name (#93).
+
+The file's `journals` entries add a secondary source to the journals, and American Jurisprudence
+is the first. A citation whose abbreviation is both a journal's and a reporter's is a journal
+citation, as one that matched any journal already was, so a citation of `Am. Jur.` is a journal
+citation whichever it is, and a journal citation never joins a run of case citations. Its
+edition is the journal's unless its year falls in the reporter's run: `13 Am.Jur. 383` is
+American Jurisprudence and `1 Am. Jur. 441 (1830)` the American Jurist. A journal citation also
+keeps a section pin cite, `13 Am. Jur. 383, § 12`, as a case citation does.
+
+Two other abbreviations are already both: `Cent. Law J.`, the Central Law Journal, and `N. Y.
+L. J.` written with spaces, which matches both reporters-db's `N.Y.L.J.` reporter and its `N.Y.
+L.J.` journal, both the New York Law Journal. They were journal citations without an edition
+and now have the journal's.
+
 ## Format
 
 `editions` entries name an edition by reporters.json key, cluster name and edition name, and
@@ -66,6 +88,8 @@ fails if reporters-db gains a reporter of the same name under that key, so the l
 dropped. `variations` entries add an abbreviation for an edition, named like an `editions` entry,
 that matches only through the entry's own regexes, unlike a reporters-db variation, which takes
 its edition's; the build fails if the edition is gone or reporters-db gains the same variation.
+`journals` entries add a secondary source under its abbreviation, as journals.json would; the
+build fails if journals.json gains the abbreviation.
 An entry's `examples` must be recognized as its edition with the given volume, and its
 `rejects` must not be; `tests/reporters_local.rs` checks both.
 
@@ -81,3 +105,13 @@ The Ohio entries change two of the sample's 159,914 citations, `127 Ohio 545` an
 whose corrected reporter goes from `Ohio` to `Ohio St.`; none is gained or lost, and the vectors
 still pass 270 of 278. `50 Ohio 107`, in a Kansas opinion, is Putnam v. Valentine, `5 Ohio 187`,
 misprinted, so its slug is wrong before and after.
+
+The American Jurisprudence entry changes 24 of the sample's citations, and none is gained or
+lost. The 23 `Am. Jur.` citations, in 18 opinions, are all the encyclopedia (15 of the opinions cite
+second-series reporters, and the volumes match the encyclopedia's titles: `20 Am. Jur. 299,
+Evidence, § 318`, `33 Am. Jur. 146` on libel). They become journal citations of American
+Jurisprudence; five of them had taken the name and span of
+the case citation before them (`Wharam v. Investment Underwriters`, `National Labor Relations
+Board v. Jones & Laughlin Steel Corp.`), three a junk defendant (`In`, `and`) and two the year
+of a later citation. `69 N. Y. L. J. 1170` takes the journal's edition. citation-bench's vectors
+pass 269 of 278 before and after.
