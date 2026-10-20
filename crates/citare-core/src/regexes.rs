@@ -323,6 +323,17 @@ pub static POST_FULL_CITATION_REGEX: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+/// A parenthetical after a full case citation, and its pin cite, holding
+/// only a court and no year: "389 F.2d 885 (5th Cir.), cert. denied, 392
+/// U.S. 928 (1968)" (#88). Named groups: `pin_cite`, `court`. The caller
+/// keeps the match only when `court` is a court's citation string.
+pub static POST_FULL_CITATION_COURT_REGEX: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        r"{pin}?,? ?\((?P<court>[^()\[\];]{{1,60}})\)",
+        pin = *PIN_CITE_REGEX,
+    )
+});
+
 /// Mapping from logical group names to branch-specific names for
 /// [`POST_FULL_CITATION_REGEX`].
 pub const POST_FULL_CITATION_GROUPS: &[(&str, &[&str])] = &[
