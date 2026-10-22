@@ -57,6 +57,78 @@ case (the page in its official citation; CAP's `ohio` volumes are an 1872 reprin
 `first_page` differs) for 6,805 such citations against 520 that give only the first page of an Ohio State Reports
 case. A volume above 177 is neither and is no longer a citation.
 
+## Five CAP reporters without an edition
+
+stare's index (v2026.10.18) had five CAP reporters that no citare edition took the slug of:
+`brad`, `cai`, `charlton-rep`, `nm-app` and `pr` (#99). Each is in reporters-db under another
+abbreviation, as another reporter's variation, or not at all, so a citation in the form CAP
+gives its own cases took another reporter's slug or none. The file adds each as a reporter of
+its own, under CAP's short name, so the edition's `slug` and `harvard_slug` are CAP's.
+
+I measured how opinions cite them from CAP's case metadata (`CasesMetadata.json`'s `cites_to`,
+whose `case_paths` name the CAP case each citation resolves to) for every volume of the five,
+Iowa's `bradf`, `cai-cas`, `charlton`, Barb., Cow., Ga., Ga. App., Hill, Johns., N.M., N.Y.,
+Redf. and Wend. The counts below are of citations CAP resolves to a case unless they say
+otherwise.
+
+- **Bradford's Surrogate Reports** (`brad`, vols 1-4, New York Surrogate's Court, 1849-1857),
+  cited by CAP as `1 Brad. 1`. reporters-db's only `Brad.` is a variation of Iowa's Bradford
+  (`Bradf.`, 1839-1841, CAP's `bradf`, vols 1-3), and 113 of 114 `Brad.` citations name a case in
+  `brad`. Opinions write `Bradf.` for it more often still: 600 of 614 `Bradf.` citations name a
+  case in `brad`, 14 one in `bradf`. Volumes 1 to 3 of `Bradf.` are in both reporters, and the
+  file leaves them Iowa's, the reporter reporters-db and the released slug `bradf` give the
+  name; it caps Iowa's Bradford at volume 3 and adds `Bradf.` as a variation of Bradford's
+  Surrogate Reports for volume 4, which is 69 of the 600.
+- **Caines' Reports** (`cai`, vols 1-3, New York Supreme Court of Judicature, 1803-1805), cited
+  by CAP as `1 Cai. 1` and, for a few cases, `1 Cai. 22a`. reporters-db has the reporter as
+  `Cai. R.` (released slug `cai-r`) and gives `Cai.` to Caines' Cases (`cai-cas`) as a
+  variation, so `1 Cai. 1` took `cai-cas`. Of 117 `Cai.` citations, 114 name a case in `cai` and
+  3 one in `cai-cas`, and the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.`
+  to Caines' Cases. A volume above 3 isn't Caines' Reports and stays a variation of Caines'
+  Cases.
+- **T.U.P. Charlton's Reports** (`charlton-rep`, vol 1, Georgia superior courts, 1805-1824),
+  cited by CAP as `1 Charlton Rep. 13`. reporters-db has only R.M. Charlton's reports (1811-1837,
+  CAP's `charlton`, cited `1 Charlton 1`), with `Charlton Rep.` among its variations. No
+  `cites_to` entry names a case in either: Georgia opinions cite the two without a volume
+  (`T. U. P. Charlton, 311` 14 times and `R. M. Charlton, 1` 29 times in the Ga. volumes' text),
+  which no reporter regex reads, so `Charlton Rep.` is CAP's own form, and the file takes only
+  volume 1 of it.
+- **New Mexico Appellate Reports** (`nm-app`, vols 1-10, 2011-2016), which reporters-db doesn't
+  have. CAP cites every one of its cases by the neutral citation alone (`2011-NMCA-108`,
+  `2016-NMSC-021`), whose volume is a year and whose slugs are `nmca` and `nmsc`, and no
+  `cites_to` entry reads `N.M. App.`. The edition gives CAP's slug a name and reads `5 N.M. App.
+  1` if one is written. It takes CAP's ten volumes only, since New Mexico opinions write a Court
+  of Appeals case in the New Mexico Reports as `84 N.M.App. 83` (CAP `nm/84`, 0077-02).
+- **Puerto Rico Reports** (`pr`, vols 3-100, the English translation, 1899-1972), cited by CAP
+  as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released slug `p-r-r`) with `P.R.`
+  as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was
+  ambiguous and took the Pacific Reporter's slug, `p`. All 85 `P.R.` and `P. R.` citations name a
+  case in `pr`. The file caps the edition at volume 100, the series' last, so a higher volume
+  stays ambiguous as before.
+
+Released slugs never change, so `Cai. R.` keeps `cai-r` and `P.R.R.` keeps `p-r-r`, though each
+is the same books as CAP's `cai` and `pr`. The Puerto Rico Supreme Court's own opinions write
+`P.R.R.` (30,866 of the `cites_to` entries in `pr`, which CAP doesn't resolve), so most
+citations of the Puerto Rico Reports still take `p-r-r`, a slug CAP has no volumes under.
+
+An exact edition comes before a variation's when citare guesses a citation's edition, as in
+eyecite, so `P.R.` would have made `1 P.R. 1 (1831)`, which eyecite's own tests read as Penrose
+and Watts (1829-1832) through its `P.R.` variation, the Puerto Rico Reports. citare now passes
+over the exact editions when the citation's year falls outside all of them and inside a
+variation's (`guess_edition` in `crates/citare-core/src/helpers.rs`).
+
+I compared citare before and after over the opinion text of every CAP volume measured above,
+1,360 volumes with 4,000,932 citations. 170 citations changed and none of the rest: 93 `P.R.` and
+`P. R.` citations went from the Pacific Reporter's `p` to `pr`, 31 `4 Bradf.` and 24 `Brad.`
+citations from `bradf` to `brad`, and 21 `Cai.` citations from `cai-cas` to `cai`. Two were
+lost, `8 Brad., 467` (CAP `ga/71`) and `8 Bradf., 629` (`ny/25`), whose volume neither Bradford
+has; four `N.M.App.` citations of the New Mexico Reports that the volume cap now rejects were
+never found. One went wrong: `In re Seneca Trails, Inc., 7 B.R. 128 (Bkrtcy.W.D.Pa.1980)` (CAP
+`nm/97`, 0692-01) takes the year 1974 from elsewhere in its sentence, which the Bankruptcy
+Reporter (1979-) rules out, so it became the Baltimore City Reports. At the citation-bench
+commit CI pins, the vectors pass as before: eyecite's 270 of 278, the divergences 93 of 94, the
+CAP slugs 11 of 12 and the statutes 75 of 78.
+
 ## American Jurisprudence
 
 reporters-db's only `Am. Jur.` is the American Jurist and Law Magazine, a reporter in
@@ -83,9 +155,11 @@ and now have the journal's.
 
 `editions` entries name an edition by reporters.json key, cluster name and edition name, and
 replace its regexes; the build fails if one no longer matches an edition. `reporters` entries add
-a reporter reporters-db doesn't have, under a reporters.json key, with one edition; the build
+a reporter reporters-db doesn't have under a reporters.json key, with one edition; the build
 fails if reporters-db gains a reporter of the same name under that key, so the local one can be
-dropped. `variations` entries add an abbreviation for an edition, named like an `editions` entry,
+dropped. The reporter may be one reporters-db has under another key (`Cai.` and `Cai. R.` are
+both Caines' Reports), when that key's slug is released and isn't CAP's. `variations` entries
+add an abbreviation for an edition, named like an `editions` entry or a `reporters` entry's,
 that matches only through the entry's own regexes, unlike a reporters-db variation, which takes
 its edition's; the build fails if the edition is gone or reporters-db gains the same variation.
 `journals` entries add a secondary source under its abbreviation, as journals.json would; the

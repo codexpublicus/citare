@@ -1918,12 +1918,21 @@ pub fn find_case_name_in_html_short(citation: &mut ShortCaseCitationData, docume
 
 /// Set `edition_guess` on a resource citation by narrowing down editions
 /// using the year if available.
+///
+/// The exact editions come first, as in eyecite, unless the year rules all
+/// of them out and rules a variation's edition in: `1 P.R. 1 (1831)` is
+/// Penrose and Watts, which reporters-db cites as `P.R.`, not the Puerto Rico
+/// Reports (1899-1978), whose own abbreviation `P.R.` is (#99).
 pub fn guess_edition(
     exact_editions: &[crate::models::edition::Edition],
     variation_editions: &[crate::models::edition::Edition],
     year: Option<i32>,
 ) -> Option<crate::models::edition::Edition> {
-    let editions = if !exact_editions.is_empty() {
+    let year_rules_out_exact = year.is_some_and(|y| {
+        !exact_editions.iter().any(|e| e.includes_year(y))
+            && variation_editions.iter().any(|e| e.includes_year(y))
+    });
+    let editions = if !exact_editions.is_empty() && !year_rules_out_exact {
         exact_editions
     } else if !variation_editions.is_empty() {
         variation_editions
@@ -2234,6 +2243,42 @@ mod tests {
         };
         // Without year, can't narrow down
         assert_eq!(guess_edition(&[e1, e2], &[], None), None);
+    }
+
+    #[test]
+    fn test_guess_edition_year_rules_out_exact() {
+        use crate::models::edition::{Edition, Reporter, ReporterSource};
+        let ed = |name: &str, short: &str, start: &str, end: &str| Edition {
+            reporter: Reporter::new(
+                short.to_string(),
+                name.to_string(),
+                "state".to_string(),
+                ReporterSource::Reporters,
+            ),
+            short_name: short.to_string(),
+            start: Some(start.to_string()),
+            end: Some(end.to_string()),
+            harvard_slug: None,
+            slug: None,
+        };
+        let pr = ed("Puerto Rico Reports", "P.R.", "1899-01-01", "1978-12-31");
+        let pen = ed("Penrose and Watts", "Pen. & W.", "1829-01-01", "1832-12-31");
+        let exact = std::slice::from_ref(&pr);
+        let variations = std::slice::from_ref(&pen);
+        assert_eq!(guess_edition(exact, variations, None), Some(pr.clone()));
+        assert_eq!(
+            guess_edition(exact, variations, Some(1950)),
+            Some(pr.clone())
+        );
+        assert_eq!(
+            guess_edition(exact, variations, Some(1831)),
+            Some(pen.clone())
+        );
+        // A year neither fits keeps the exact edition.
+        assert_eq!(
+            guess_edition(exact, variations, Some(1850)),
+            Some(pr.clone())
+        );
     }
 
     #[test]
