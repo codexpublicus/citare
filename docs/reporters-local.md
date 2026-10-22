@@ -81,7 +81,7 @@ otherwise.
   Surrogate Reports for volume 4, which is 69 of the 600.
 - **Caines' Reports** (`cai`, vols 1-3, New York Supreme Court of Judicature, 1803-1805), cited
   by CAP as `1 Cai. 1` and, for a few cases, `1 Cai. 22a`. reporters-db has the reporter as
-  `Cai. R.` (released slug `cai-r`) and gives `Cai.` to Caines' Cases (`cai-cas`) as a
+  `Cai. R.` (released as `cai-r`, now `cai`) and gives `Cai.` to Caines' Cases (`cai-cas`) as a
   variation, so `1 Cai. 1` took `cai-cas`. Of 117 `Cai.` citations, 114 name a case in `cai` and
   3 one in `cai-cas`, and the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.`
   to Caines' Cases. A volume above 3 isn't Caines' Reports and stays a variation of Caines'
@@ -100,16 +100,34 @@ otherwise.
   1` if one is written. It takes CAP's ten volumes only, since New Mexico opinions write a Court
   of Appeals case in the New Mexico Reports as `84 N.M.App. 83` (CAP `nm/84`, 0077-02).
 - **Puerto Rico Reports** (`pr`, vols 3-100, the English translation, 1899-1972), cited by CAP
-  as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released slug `p-r-r`) with `P.R.`
+  as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) with `P.R.`
   as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was
   ambiguous and took the Pacific Reporter's slug, `p`. All 85 `P.R.` and `P. R.` citations name a
   case in `pr`. The file caps the edition at volume 100, the series' last, so a higher volume
   stays ambiguous as before.
 
-Released slugs never change, so `Cai. R.` keeps `cai-r` and `P.R.R.` keeps `p-r-r`, though each
-is the same books as CAP's `cai` and `pr`. The Puerto Rico Supreme Court's own opinions write
-`P.R.R.` (30,866 of the `cites_to` entries in `pr`, which CAP doesn't resolve), so most
-citations of the Puerto Rico Reports still take `p-r-r`, a slug CAP has no volumes under.
+reporters-db's `Cai. R.` and `P.R.R.` are the same books as CAP's `cai` and `pr`, and citare 0.7.0
+and 0.7.1 released them as `cai-r` and `p-r-r`, slugs CAP has no volumes under. The Puerto Rico
+Supreme Court's own opinions write `P.R.R.` (30,866 of the `cites_to` entries in `pr`, which CAP
+doesn't resolve), so most citations of the Puerto Rico Reports named no CAP volume. The owner's
+ruling D78 folds both into CAP's slug; no index file or case URL uses `cai-r` or `p-r-r`, so the
+fold moves no published path. Each keeps its reporters-db edition, so `45 P.R.R. 100` is still
+corrected to `P.R.R.`, as eyecite's own tests expect (`test_disambiguate_citations`), and shares
+CAP's slug the way `Day.` shares `day` (`citare_data_build::slugs::BY_REPORTER` and
+`SAME_BOOKS`): `45 P.R.R. 100` and `45 Puerto Rico 100` are `pr`, and `2 Cai. R. 169` and
+`2 Cai.R. 169` are `cai`, each with the same `harvard_slug`. The file caps the two editions at the
+series' volumes, as it does `P.R.` and `Cai.`, so `101 P.R.R. 1` and `4 Cai. R. 1` are no longer
+citations. A year outside the series' run (`45 P.R.R. 100 (1850)`) leaves the edition as it is,
+since no other reporter is cited as `P.R.R.` or `Cai. R.`. stare.pub's `reporters.json` lists
+`p-r-r` and `cai-r`; stare keeps them for one release, marked as replaced by `pr` and `cai`.
+
+I compared citare before and after the fold over the opinion text of 1,626 CAP volumes, the
+1,360 measured below and Iowa's (`bradf`, `greene`, `morris`, `iowa`), which have 3,774,274 full case,
+short case, law and journal citations. 36,469 change, in `slug` and `harvard_slug` and nothing
+else: 36,435 `P.R.R.` citations (written `P. R. R.`, `P.R. R.` and `45 P.R.R. at 100` among them)
+go from `p-r-r` with no `harvard_slug` to `pr`, and 34 `Cai. R.` citations from `cai-r` to `cai`.
+Two are lost, `127 P.R.R. 746` (CAP `pr/62`, 0760-01) and `179 P.R.R. 511` (`pr/82`, 0695-01),
+volumes the series doesn't have, each in a run of `P.R.R.` citations of volumes below 100.
 
 An exact edition comes before a variation's when citare guesses a citation's edition, as in
 eyecite, so `P.R.` would have made `1 P.R. 1 (1831)`, which eyecite's own tests read as Penrose
@@ -158,7 +176,7 @@ replace its regexes; the build fails if one no longer matches an edition. `repor
 a reporter reporters-db doesn't have under a reporters.json key, with one edition; the build
 fails if reporters-db gains a reporter of the same name under that key, so the local one can be
 dropped. The reporter may be one reporters-db has under another key (`Cai.` and `Cai. R.` are
-both Caines' Reports), when that key's slug is released and isn't CAP's. `variations` entries
+both Caines' Reports); the two then share CAP's slug (`citare_data_build::slugs::SAME_BOOKS`). `variations` entries
 add an abbreviation for an edition, named like an `editions` entry or a `reporters` entry's,
 that matches only through the entry's own regexes, unlike a reporters-db variation, which takes
 its edition's; the build fails if the edition is gone or reporters-db gains the same variation.

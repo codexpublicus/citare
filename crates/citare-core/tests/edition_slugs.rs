@@ -217,26 +217,33 @@ fn mass_app_div_series_split_by_volume() {
 
 // Five CAP reporters that had no edition of their own (#99) take CAP's slug,
 // written as CAP cites their cases. The released slugs of the same names stay:
-// `Cai. R.` is `cai-r`, `P.R.R.` is `p-r-r`, Iowa's `Bradf.` is `bradf` and
-// R.M. Charlton's `Charlton` is `charlton`.
+// Iowa's `Bradf.` is `bradf` and R.M. Charlton's `Charlton` is `charlton`.
+// reporters-db's `Cai. R.` and `P.R.R.` are the same books as CAP's `cai` and
+// `pr` and share those slugs (D78), whatever year the citation gives.
 #[rstest]
-#[case("2 Brad. 432", "brad", "2")]
-#[case("4 Bradf. 268", "brad", "4")]
-#[case("1 Bradf. 356", "bradf", "1")]
-#[case("1 Cai. 1", "cai", "1")]
-#[case("1 Cai. 22a", "cai", "1")]
-#[case("2 Cai. R. 169", "cai-r", "2")]
-#[case("1 Cai. Cas. 1", "cai-cas", "1")]
-#[case("1 Charlton Rep. 13", "charlton-rep", "1")]
-#[case("1 Charlton 1", "charlton", "1")]
-#[case("5 N.M. App. 1", "nm-app", "5")]
-#[case("45 P.R. 100", "pr", "45")]
-#[case("16 P. R. 153", "pr", "16")]
-#[case("45 P.R.R. 100", "p-r-r", "45")]
+#[case("2 Brad. 432", "brad", "2", Some("brad"))]
+#[case("4 Bradf. 268", "brad", "4", Some("brad"))]
+#[case("1 Bradf. 356", "bradf", "1", Some("bradf"))]
+#[case("1 Cai. 1", "cai", "1", Some("cai"))]
+#[case("1 Cai. 22a", "cai", "1", Some("cai"))]
+#[case("2 Cai. R. 169", "cai", "2", Some("cai"))]
+#[case("2 Cai.R. 169", "cai", "2", Some("cai"))]
+#[case("1 Cai. Cas. 1", "cai-cas", "1", Some("cai-cas"))]
+#[case("1 Charlton Rep. 13", "charlton-rep", "1", Some("charlton-rep"))]
+#[case("1 Charlton 1", "charlton", "1", Some("charlton"))]
+#[case("5 N.M. App. 1", "nm-app", "5", Some("nm-app"))]
+#[case("45 P.R. 100", "pr", "45", Some("pr"))]
+#[case("16 P. R. 153", "pr", "16", Some("pr"))]
+#[case("45 P.R.R. 100", "pr", "45", Some("pr"))]
+#[case("45 Puerto Rico 100", "pr", "45", Some("pr"))]
+#[case("100 P.R.R. 1", "pr", "100", Some("pr"))]
+#[case("45 P.R.R. 100 (1850)", "pr", "45", Some("pr"))]
+#[case("2 Cai. R. 169 (1900)", "cai", "2", Some("cai"))]
 fn cap_reporters_without_an_edition_take_caps_slug(
     #[case] text: &str,
     #[case] slug: &str,
     #[case] volume: &str,
+    #[case] harvard: Option<&str>,
 ) {
     let (s, v) = path_of(text);
     assert_eq!(
@@ -244,17 +251,6 @@ fn cap_reporters_without_an_edition_take_caps_slug(
         (Some(slug), Some(volume)),
         "{text}"
     );
-    let cap = [
-        "brad",
-        "bradf",
-        "cai",
-        "cai-cas",
-        "charlton",
-        "charlton-rep",
-        "nm-app",
-        "pr",
-    ];
-    let harvard = cap.contains(&slug).then_some(slug);
     assert_eq!(harvard_slug_of(text).as_deref(), harvard, "{text}");
 }
 
@@ -264,6 +260,20 @@ fn cap_reporters_without_an_edition_take_caps_slug(
 fn a_year_outside_the_puerto_rico_reports_picks_a_variation() {
     assert_eq!(slug_of("1 P.R. 1 (1831)").as_deref(), Some("pen-w"));
     assert_eq!(slug_of("1 P.R. 1 (1900)").as_deref(), Some("pr"));
+}
+
+// The same rule on reporters-db's own data (docs/divergences.md#year-rules-out-exact):
+// eyecite keeps an exact edition whatever the year says, and guesses
+// Howard's Supreme Court Reports, the Illinois Reports' Gilman and, for
+// `Wash.`, nothing.
+#[rstest]
+#[case("Smith v. Jones, 5 How. 100 (1838)", "howard")]
+#[case("Smith v. Jones, 5 How. 100 (1850)", "how")]
+#[case("Smith v. Jones, 1 Gilm. 1 (1820)", "gilmer")]
+#[case("Smith v. Jones, 1 Gilm. 1 (1845)", "gilm")]
+#[case("Smith v. Jones, 2 Wash. 473 (1856)", "wash-terr")]
+fn a_year_outside_every_exact_edition_picks_a_variation(#[case] text: &str, #[case] slug: &str) {
+    assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
 }
 
 /// The `harvard_slug` of the first full case citation in `text`, picked the

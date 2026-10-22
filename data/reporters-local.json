@@ -2,7 +2,7 @@
   "#": [
     "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
     "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
-    "Each reporters entry adds a reporter reporters-db doesn't have under its reporters.json key, as a cluster of its own with one edition; reporters-db may have the same books under another key whose released slug isn't CAP's.",
+    "Each reporters entry adds a reporter reporters-db doesn't have under its reporters.json key, as a cluster of its own with one edition; reporters-db may have the same books under another key, which then shares the slug (citare_data_build::slugs::SAME_BOOKS).",
     "Each variations entry adds another abbreviation (variation) for one edition, named like an editions or reporters entry, that matches only through the entry's own regexes.",
     "Each journals entry adds a secondary source journals.json doesn't have, such as an encyclopedia, to the journals under its abbreviation (edition), so a citation of it is a journal citation even when a reporter has the same abbreviation.",
     "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
@@ -82,6 +82,24 @@
       "notes": "Iowa's Bradford (1839-1841) has three volumes, CAP's `bradf`. reporters-db takes any volume, so `4 Bradf. 268`, Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) cited as `Bradf.`, took Iowa's slug (#99). The variations entry below gives volume 4 to Bradford's Surrogate Reports."
     },
     {
+      "reporter": "Cai. R.",
+      "name": "Caines' Reports",
+      "edition": "Cai. R.",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
+      "examples": [{"cite": "2 Cai. R. 169", "volume": "2"}, {"cite": "2 Cai.R. 169", "volume": "2"}, {"cite": "1 Cai. R. 22a", "volume": "1"}],
+      "rejects": ["4 Cai. R. 1"],
+      "notes": "reporters-db's entry for Caines' Reports, CAP's `cai` (vols 1-3), which the reporters entry `Cai.` below adds under CAP's short name. It shares `cai` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `cai-r`, which named no CAP volume. reporters-db takes any volume; this takes Caines' Reports' three, with the regexes of `Cai.`."
+    },
+    {
+      "reporter": "P.R.R.",
+      "name": "Puerto Rico Reports",
+      "edition": "P.R.R.",
+      "regexes": ["(?P<volume>[1-9]\\d?|100) $reporter,? $page"],
+      "examples": [{"cite": "45 P.R.R. 100", "volume": "45"}, {"cite": "45 Puerto Rico 100", "volume": "45"}, {"cite": "100 P.R.R. 1", "volume": "100"}],
+      "rejects": ["101 P.R.R. 1"],
+      "notes": "reporters-db's entry for the Puerto Rico Reports, CAP's `pr` (vols 3-100), which the reporters entry `P.R.` below adds under CAP's short name. It shares `pr` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `p-r-r`, which named no CAP volume. reporters-db takes any volume; this takes the series' 100, as `P.R.` does, so `101 P.R.R. 1` is no longer a citation."
+    },
+    {
       "reporter": "Conn. Super. Ct.",
       "name": "Connecticut Superior Court Reports",
       "edition": "Conn. Super. Ct.",
@@ -135,7 +153,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
       "examples": [{"cite": "1 Cai. 1", "volume": "1"}, {"cite": "2 Cai. 183", "volume": "2"}, {"cite": "1 Cai. 22a", "volume": "1"}],
       "rejects": ["4 Cai. 1"],
-      "notes": "CAP's `cai` (vols 1-3), Caines' Reports of the New York Supreme Court of Judicature, 1803-1805, whose cases CAP cites as `1 Cai. 1`. reporters-db has the reporter as `Cai. R.` (slug `cai-r`, released) and `Cai.` as a variation of Caines' Cases (`cai-cas`), so `1 Cai. 1` took Caines' Cases' slug (#99). Of the 117 `Cai.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case in either reporter, 114 name a case in `cai` and 3 in `cai-cas`; the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.` to Caines' Cases. `Cai. R.` keeps `cai-r`."
+      "notes": "CAP's `cai` (vols 1-3), Caines' Reports of the New York Supreme Court of Judicature, 1803-1805, whose cases CAP cites as `1 Cai. 1`. reporters-db has the reporter as `Cai. R.` (released as `cai-r`, now `cai`) and `Cai.` as a variation of Caines' Cases (`cai-cas`), so `1 Cai. 1` took Caines' Cases' slug (#99). Of the 117 `Cai.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case in either reporter, 114 name a case in `cai` and 3 in `cai-cas`; the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.` to Caines' Cases. reporters-db's `Cai. R.` shares `cai` (D78)."
     },
     {
       "reporter": "Charlton Rep.",
@@ -171,7 +189,7 @@
       "regexes": ["(?P<volume>[1-9]\\d?|100) $reporter,? $page"],
       "examples": [{"cite": "45 P.R. 100", "volume": "45"}, {"cite": "100 P.R. 1", "volume": "100"}, {"cite": "16 P. R. 153", "volume": "16"}],
       "rejects": ["101 P.R. 1"],
-      "notes": "CAP's `pr` (vols 3-100), the English Puerto Rico Reports, whose cases CAP cites as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (slug `p-r-r`, released) and `P.R.` as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was ambiguous and took the Pacific Reporter's slug `p` (#99). All 85 `P.R.` and `P. R.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case name one in `pr`. Its own opinions write `P.R.R.` (30,866 times in `pr`), which keeps `p-r-r`."
+      "notes": "CAP's `pr` (vols 3-100), the English Puerto Rico Reports, whose cases CAP cites as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) and `P.R.` as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was ambiguous and took the Pacific Reporter's slug `p` (#99). All 85 `P.R.` and `P. R.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case name one in `pr`. Its own opinions write `P.R.R.` (30,866 times in `pr`), reporters-db's entry, which shares `pr` (D78)."
     }
   ],
   "variations": [
