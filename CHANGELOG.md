@@ -4,6 +4,17 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.2 - 2026-10-22
+
+### Fixes
+
+- *(data)* Read Bradf. vols 1-4 as Bradford's Surrogate Reports unless the year is Iowa's ([#106](https://github.com/codexpublicus/citare/pull/106))
+- *(data)* Fold P.R.R. and Cai. R. into CAP's pr and cai ([#105](https://github.com/codexpublicus/citare/pull/105))
+- *(data)* Give CAP's brad, cai, charlton-rep, nm-app and pr reporters editions ([#102](https://github.com/codexpublicus/citare/pull/102))
+- *(core)* End a case name search at a sentence that ends in a parenthetical ([#98](https://github.com/codexpublicus/citare/pull/98))
+- *(core)* Read 'Am. Jur.' as American Jurisprudence, a secondary source ([#97](https://github.com/codexpublicus/citare/pull/97))
+- *(core)* Read a court parenthetical without a year into the citation ([#96](https://github.com/codexpublicus/citare/pull/96))
+
 ## v0.7.1 - 2026-10-18
 
 ### Fixes
