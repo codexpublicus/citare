@@ -215,6 +215,57 @@ fn mass_app_div_series_split_by_volume() {
     }
 }
 
+// Five CAP reporters that had no edition of their own (#99) take CAP's slug,
+// written as CAP cites their cases. The released slugs of the same names stay:
+// `Cai. R.` is `cai-r`, `P.R.R.` is `p-r-r`, Iowa's `Bradf.` is `bradf` and
+// R.M. Charlton's `Charlton` is `charlton`.
+#[rstest]
+#[case("2 Brad. 432", "brad", "2")]
+#[case("4 Bradf. 268", "brad", "4")]
+#[case("1 Bradf. 356", "bradf", "1")]
+#[case("1 Cai. 1", "cai", "1")]
+#[case("1 Cai. 22a", "cai", "1")]
+#[case("2 Cai. R. 169", "cai-r", "2")]
+#[case("1 Cai. Cas. 1", "cai-cas", "1")]
+#[case("1 Charlton Rep. 13", "charlton-rep", "1")]
+#[case("1 Charlton 1", "charlton", "1")]
+#[case("5 N.M. App. 1", "nm-app", "5")]
+#[case("45 P.R. 100", "pr", "45")]
+#[case("16 P. R. 153", "pr", "16")]
+#[case("45 P.R.R. 100", "p-r-r", "45")]
+fn cap_reporters_without_an_edition_take_caps_slug(
+    #[case] text: &str,
+    #[case] slug: &str,
+    #[case] volume: &str,
+) {
+    let (s, v) = path_of(text);
+    assert_eq!(
+        (s.as_deref(), v.as_deref()),
+        (Some(slug), Some(volume)),
+        "{text}"
+    );
+    let cap = [
+        "brad",
+        "bradf",
+        "cai",
+        "cai-cas",
+        "charlton",
+        "charlton-rep",
+        "nm-app",
+        "pr",
+    ];
+    let harvard = cap.contains(&slug).then_some(slug);
+    assert_eq!(harvard_slug_of(text).as_deref(), harvard, "{text}");
+}
+
+// `P.R.` is also a reporters-db variation of Penrose and Watts (1829-1832):
+// a year in its run picks it over the Puerto Rico Reports.
+#[test]
+fn a_year_outside_the_puerto_rico_reports_picks_a_variation() {
+    assert_eq!(slug_of("1 P.R. 1 (1831)").as_deref(), Some("pen-w"));
+    assert_eq!(slug_of("1 P.R. 1 (1900)").as_deref(), Some("pr"));
+}
+
 /// The `harvard_slug` of the first full case citation in `text`, picked the
 /// way the CLI and WASM bindings pick it.
 fn harvard_slug_of(text: &str) -> Option<String> {
