@@ -30,6 +30,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [A court parenthetical without a year](#court-without-year) | #88 | drafted in [`court-without-year.md`](eyecite-issue-drafts/court-without-year.md) |
 | [`Am. Jur.` is American Jurisprudence](#am-jur) | #93 | drafted in [`am-jur.md`](eyecite-issue-drafts/am-jur.md) (reporters-db) |
 | [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
+| [A year outside every exact edition picks a variation's](#year-rules-out-exact) | #102 | drafted in [`year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -884,3 +885,63 @@ no name instead of `Ala. App).`. None is newly wrong.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md).
+
+<a id="year-rules-out-exact"></a>
+## A year outside every exact edition picks a variation's
+
+A citation's abbreviation can be one reporter's own (an exact edition) and another's variation.
+eyecite guesses the edition from the exact editions whenever there are any, and uses the year
+only to choose among several: with one exact edition it takes that edition whatever the year
+says. citare passes over the exact editions when the citation's year falls outside all of them
+and inside a variation's edition, and guesses from the variations (`guess_edition` in
+`crates/citare-core/src/helpers.rs`).
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Smith v. Jones, 5 How. 100 (1838)` | **Howard's Supreme Court Reports** (1843-1860) | Mississippi Reports, Howard (1834-1843), slug `howard` |
+| `Smith v. Jones, 1 Gilm. 1 (1820)` | **Illinois Reports, Gilman** (1844-1849) | Virginia Reports, Gilmer (1820-1821), slug `gilmer` |
+| `Smith v. Jones, 2 Wash. 473 (1856)` | no guess: the Virginia Reports and the Washington Reports are both exact, and the year fits neither | Washington Territory Reports (1854-1888), slug `wash-terr` |
+| `In re Seneca Trails, Inc., 7 B.R. 128 (1974)` | Bankruptcy Reporter (1979-) | **Baltimore City Reports**, slug `balt-c-rep` |
+
+citare made the change for its own `P.R.` reporter, the Puerto Rico Reports (#99, #102). With
+it, `P.R.` is an exact edition, and eyecite's rule would read `1 P.R. 1 (1831)`, which eyecite's
+own test (`test_disambiguate_citations`, citation-bench `test_disambiguate_citations/4`) reads
+as Penrose and Watts through reporters-db's `P.R.` variation, as the Puerto Rico Reports
+(1899-1978). reporters-db has no exact `P.R.`, so on its data alone eyecite and citare agree on
+that citation. They can differ on any of the 32 reporters-db abbreviations that are both an
+exact edition and a variation of another edition, the four above among them.
+
+### Evidence
+
+I ran citare with and without the rule over the opinion text of 1,626 CAP volumes (3,774,274
+citations): every volume of `brad`, `cai`, `charlton-rep`, `nm-app`, `pr`, `bradf`, `cai-cas`,
+`charlton`, Barb., Cow., Ga., Ga. App., Hill, Johns., N.M., N.Y., Redf., Wend., Greene, Morris
+and Iowa. It changes two citations, and makes neither right:
+
+- `In re Seneca Trails, Inc., 7 B.R. 128 (Bkrtcy.W.D.Pa.1980)` (CAP `nm/97`, 0692-01) goes from
+  the Bankruptcy Reporter (`br`), which CAP resolves it to, to the Baltimore City Reports
+  (`balt-c-rep`). citare reads its year as 1974, from elsewhere in the sentence, and the
+  Bankruptcy Reporter starts in 1979. The rule is right about the year it is given; the year
+  is wrong.
+- `Simenton v. Bouchar, 2 Wash., 473` (CAP `iowa/16`, 0081-01, an 1864 opinion) goes from the
+  Washington Reports (`wash`) to the Washington Territory Reports (`wash-terr`), taking the year
+  1856 from the `(A. D., 1856)` of the next citation. It is neither: the case is in Washington's
+  Circuit Court Reports, and CAP doesn't resolve it.
+
+None of these volumes cites `P.R.` with a year in Penrose and Watts' run, so the rule's one
+correct change on record is eyecite's test vector.
+
+### Tests
+
+- `crates/citare-core/src/helpers.rs`: `test_guess_edition_year_rules_out_exact` (the exact
+  edition with no year, a year in its run, a year in only the variation's, and a year in
+  neither).
+- `crates/citare-core/tests/edition_slugs.rs`: `a_year_outside_the_puerto_rico_reports_picks_a_variation`
+  and `a_year_outside_every_exact_edition_picks_a_variation` (the first three rows above).
+- citation-bench: `test_disambiguate_citations/4` passes with the rule and fails without it;
+  the table's rows can become `vectors/divergences/` vectors.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md).

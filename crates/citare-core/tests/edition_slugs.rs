@@ -259,6 +259,20 @@ fn a_year_outside_the_puerto_rico_reports_picks_a_variation() {
     assert_eq!(slug_of("1 P.R. 1 (1900)").as_deref(), Some("pr"));
 }
 
+// The same rule on reporters-db's own data (docs/divergences.md#year-rules-out-exact):
+// eyecite keeps an exact edition whatever the year says, and guesses
+// Howard's Supreme Court Reports, the Illinois Reports' Gilman and, for
+// `Wash.`, nothing.
+#[rstest]
+#[case("Smith v. Jones, 5 How. 100 (1838)", "howard")]
+#[case("Smith v. Jones, 5 How. 100 (1850)", "how")]
+#[case("Smith v. Jones, 1 Gilm. 1 (1820)", "gilmer")]
+#[case("Smith v. Jones, 1 Gilm. 1 (1845)", "gilm")]
+#[case("Smith v. Jones, 2 Wash. 473 (1856)", "wash-terr")]
+fn a_year_outside_every_exact_edition_picks_a_variation(#[case] text: &str, #[case] slug: &str) {
+    assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
+}
+
 /// The `harvard_slug` of the first full case citation in `text`, picked the
 /// way the CLI and WASM bindings pick it.
 fn harvard_slug_of(text: &str) -> Option<String> {
