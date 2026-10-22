@@ -217,10 +217,11 @@ fn mass_app_div_series_split_by_volume() {
 
 // Five CAP reporters that had no edition of their own (#99) take CAP's slug,
 // written as CAP cites their cases. The released slugs of the same names stay:
-// `Cai. R.` is `cai-r`, `P.R.R.` is `p-r-r`, Iowa's `Bradf.` is `bradf` and
-// R.M. Charlton's `Charlton` is `charlton`. `Bradf.` is Bradford's Surrogate
-// Reports unless the year is in Iowa's Bradford's run (D73). `cai-r` and `p-r-r` are CAP's
-// `cai` and `pr` (D73), so they take those as their `harvard_slug`.
+// Iowa's `Bradf.` is `bradf` and R.M. Charlton's `Charlton` is `charlton`.
+// `Bradf.` is Bradford's Surrogate Reports unless the year is in Iowa's
+// Bradford's run (D73). reporters-db's `Cai. R.` and `P.R.R.` are the same
+// books as CAP's `cai` and `pr` and share those slugs (D78), whatever year the
+// citation gives.
 #[rstest]
 #[case("2 Brad. 432", "brad", "2", Some("brad"))]
 #[case("4 Bradf. 268", "brad", "4", Some("brad"))]
@@ -230,16 +231,19 @@ fn mass_app_div_series_split_by_volume() {
 #[case("3 Bradf. 5 (1850)", "brad", "3", Some("brad"))]
 #[case("1 Cai. 1", "cai", "1", Some("cai"))]
 #[case("1 Cai. 22a", "cai", "1", Some("cai"))]
-#[case("2 Cai. R. 169", "cai-r", "2", Some("cai"))]
-#[case("2 Cai.R. 169", "cai-r", "2", Some("cai"))]
+#[case("2 Cai. R. 169", "cai", "2", Some("cai"))]
+#[case("2 Cai.R. 169", "cai", "2", Some("cai"))]
 #[case("1 Cai. Cas. 1", "cai-cas", "1", Some("cai-cas"))]
 #[case("1 Charlton Rep. 13", "charlton-rep", "1", Some("charlton-rep"))]
 #[case("1 Charlton 1", "charlton", "1", Some("charlton"))]
 #[case("5 N.M. App. 1", "nm-app", "5", Some("nm-app"))]
 #[case("45 P.R. 100", "pr", "45", Some("pr"))]
 #[case("16 P. R. 153", "pr", "16", Some("pr"))]
-#[case("45 P.R.R. 100", "p-r-r", "45", Some("pr"))]
-#[case("45 Puerto Rico 100", "p-r-r", "45", Some("pr"))]
+#[case("45 P.R.R. 100", "pr", "45", Some("pr"))]
+#[case("45 Puerto Rico 100", "pr", "45", Some("pr"))]
+#[case("100 P.R.R. 1", "pr", "100", Some("pr"))]
+#[case("45 P.R.R. 100 (1850)", "pr", "45", Some("pr"))]
+#[case("2 Cai. R. 169 (1900)", "cai", "2", Some("cai"))]
 fn cap_reporters_without_an_edition_take_caps_slug(
     #[case] text: &str,
     #[case] slug: &str,
@@ -324,29 +328,19 @@ fn ambiguous_citation_takes_the_plain_slug(#[case] text: &str, #[case] slug: &st
     assert_eq!(slug_of(text).as_deref(), Some(slug), "{text}");
 }
 
-// An edition's `harvard_slug` is its slug, or the CAP slug
-// `citare_data_build::slugs::CAP_SLUG_OF` gives a released slug for the same
-// books (`p-r-r` is CAP's `pr`), or none.
 #[test]
 fn harvard_slug_is_the_slug_or_none() {
-    use citare_data_build::slugs::CAP_SLUG_OF;
-    let mut cap_slug_of_used = BTreeSet::new();
     for e in &data::get().editions {
         if let Some(h) = &e.harvard_slug {
-            let slug = e.slug.as_deref().unwrap_or_default();
-            let of = CAP_SLUG_OF.iter().find(|(s, _, _)| *s == slug);
-            let want = of.map_or(slug, |(_, c, _)| c);
-            assert_eq!(h.as_str(), want, "{} ({})", e.short_name, e.reporter.name);
-            if of.is_some() {
-                cap_slug_of_used.insert(slug);
-            }
+            assert_eq!(
+                e.slug.as_ref(),
+                Some(h),
+                "{} ({})",
+                e.short_name,
+                e.reporter.name
+            );
         }
     }
-    let listed: BTreeSet<&str> = CAP_SLUG_OF.iter().map(|(s, _, _)| *s).collect();
-    assert_eq!(
-        cap_slug_of_used, listed,
-        "a CAP_SLUG_OF entry names no edition"
-    );
 }
 
 #[test]
