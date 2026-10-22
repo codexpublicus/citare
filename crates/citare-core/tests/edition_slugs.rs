@@ -218,12 +218,17 @@ fn mass_app_div_series_split_by_volume() {
 // Five CAP reporters that had no edition of their own (#99) take CAP's slug,
 // written as CAP cites their cases. The released slugs of the same names stay:
 // Iowa's `Bradf.` is `bradf` and R.M. Charlton's `Charlton` is `charlton`.
-// reporters-db's `Cai. R.` and `P.R.R.` are the same books as CAP's `cai` and
-// `pr` and share those slugs (D78), whatever year the citation gives.
+// `Bradf.` is Bradford's Surrogate Reports unless the year is in Iowa's
+// Bradford's run (D73). reporters-db's `Cai. R.` and `P.R.R.` are the same
+// books as CAP's `cai` and `pr` and share those slugs (D78), whatever year the
+// citation gives.
 #[rstest]
 #[case("2 Brad. 432", "brad", "2", Some("brad"))]
 #[case("4 Bradf. 268", "brad", "4", Some("brad"))]
-#[case("1 Bradf. 356", "bradf", "1", Some("bradf"))]
+#[case("1 Bradf. 356", "brad", "1", Some("brad"))]
+#[case("2 Bradf., 42", "brad", "2", Some("brad"))]
+#[case("1 Bradf. 3 (1840)", "bradf", "1", Some("bradf"))]
+#[case("3 Bradf. 5 (1850)", "brad", "3", Some("brad"))]
 #[case("1 Cai. 1", "cai", "1", Some("cai"))]
 #[case("1 Cai. 22a", "cai", "1", Some("cai"))]
 #[case("2 Cai. R. 169", "cai", "2", Some("cai"))]

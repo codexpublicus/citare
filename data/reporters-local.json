@@ -79,7 +79,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page"],
       "examples": [{"cite": "1 Bradf. 3", "volume": "1"}, {"cite": "3 Bradf. 5", "volume": "3"}],
       "rejects": ["4 Bradf. 268"],
-      "notes": "Iowa's Bradford (1839-1841) has three volumes, CAP's `bradf`. reporters-db takes any volume, so `4 Bradf. 268`, Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) cited as `Bradf.`, took Iowa's slug (#99). The variations entry below gives volume 4 to Bradford's Surrogate Reports."
+      "notes": "Iowa's Bradford (1839-1841) has three volumes, CAP's `bradf`. reporters-db takes any volume, so `4 Bradf. 268`, Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) cited as `Bradf.`, took Iowa's slug (#99). The reporters entry for `Bradf.` below adds Bradford's Surrogate Reports under the same abbreviation, which a citation without a year in Iowa's run takes first (citare_data_build::slugs::SORTS_LAST)."
     },
     {
       "reporter": "Cai. R.",
@@ -144,6 +144,18 @@
       "notes": "CAP's `brad` (vols 1-4, 'Bradford's Reports'), New York Surrogate's Court decisions of 1849-1857, whose cases CAP cites as `1 Brad. 1`. reporters-db has `Brad.` only as a variation of Iowa's Bradford (`bradf`), so CAP's own citations took Iowa's slug (#99). Of the 114 `Brad.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case, 113 name a case in `brad` and one in `bradf`."
     },
     {
+      "reporter": "Bradf.",
+      "name": "Bradford's Surrogate Reports (N.Y.)",
+      "cite_type": "state",
+      "edition": "Bradf.",
+      "start": "1849-01-01T00:00:00",
+      "end": "1857-12-31T00:00:00",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>4) $reporter,? $page"],
+      "examples": [{"cite": "1 Bradf. 356", "volume": "1"}, {"cite": "2 Bradf., 42", "volume": "2"}, {"cite": "4 Bradf. 268", "volume": "4"}, {"cite": "4 Bradf., 164", "volume": "4"}],
+      "rejects": ["5 Bradf. 1"],
+      "notes": "Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) under the abbreviation New York opinions cite them by most, `Bradf.`, which reporters-db gives only Iowa's Bradford (`bradf`). Its slug is `brad` (citare_data_build::slugs::BY_REPORTER), and Iowa's `Bradf.` sorts after it (SORTS_LAST), so `1 Bradf. 356` is `brad` and `1 Bradf. 3 (1840)` is `bradf`. Its regex for volumes 1 to 3 is Iowa's, so one extractor finds both editions in that order; with two extractors the first one's edition would come first. Of the 793 `Bradf.` citations of volumes 1 to 4 in the CAP case metadata measured (docs/reporters-local.md), none is Iowa's Bradford: CAP resolves 610 to `brad` and 14 to `bradf`, and those 14 are New York opinions citing a New York surrogate's case at a page Iowa's volume also has (`Weir v. Fitzgerald, 2 Bradf. 42`). Iowa's opinions cite Iowa's Bradford without a volume (`Bradford, 16`, 58 times) and every `Bradf.` or `Brad.` with a volume in them is the New York reports (#99, D73)."
+    },
+    {
       "reporter": "Cai.",
       "name": "Caines' Reports",
       "cite_type": "state",
@@ -202,16 +214,6 @@
       "examples": [{"cite": "127 Ohio 545", "volume": "127"}, {"cite": "36 Ohio, 201", "volume": "36"}],
       "rejects": ["14 Ohio 511", "178 Ohio 1", "2016 Ohio 2813"],
       "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often."
-    },
-    {
-      "reporter": "Brad.",
-      "name": "Bradford's Surrogate Reports (N.Y.)",
-      "edition": "Brad.",
-      "variation": "Bradf.",
-      "regexes": ["(?P<volume>4) $reporter,? $page"],
-      "examples": [{"cite": "4 Bradf. 268", "volume": "4"}, {"cite": "4 Bradf., 164", "volume": "4"}],
-      "rejects": ["1 Bradf. 356", "5 Bradf. 1"],
-      "notes": "New York opinions cite Bradford's Surrogate Reports as `Bradf.` more often than as `Brad.`: of the 614 `Bradf.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case, 600 name a case in `brad` and 14 one in Iowa's `bradf`. Volumes 1 to 3 are in both reporters and stay Iowa's, the reporter reporters-db gives `Bradf.`; volume 4 is only Bradford's Surrogate Reports (69 of the 600)."
     }
   ],
   "journals": [
