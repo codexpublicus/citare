@@ -312,13 +312,14 @@ pub fn parse_local_reporters(json_str: &str) -> Result<LocalReporters, serde_jso
 /// each supplement reporter. Fails when an edition or variation entry names
 /// no edition, so a reporters-db rename can't drop one silently, and when
 /// reporters-db already has a reporter or variation the supplement adds.
-/// The variations themselves are added by the build, with their own regexes.
+/// A variation may name a supplement reporter's edition (`4 Bradf. 268` for
+/// Bradford's Surrogate Reports). The variations themselves are added by the
+/// build, with their own regexes.
 pub fn apply_local_reporters(
     reporters: &mut ReportersMap,
     local: &LocalReporters,
 ) -> Result<(), String> {
     apply_local_editions(reporters, local)?;
-    check_local_variations(reporters, local)?;
     for l in &local.reporters {
         let clusters = reporters.entry(l.reporter.clone()).or_default();
         if clusters.iter().any(|c| c.name == l.name) {
@@ -347,7 +348,7 @@ pub fn apply_local_reporters(
             extra: HashMap::new(),
         });
     }
-    Ok(())
+    check_local_variations(reporters, local)
 }
 
 /// Add the supplement's secondary sources to `journals`. Fails when
@@ -485,6 +486,23 @@ mod tests {
         let err = apply_local_reporters(&mut reporters, &local_variation("Ohio St.", "O.S."))
             .unwrap_err();
         assert!(err.contains("now has variation"), "{err}");
+    }
+
+    #[test]
+    fn local_variation_may_name_a_local_reporter() {
+        let data = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
+        let mut reporters = parse_reporters(data).unwrap();
+        let local = parse_local_reporters(
+            r##"{"#": [], "editions": [],
+               "reporters": [{"reporter": "Q.", "name": "Q Reports", "cite_type": "state",
+                 "edition": "Q.", "start": null, "end": null, "regexes": ["$full_cite"],
+                 "notes": ""}],
+               "variations": [{"reporter": "Q.", "name": "Q Reports", "edition": "Q.",
+                 "variation": "Qu.", "regexes": ["$full_cite"], "notes": ""}]}"##,
+        )
+        .unwrap();
+        apply_local_reporters(&mut reporters, &local).unwrap();
+        assert!(reporters["Q."].iter().any(|c| c.name == "Q Reports"));
     }
 
     #[test]
