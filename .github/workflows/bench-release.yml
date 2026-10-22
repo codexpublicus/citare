@@ -1,12 +1,14 @@
 name: Release benchmark
 
 # Benchmarks a release tag and attaches the report to its GitHub release (#35):
-# bench-report.md, bench-summary.json and the saved runs (vectors, and both
-# CourtListener samples) as assets, with the headline numbers in the release notes.
+# bench-report.md, bench-summary.json and the saved runs (vectors, the stare.pub sample
+# and both files of eyecite's comparison sample) as assets, with the headline numbers in
+# the release notes.
 # release-plz.yml calls it after cutting a release; run it by hand to backfill a
 # release, or with publish off to only build the report.
 #
-# The ten-percent sample is the release's corpus. The one-percent run is attached too,
+# The stare.pub sample is the release's primary corpus and the ten-percent file of
+# eyecite's comparison sample its secondary one. The one-percent run is attached too,
 # because PR reports compare against it. eyecite's runs come from citation-bench's
 # stored ones (bench/baseline.py), so eyecite only runs here when their key misses.
 
@@ -110,6 +112,12 @@ jobs:
             ${{ runner.os }}-homelab-parity-${{ steps.pin.outputs.ref }}-
             ${{ runner.os }}-homelab-parity-
 
+      - name: Cache the stare.pub sample
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: citation-bench/.cache/stare
+          key: stare-pub-${{ hashFiles('citation-bench/corpora/stare-pub-*.json') }}
+
       # The release before this one, by version, and its saved runs if it has them.
       - name: Fetch the previous release's runs
         id: previous
@@ -132,13 +140,19 @@ jobs:
           else
             echo "note=$prev has no saved benchmark runs attached, so there is nothing to compare $TAG with. Run this workflow on $prev to backfill them." >> "$GITHUB_OUTPUT"
           fi
+          if gh release download "$prev" -R "$GITHUB_REPOSITORY" -D "$DIR" -p 'citare-stare-pub-*.json.gz'; then
+            for f in "$DIR"/citare-stare-pub-*.json.gz; do
+              name=$(basename "$f" .json.gz)
+              gunzip -c "$f" > "$DIR/${name#citare-}.json"
+            done
+          fi
 
       # The ratchet is informational here: the tag is already cut.
       - name: Run the conformance vectors
         working-directory: citation-bench
         run: mise run bench:citare --save results/vectors/citare.json --label "$CITARE_LABEL" || true
 
-      - name: Report on the ten-percent sample
+      - name: Report on the stare.pub sample and the ten-percent sample
         working-directory: citation-bench
         env:
           PREVIOUS_NOTE: ${{ steps.previous.outputs.note || 'No earlier release to compare with.' }}
@@ -151,14 +165,14 @@ jobs:
           cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1)
           runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs are timed on homelab too. Release runs attached before v0.5.1 were timed on GitHub-hosted runners, so speed comparisons with those cross machine types."
           for f in bench-report.md; do printf '\n%s\n' "$runner" >> "reports/release/$f"; done
-          echo "ten-percent report: $(( SECONDS - start )) s" >> "$RUNNER_TEMP/timing.txt"
+          echo "report: $(( SECONDS - start )) s" >> "$RUNNER_TEMP/timing.txt"
           cat reports/release/bench-report.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run the one-percent sample
         working-directory: citation-bench
         run: |
           start=$SECONDS
-          mise run corpus:run citare --size 1
+          mise run corpus:run citare --corpus eyecite-sample --size 1
           echo "one-percent run: $(( SECONDS - start )) s" >> "$RUNNER_TEMP/timing.txt"
 
       - name: Collect the assets
@@ -170,6 +184,9 @@ jobs:
           gzip -9c results/vectors/citare.json > "$RUNNER_TEMP/assets/citare-vectors.json.gz"
           gzip -9c results/corpus-1pct/citare.json > "$RUNNER_TEMP/assets/citare-corpus-1pct.json.gz"
           gzip -9c results/corpus-10pct/citare.json > "$RUNNER_TEMP/assets/citare-corpus-10pct.json.gz"
+          for f in results/stare-pub-*/citare.json; do
+            gzip -9c "$f" > "$RUNNER_TEMP/assets/citare-$(basename "$(dirname "$f")").json.gz"
+          done
           { echo; echo '```'; cat "$RUNNER_TEMP/timing.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           ls -l "$RUNNER_TEMP/assets"
 
