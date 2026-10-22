@@ -70,7 +70,7 @@
       "regexes": ["(?P<volume>[1-9]|1\\d|20) $reporter $page"],
       "examples": [{"cite": "5 Ohio 187", "volume": "5"}, {"cite": "20 Ohio 119", "volume": "20"}],
       "rejects": ["21 Ohio 1", "127 Ohio 545"],
-      "notes": "The Ohio Reports (1821-1851) have 20 volumes, CAP's `ohio` (vols 1-20). reporters-db takes any one- to three-digit volume, so `127 Ohio 545`, the Ohio State Reports cited as `Ohio`, took the Ohio Reports' slug (#80). The variations entry below gives it to the Ohio State Reports."
+      "notes": "The Ohio Reports (1821-1851) have 20 volumes, CAP's `ohio` (vols 1-20). reporters-db takes any one- to three-digit volume, so `127 Ohio 545`, the Ohio State Reports cited as `Ohio`, took the Ohio Reports' slug (#80). The variations entry below gives it to the Ohio State Reports. A closed series, so the cap says a volume past 20 isn't the Ohio Reports (docs/volume-caps.md): the Ohio Reports ran 1821-1851 (Cardiff Index to Legal Abbreviations, https://www.legalabbrevs.cardiff.ac.uk/titles/tview/id/4397/tsearch//ttype/Exact) and the Ohio State Reports began again at volume 1 in 1852 (1 Ohio St., https://cite.case.law/ohio-st/1/)."
     },
     {
       "reporter": "Bradf.",
@@ -79,7 +79,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page"],
       "examples": [{"cite": "1 Bradf. 3", "volume": "1"}, {"cite": "3 Bradf. 5", "volume": "3"}],
       "rejects": ["4 Bradf. 268"],
-      "notes": "Iowa's Bradford (1839-1841) has three volumes, CAP's `bradf`. reporters-db takes any volume, so `4 Bradf. 268`, Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) cited as `Bradf.`, took Iowa's slug (#99). The reporters entry for `Bradf.` below adds Bradford's Surrogate Reports under the same abbreviation, which a citation without a year in Iowa's run takes first (citare_data_build::slugs::SORTS_LAST)."
+      "notes": "Iowa's Bradford (1839-1841) has three volumes, CAP's `bradf`. reporters-db takes any volume, so `4 Bradf. 268`, Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) cited as `Bradf.`, took Iowa's slug (#99). The reporters entry for `Bradf.` below adds Bradford's Surrogate Reports under the same abbreviation, which a citation without a year in Iowa's run takes first (citare_data_build::slugs::SORTS_LAST). The cap of three volumes is CAP's holdings only (`bradf`, vols 1-3): I found no source outside CAP for the series' last volume (docs/volume-caps.md). A volume past 3 is Bradford's Surrogate Reports, so the cap loses no citation."
     },
     {
       "reporter": "Cai. R.",
@@ -88,7 +88,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
       "examples": [{"cite": "2 Cai. R. 169", "volume": "2"}, {"cite": "2 Cai.R. 169", "volume": "2"}, {"cite": "1 Cai. R. 22a", "volume": "1"}],
       "rejects": ["4 Cai. R. 1"],
-      "notes": "reporters-db's entry for Caines' Reports, CAP's `cai` (vols 1-3), which the reporters entry `Cai.` below adds under CAP's short name. It shares `cai` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `cai-r`, which named no CAP volume. reporters-db takes any volume; this takes Caines' Reports' three, with the regexes of `Cai.`."
+      "notes": "reporters-db's entry for Caines' Reports, CAP's `cai` (vols 1-3), which the reporters entry `Cai.` below adds under CAP's short name. It shares `cai` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `cai-r`, which named no CAP volume. reporters-db takes any volume; this takes Caines' Reports' three, with the regexes of `Cai.`. The series closed at three volumes: 'Caine's reports, 3 v.' in the contents of the New York Common Law Reports (https://archive.org/details/reportsofcasesad04newyiala; docs/volume-caps.md)."
     },
     {
       "reporter": "P.R.R.",
@@ -97,7 +97,7 @@
       "regexes": ["(?P<volume>[1-9]\\d?|100) $reporter,? $page"],
       "examples": [{"cite": "45 P.R.R. 100", "volume": "45"}, {"cite": "45 Puerto Rico 100", "volume": "45"}, {"cite": "100 P.R.R. 1", "volume": "100"}],
       "rejects": ["101 P.R.R. 1"],
-      "notes": "reporters-db's entry for the Puerto Rico Reports, CAP's `pr` (vols 3-100), which the reporters entry `P.R.` below adds under CAP's short name. It shares `pr` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `p-r-r`, which named no CAP volume. reporters-db takes any volume; this takes the series' 100, as `P.R.` does, so `101 P.R.R. 1` is no longer a citation."
+      "notes": "reporters-db's entry for the Puerto Rico Reports, CAP's `pr` (vols 3-100), which the reporters entry `P.R.` below adds under CAP's short name. It shares `pr` with that entry (citare_data_build::slugs::SAME_BOOKS, D78), replacing the released slug `p-r-r`, which named no CAP volume. reporters-db takes any volume; this takes the series' 100, as `P.R.` does, so `101 P.R.R. 1` is no longer a citation. The series closed at volume 100: v. 3 (1899) to v. 100 (1972), vols 1-2 published in Spanish only (Berkeley Law catalogue, https://lawcat.berkeley.edu/record/183605; Washington State Law Library, https://lawlibrary.courts.wa.gov/cgi-bin/koha/opac-detail.pl?biblionumber=13950; docs/volume-caps.md)."
     },
     {
       "reporter": "Conn. Super. Ct.",
@@ -106,7 +106,7 @@
       "regexes": ["(?P<volume>[1-9]\\d{0,2}) $reporter,? $page"],
       "examples": [{"cite": "5 Conn. Super. Ct. 123", "volume": "5"}],
       "rejects": ["1999 Conn. Super. Ct. 13301"],
-      "notes": "The Reports ran 1986-1994 in a handful of volumes. reporters-db takes any volume, which also matches the Superior Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year); capping the volume at three digits lets the two share `conn-super-ct`."
+      "notes": "The Reports ran 1986-1994 in a handful of volumes. reporters-db takes any volume, which also matches the Superior Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year); capping the volume at three digits lets the two share `conn-super-ct`. A disambiguation cap, not a last volume (docs/volume-caps.md): it says only that a four-digit volume is the neutral citation's year, and the year written as the volume is what decides."
     },
     {
       "reporter": "Mass. App. Div.",
@@ -115,7 +115,7 @@
       "regexes": ["(?P<volume>[1-9]\\d{0,2}) $reporter,? $page"],
       "examples": [{"cite": "10 Mass. App. Div. 12", "volume": "10"}],
       "rejects": ["1995 Mass. App. Div. 12"],
-      "notes": "The numbered series (CAP's `mass-app-div`, vols 1-15). reporters-db takes any volume, which also matches the annual series added below (`1995 Mass. App. Div. 12`, volume a year); capping the volume at three digits tells the two apart."
+      "notes": "The numbered series (CAP's `mass-app-div`, vols 1-15). reporters-db takes any volume, which also matches the annual series added below (`1995 Mass. App. Div. 12`, volume a year); capping the volume at three digits tells the two apart. A disambiguation cap, not a last volume (docs/volume-caps.md): it says only that a four-digit volume is the annual series' year, and the year written as the volume is what decides."
     }
   ],
   "reporters": [
@@ -141,7 +141,7 @@
       "regexes": ["(?P<volume>[1-4]) $reporter,? $page"],
       "examples": [{"cite": "2 Brad. 432", "volume": "2"}, {"cite": "4 Brad. 7", "volume": "4"}],
       "rejects": ["5 Brad. 1"],
-      "notes": "CAP's `brad` (vols 1-4, 'Bradford's Reports'), New York Surrogate's Court decisions of 1849-1857, whose cases CAP cites as `1 Brad. 1`. reporters-db has `Brad.` only as a variation of Iowa's Bradford (`bradf`), so CAP's own citations took Iowa's slug (#99). Of the 114 `Brad.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case, 113 name a case in `brad` and one in `bradf`."
+      "notes": "CAP's `brad` (vols 1-4, 'Bradford's Reports'), New York Surrogate's Court decisions of 1849-1857, whose cases CAP cites as `1 Brad. 1`. reporters-db has `Brad.` only as a variation of Iowa's Bradford (`bradf`), so CAP's own citations took Iowa's slug (#99). Of the 114 `Brad.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case, 113 name a case in `brad` and one in `bradf`. The series closed at four volumes, cases of 1849-1857 (HathiTrust, https://catalog.hathitrust.org/Record/008916078; docs/volume-caps.md)."
     },
     {
       "reporter": "Bradf.",
@@ -153,7 +153,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>4) $reporter,? $page"],
       "examples": [{"cite": "1 Bradf. 356", "volume": "1"}, {"cite": "2 Bradf., 42", "volume": "2"}, {"cite": "4 Bradf. 268", "volume": "4"}, {"cite": "4 Bradf., 164", "volume": "4"}],
       "rejects": ["5 Bradf. 1"],
-      "notes": "Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) under the abbreviation New York opinions cite them by most, `Bradf.`, which reporters-db gives only Iowa's Bradford (`bradf`). Its slug is `brad` (citare_data_build::slugs::BY_REPORTER), and Iowa's `Bradf.` sorts after it (SORTS_LAST), so `1 Bradf. 356` is `brad` and `1 Bradf. 3 (1840)` is `bradf`. Its regex for volumes 1 to 3 is Iowa's, so one extractor finds both editions in that order; with two extractors the first one's edition would come first. Of the 793 `Bradf.` citations of volumes 1 to 4 in the CAP case metadata measured (docs/reporters-local.md), none is Iowa's Bradford: CAP resolves 610 to `brad` and 14 to `bradf`, and those 14 are New York opinions citing a New York surrogate's case at a page Iowa's volume also has (`Weir v. Fitzgerald, 2 Bradf. 42`). Iowa's opinions cite Iowa's Bradford without a volume (`Bradford, 16`, 58 times) and every `Bradf.` or `Brad.` with a volume in them is the New York reports (#99, D73)."
+      "notes": "Bradford's Surrogate Reports (CAP's `brad`, vols 1-4) under the abbreviation New York opinions cite them by most, `Bradf.`, which reporters-db gives only Iowa's Bradford (`bradf`). Its slug is `brad` (citare_data_build::slugs::BY_REPORTER), and Iowa's `Bradf.` sorts after it (SORTS_LAST), so `1 Bradf. 356` is `brad` and `1 Bradf. 3 (1840)` is `bradf`. Its regex for volumes 1 to 3 is Iowa's, so one extractor finds both editions in that order; with two extractors the first one's edition would come first. Of the 793 `Bradf.` citations of volumes 1 to 4 in the CAP case metadata measured (docs/reporters-local.md), none is Iowa's Bradford: CAP resolves 610 to `brad` and 14 to `bradf`, and those 14 are New York opinions citing a New York surrogate's case at a page Iowa's volume also has (`Weir v. Fitzgerald, 2 Bradf. 42`). Iowa's opinions cite Iowa's Bradford without a volume (`Bradford, 16`, 58 times) and every `Bradf.` or `Brad.` with a volume in them is the New York reports (#99, D73). The series closed at four volumes, cases of 1849-1857 (HathiTrust, https://catalog.hathitrust.org/Record/008916078; docs/volume-caps.md)."
     },
     {
       "reporter": "Cai.",
@@ -165,7 +165,7 @@
       "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
       "examples": [{"cite": "1 Cai. 1", "volume": "1"}, {"cite": "2 Cai. 183", "volume": "2"}, {"cite": "1 Cai. 22a", "volume": "1"}],
       "rejects": ["4 Cai. 1"],
-      "notes": "CAP's `cai` (vols 1-3), Caines' Reports of the New York Supreme Court of Judicature, 1803-1805, whose cases CAP cites as `1 Cai. 1`. reporters-db has the reporter as `Cai. R.` (released as `cai-r`, now `cai`) and `Cai.` as a variation of Caines' Cases (`cai-cas`), so `1 Cai. 1` took Caines' Cases' slug (#99). Of the 117 `Cai.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case in either reporter, 114 name a case in `cai` and 3 in `cai-cas`; the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.` to Caines' Cases. reporters-db's `Cai. R.` shares `cai` (D78)."
+      "notes": "CAP's `cai` (vols 1-3), Caines' Reports of the New York Supreme Court of Judicature, 1803-1805, whose cases CAP cites as `1 Cai. 1`. reporters-db has the reporter as `Cai. R.` (released as `cai-r`, now `cai`) and `Cai.` as a variation of Caines' Cases (`cai-cas`), so `1 Cai. 1` took Caines' Cases' slug (#99). Of the 117 `Cai.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case in either reporter, 114 name a case in `cai` and 3 in `cai-cas`; the Bluebook (T1) also gives `Cai.` to Caines' Reports and `Cai. Cas.` to Caines' Cases. reporters-db's `Cai. R.` shares `cai` (D78). The series closed at three volumes: 'Caine's reports, 3 v.' in the contents of the New York Common Law Reports (https://archive.org/details/reportsofcasesad04newyiala; docs/volume-caps.md)."
     },
     {
       "reporter": "Charlton Rep.",
@@ -177,7 +177,7 @@
       "regexes": ["(?P<volume>1) $reporter,? $page"],
       "examples": [{"cite": "1 Charlton Rep. 13", "volume": "1"}],
       "rejects": ["2 Charlton Rep. 13"],
-      "notes": "CAP's `charlton-rep` (vol 1, 'Charlton's Reports'), T.U.P. Charlton's reports of Georgia superior court decisions from 1805 to 1824, whose cases CAP cites as `1 Charlton Rep. 13`. reporters-db has only R.M. Charlton's reports (1811-1837, CAP's `charlton`, cited `1 Charlton 1`), with `Charlton Rep.` as one of its variations, so CAP's citations of T.U.P. Charlton took R.M. Charlton's slug (#99). Georgia opinions write `T. U. P. Charlton, 311` without a volume, which no reporter regex reads; `Charlton Rep.` is CAP's own form."
+      "notes": "CAP's `charlton-rep` (vol 1, 'Charlton's Reports'), T.U.P. Charlton's reports of Georgia superior court decisions from 1805 to 1824, whose cases CAP cites as `1 Charlton Rep. 13`. reporters-db has only R.M. Charlton's reports (1811-1837, CAP's `charlton`, cited `1 Charlton 1`), with `Charlton Rep.` as one of its variations, so CAP's citations of T.U.P. Charlton took R.M. Charlton's slug (#99). Georgia opinions write `T. U. P. Charlton, 311` without a volume, which no reporter regex reads; `Charlton Rep.` is CAP's own form. One volume, published 1824 (VIAF, https://viaf.org/viaf/53766484; Cardiff Index to Legal Abbreviations, https://www.legalabbrevs.cardiff.ac.uk/titles/view/id/4942; docs/volume-caps.md)."
     },
     {
       "reporter": "N.M. App.",
@@ -186,10 +186,9 @@
       "edition": "N.M. App.",
       "start": "2011-01-01T00:00:00",
       "end": null,
-      "regexes": ["(?P<volume>[1-9]|10) $reporter,? $page"],
-      "examples": [{"cite": "5 N.M. App. 1", "volume": "5"}, {"cite": "10 N.M. App. 1", "volume": "10"}],
-      "rejects": ["84 N.M.App. 83"],
-      "notes": "CAP's `nm-app` (vols 1-10, 2011-2016), which reporters-db doesn't have (#99). CAP cites every case in it by its neutral citation (`2011-NMCA-108`, `2016-NMSC-021`), and no opinion in the CAP case metadata measured (docs/reporters-local.md) cites `N.M. App.`; the edition gives CAP's slug a name and reads the citation if one is written. It takes CAP's ten volumes only: `84 N.M.App. 83` (CAP nm/84) is the New Mexico Reports with the court written into the reporter."
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "5 N.M. App. 1", "volume": "5"}, {"cite": "10 N.M. App. 1", "volume": "10"}, {"cite": "12 N.M. App. 40", "volume": "12"}, {"cite": "12 N.M. App. 40 (2015)", "volume": "12"}],
+      "notes": "CAP's `nm-app` (vols 1-10, 2011-2016), which reporters-db doesn't have (#99). CAP cites every case in it by its neutral citation (`2011-NMCA-108`, `2016-NMSC-021`), and no opinion in the CAP case metadata measured (docs/reporters-local.md) cites `N.M. App.`; the edition gives CAP's slug a name and reads the citation if one is written. It takes any volume: the series is still published as unofficial hardbound volumes (UNM Law Library, https://libguides.law.unm.edu/c.php?g=244202&p=2316952; Rule 23-112 NMRA), so CAP's ten volumes are not its last (docs/volume-caps.md, D80). New Mexico opinions also write a Court of Appeals case in the New Mexico Reports with the court in the reporter, `84 N.M.App. 83` (CAP nm/84); the variations entry for `N.M.` below takes that form, and the edition's start year tells the two apart."
     },
     {
       "reporter": "P.R.",
@@ -201,10 +200,19 @@
       "regexes": ["(?P<volume>[1-9]\\d?|100) $reporter,? $page"],
       "examples": [{"cite": "45 P.R. 100", "volume": "45"}, {"cite": "100 P.R. 1", "volume": "100"}, {"cite": "16 P. R. 153", "volume": "16"}],
       "rejects": ["101 P.R. 1"],
-      "notes": "CAP's `pr` (vols 3-100), the English Puerto Rico Reports, whose cases CAP cites as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) and `P.R.` as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was ambiguous and took the Pacific Reporter's slug `p` (#99). All 85 `P.R.` and `P. R.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case name one in `pr`. Its own opinions write `P.R.R.` (30,866 times in `pr`), reporters-db's entry, which shares `pr` (D78)."
+      "notes": "CAP's `pr` (vols 3-100), the English Puerto Rico Reports, whose cases CAP cites as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) and `P.R.` as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was ambiguous and took the Pacific Reporter's slug `p` (#99). All 85 `P.R.` and `P. R.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case name one in `pr`. Its own opinions write `P.R.R.` (30,866 times in `pr`), reporters-db's entry, which shares `pr` (D78). The series closed at volume 100: v. 3 (1899) to v. 100 (1972), vols 1-2 published in Spanish only (Berkeley Law catalogue, https://lawcat.berkeley.edu/record/183605; Washington State Law Library, https://lawlibrary.courts.wa.gov/cgi-bin/koha/opac-detail.pl?biblionumber=13950; docs/volume-caps.md). The 1,239 CourtListener citations written `P.R.` of vols 168-193 (2006-2015) are the Decisiones de Puerto Rico, a different reporter (citare#108)."
     }
   ],
   "variations": [
+    {
+      "reporter": "N.M.",
+      "name": "New Mexico Reports",
+      "edition": "N.M.",
+      "variation": "N.M. App.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "84 N.M.App. 83 (1972)", "volume": "84"}, {"cite": "84 N.M. App. 83 (Ct. App. 1972)", "volume": "84"}],
+      "notes": "New Mexico opinions write a Court of Appeals case in the New Mexico Reports (CAP's `nm`) with the court in the reporter: `84 N.M.App. 83` (CAP nm/84). The New Mexico Appellate Reports (`N.M. App.`, CAP's `nm-app`) begin in 2011, and the regex is theirs, so one extractor finds both editions: a citation with a year before 2011 is the New Mexico Reports and one with a later year or none is the New Mexico Appellate Reports (crates/citare-core/src/helpers.rs guess_edition; docs/volume-caps.md, D80)."
+    },
     {
       "reporter": "Ohio St.",
       "name": "Ohio State Reports",
@@ -213,7 +221,7 @@
       "regexes": ["(?P<volume>2[1-9]|[3-9]\\d|1[0-6]\\d|17[0-7]) $reporter,? $page"],
       "examples": [{"cite": "127 Ohio 545", "volume": "127"}, {"cite": "36 Ohio, 201", "volume": "36"}],
       "rejects": ["14 Ohio 511", "178 Ohio 1", "2016 Ohio 2813"],
-      "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often."
+      "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often. The cap at 177 is the Ohio State Reports' last volume (1964; the Ohio State Reports, Second Series, begin at volume 1 in 1965), from the University of Akron's case citation guide (https://libguides.uakron.edu/LARW/casecitations); it gates only the spelling `Ohio`, not the Ohio State Reports (docs/volume-caps.md)."
     }
   ],
   "journals": [

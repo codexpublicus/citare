@@ -221,7 +221,10 @@ fn mass_app_div_series_split_by_volume() {
 // `Bradf.` is Bradford's Surrogate Reports unless the year is in Iowa's
 // Bradford's run (D73). reporters-db's `Cai. R.` and `P.R.R.` are the same
 // books as CAP's `cai` and `pr` and share those slugs (D78), whatever year the
-// citation gives.
+// citation gives. The New Mexico Appellate Reports take any volume (D80); a
+// year before their 2011 start makes `N.M. App.` the New Mexico Reports with
+// the court in the reporter, and without a year it stays the Appellate
+// Reports, so no citation is lost.
 #[rstest]
 #[case("2 Brad. 432", "brad", "2", Some("brad"))]
 #[case("4 Bradf. 268", "brad", "4", Some("brad"))]
@@ -237,6 +240,11 @@ fn mass_app_div_series_split_by_volume() {
 #[case("1 Charlton Rep. 13", "charlton-rep", "1", Some("charlton-rep"))]
 #[case("1 Charlton 1", "charlton", "1", Some("charlton"))]
 #[case("5 N.M. App. 1", "nm-app", "5", Some("nm-app"))]
+#[case("12 N.M. App. 40", "nm-app", "12", Some("nm-app"))]
+#[case("12 N.M. App. 40 (2015)", "nm-app", "12", Some("nm-app"))]
+#[case("84 N.M.App. 83 (1972)", "nm", "84", Some("nm"))]
+#[case("84 N.M. App. 83 (Ct. App. 1972)", "nm", "84", Some("nm"))]
+#[case("84 N.M.App. 83", "nm-app", "84", Some("nm-app"))]
 #[case("45 P.R. 100", "pr", "45", Some("pr"))]
 #[case("16 P. R. 153", "pr", "16", Some("pr"))]
 #[case("45 P.R.R. 100", "pr", "45", Some("pr"))]

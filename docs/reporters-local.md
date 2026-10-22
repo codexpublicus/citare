@@ -19,7 +19,8 @@ This does two things:
 The file also caps the Connecticut Superior Court Reports (1986–1994, `Conn. Super. Ct.`) at a
 three-digit volume. reporters-db takes any volume for it, which also matches the Superior
 Court's neutral citation (`1999 Conn. Super. Ct. 13301-M`, volume a year), so the two can share
-`conn-super-ct`.
+`conn-super-ct`. It is a disambiguation cap, not a last volume; [Volume caps](volume-caps.md)
+states the rule every cap in this file follows and lists each one with its source.
 
 ## Massachusetts Appellate Division
 
@@ -96,14 +97,16 @@ otherwise.
   have. CAP cites every one of its cases by the neutral citation alone (`2011-NMCA-108`,
   `2016-NMSC-021`), whose volume is a year and whose slugs are `nmca` and `nmsc`, and no
   `cites_to` entry reads `N.M. App.`. The edition gives CAP's slug a name and reads `5 N.M. App.
-  1` if one is written. It takes CAP's ten volumes only, since New Mexico opinions write a Court
-  of Appeals case in the New Mexico Reports as `84 N.M.App. 83` (CAP `nm/84`, 0077-02).
+  1` if one is written. It took CAP's ten volumes only until the owner's ruling D80 removed the
+  cap: the series is still published, and the edition's 2011 start year now tells it from the New
+  Mexico Reports written `84 N.M.App. 83` (CAP `nm/84`, 0077-02), which a variations entry adds
+  ([Volume caps](volume-caps.md#new-mexico-appellate-reports)).
 - **Puerto Rico Reports** (`pr`, vols 3-100, the English translation, 1899-1972), cited by CAP
   as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) with `P.R.`
   as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was
   ambiguous and took the Pacific Reporter's slug, `p`. All 85 `P.R.` and `P. R.` citations name a
-  case in `pr`. The file caps the edition at volume 100, the series' last, so a higher volume
-  stays ambiguous as before.
+  case in `pr`. The file caps the edition at volume 100, the series' last (sources in
+  [Volume caps](volume-caps.md)), so a higher volume stays ambiguous as before.
 
 reporters-db's `Cai. R.` and `P.R.R.` are the same books as CAP's `cai` and `pr`, and citare 0.7.0
 and 0.7.1 released them as `cai-r` and `p-r-r`, slugs CAP has no volumes under. The Puerto Rico

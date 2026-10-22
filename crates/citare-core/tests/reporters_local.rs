@@ -93,3 +93,41 @@ fn ohio_volume_picks_the_ohio_reports_or_the_ohio_state_reports() {
     assert_eq!(guess.slug.as_deref(), Some("ohio"));
     assert_eq!(rc.exact_editions.len(), 1);
 }
+
+/// The New Mexico Appellate Reports take any volume, since the series is
+/// still published (D80, docs/volume-caps.md). `N.M. App.` with a year before
+/// their 2011 start is the New Mexico Reports with the court in the reporter
+/// (`84 N.M.App. 83`, CAP nm/84), a variation match; with a later year or
+/// none it is the Appellate Reports, and never ambiguous, so
+/// `remove_ambiguous` drops neither.
+#[test]
+fn nm_app_is_the_new_mexico_reports_only_before_2011() {
+    let guess = |text: &str| {
+        for remove_ambiguous in [false, true] {
+            let cites = get_citations(text, remove_ambiguous, "", &[]);
+            assert!(
+                cites.iter().any(|c| c.matched_text().contains("N.M")),
+                "{text:?} (remove_ambiguous {remove_ambiguous}): {cites:?}"
+            );
+        }
+        let cites = get_citations(text, false, "", &[]);
+        let c = cites
+            .iter()
+            .find(|c| c.matched_text().contains("N.M"))
+            .unwrap();
+        assert!(!c.is_ambiguous(), "{text:?}");
+        let rc = c.resource_common().expect("a full case citation");
+        let e = rc.edition_guess.clone().expect("one edition");
+        (e.short_name, e.slug)
+    };
+    let nm = ("N.M.".to_string(), Some("nm".to_string()));
+    let nm_app = ("N.M. App.".to_string(), Some("nm-app".to_string()));
+    assert_eq!(
+        guess("State v. Doe, 84 N.M.App. 83, 500 P.2d 1 (1972)."),
+        nm
+    );
+    assert_eq!(guess("State v. Doe, 84 N.M. App. 83 (Ct. App. 2010)."), nm);
+    assert_eq!(guess("State v. Doe, 12 N.M. App. 40 (2011)."), nm_app);
+    assert_eq!(guess("State v. Doe, 31 N.M. App. 40 (2024)."), nm_app);
+    assert_eq!(guess("State v. Doe, 84 N.M.App. 83."), nm_app);
+}
