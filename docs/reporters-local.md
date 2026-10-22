@@ -75,10 +75,9 @@ otherwise.
   cited by CAP as `1 Brad. 1`. reporters-db's only `Brad.` is a variation of Iowa's Bradford
   (`Bradf.`, 1839-1841, CAP's `bradf`, vols 1-3), and 113 of 114 `Brad.` citations name a case in
   `brad`. Opinions write `Bradf.` for it more often still: 600 of 614 `Bradf.` citations name a
-  case in `brad`, 14 one in `bradf`. Volumes 1 to 3 of `Bradf.` are in both reporters, and the
-  file leaves them Iowa's, the reporter reporters-db and the released slug `bradf` give the
-  name; it caps Iowa's Bradford at volume 3 and adds `Bradf.` as a variation of Bradford's
-  Surrogate Reports for volume 4, which is 69 of the 600.
+  case in `brad`, 14 one in `bradf`. The file caps Iowa's Bradford at volume 3 and adds
+  Bradford's Surrogate Reports under `Bradf.` too, for volumes 1 to 4, with the slug `brad`;
+  volumes 1 to 3 take it unless the year is in Iowa's run ([below](#bradf-volumes-1-to-3)).
 - **Caines' Reports** (`cai`, vols 1-3, New York Supreme Court of Judicature, 1803-1805), cited
   by CAP as `1 Cai. 1` and, for a few cases, `1 Cai. 22a`. reporters-db has the reporter as
   `Cai. R.` (released slug `cai-r`) and gives `Cai.` to Caines' Cases (`cai-cas`) as a
@@ -133,6 +132,39 @@ never found. One went wrong: `In re Seneca Trails, Inc., 7 B.R. 128 (Bkrtcy.W.D.
 Reporter (1979-) rules out, so it became the Baltimore City Reports. At the citation-bench
 commit CI pins, the vectors pass as before: eyecite's 270 of 278, the divergences 93 of 94, the
 CAP slugs 11 of 12 and the statutes 75 of 78.
+
+<a id="bradf-volumes-1-to-3"></a>
+### `Bradf.` volumes 1 to 3
+
+Volumes 1 to 3 of `Bradf.` are in both Bradfords, and #99 left them Iowa's, the reporter
+reporters-db and the released slug `bradf` give the name, until Iowa's own opinions were
+measured (the owner's ruling D73, 2026-10-22). I added CAP's Iowa volumes (`bradf`, `greene`,
+`morris` and all 261 of `iowa`, 1839-1968) to the 1,360 above and counted `cites_to` entries.
+
+- Iowa's opinions never cite Iowa's Bradford with a volume. They write `Bradford, 16`, 58 times,
+  which no reporter regex reads. CAP resolves no citation in them to `bradf`.
+- Every `Bradf.` or `Brad.` with a volume in Iowa's opinions is the New York reports: `1 Brad.,
+  476` and `2 Brad., 133` (resolved to `brad`), `4 Brad., 260`, `3 Brad. 500`, and `1 Bradf. 52`,
+  `1 Bradford, 437`, `3 Bradf. (Sur.) 144`, `2 Bradf. (N. Y.) 339` and `1 Bradf. (N. Y. Sur.)
+  476`, whose pages Iowa's volumes don't have (they end at pages 20, 67 and 55).
+- Over all 1,626 volumes, there are 793 `Bradf.` citations of volumes 1 to 4. CAP resolves 610
+  to `brad` and 14 to `bradf`, and all 14 are New York opinions citing a New York surrogate's case
+  at a page Iowa's volume also has: `2 Bradf. 42` eight times, five of them named `Weir v.
+  Fitzgerald` (CAP `brad/2`, 0042-01), `Phyfe v. Phyfe, 3 Bradf. 45` (`brad/3`, 0045-01) four
+  times, `Ex parte Dawson, 3 Bradf. 30` and `Glover v. Holley, 2 Bradf., 29`.
+
+So none of the 793 is Iowa's Bradford, and the file gives `Bradf.` volumes 1 to 3 to Bradford's
+Surrogate Reports. Iowa's edition stays, with the slug `bradf`, and still takes a citation whose
+year is in its run (`1 Bradf. 3 (1840)`); `citare_data_build::slugs::SORTS_LAST` sorts it after
+Bradford's Surrogate Reports, so a citation without such a year (`1 Bradf. 356`) is `brad`.
+Bradford's Surrogate Reports' regex for volumes 1 to 3 is the same as Iowa's, so one extractor
+finds both editions in that order; the build orders editions only within an extractor.
+`data/edition-slugs.json` gives `Bradf.` both slugs, `brad` and `bradf`.
+
+Before and after over the 1,626 volumes' opinion text (3,774,274 citations), 217 citations change,
+all from `bradf` to `brad`: 130 in Redfield's Surrogate Reports, 55 in N.Y., 31 in Barb. and one
+in Ga. (`2 Bradf. 107`). None is in an Iowa opinion. A `Bradf.` citation of volumes 1 to 3 without
+a year is now ambiguous between the two, as `172 Wash. 688` is, so `--remove-ambiguous` drops it.
 
 ## American Jurisprudence
 

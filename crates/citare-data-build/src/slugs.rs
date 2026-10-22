@@ -57,6 +57,9 @@ pub const BY_REPORTER: &[(&str, &str, &str)] = &[
     ),
     // reporters-db spellings of a CAP reporter.
     ("Day.", "Day's Reports (Connecticut)", "day"),
+    // data/reporters-local.json adds Bradford's Surrogate Reports under
+    // `Bradf.`, Iowa's Bradford's name and CAP slug, and as `Brad.`.
+    ("Bradf.", "Bradford's Surrogate Reports (N.Y.)", "brad"),
     (
         "Davis. L. Ct. Cas.",
         "Massachusetts Land Court decisions, 1898-1908",
@@ -104,6 +107,10 @@ pub const BY_REPORTER: &[(&str, &str, &str)] = &[
 /// Slugs whose reporters-db reporters are one set of books listed twice,
 /// so they share volumes by design, with the reason.
 pub const SAME_BOOKS: &[(&str, &str)] = &[
+    (
+        "brad",
+        "`Brad.` and `Bradf.` are both Bradford's Surrogate Reports (data/reporters-local.json)",
+    ),
     (
         "dall",
         "Dallas's Reports print Pennsylvania and U.S. Supreme Court cases in the same volumes",
@@ -211,6 +218,25 @@ pub fn cap_slug(
     (years == (first >= FIRST_YEAR_VOLUME)).then(|| cap.to_string())
 }
 
+/// Editions that sort after another reporter's edition of the same name,
+/// as `(edition name, reporters-db reporter name, reason)`, though they keep
+/// the name's slug: opinions cite the other reporter by that name, so a
+/// citation citare can't narrow to one edition takes the other's slugs. A
+/// year in the edition's run still picks it.
+pub const SORTS_LAST: &[(&str, &str, &str)] = &[(
+    "Bradf.",
+    "Iowa Reports, Bradford",
+    "every `Bradf.` with a volume in the CAP opinions measured is Bradford's Surrogate Reports (docs/reporters-local.md)",
+)];
+
+/// Whether edition `edition_name` of reporter `reporter_name` is in
+/// [`SORTS_LAST`].
+pub fn sorts_last(edition_name: &str, reporter_name: &str) -> bool {
+    SORTS_LAST
+        .iter()
+        .any(|(e, r, _)| *e == edition_name && *r == reporter_name)
+}
+
 /// Whether an edition named `edition_name` with slug `slug` was split off a
 /// name it shares with another reporter: its slug is neither a CAP slug (a
 /// key of `cap_volumes`) nor the one derived from its name. These are the
@@ -307,13 +333,21 @@ pub fn volumes(regexes: &[String]) -> Volumes {
     }
 }
 
-/// The [`BY_REPORTER`] entries that name no edition in `editions`, which
-/// means reporters-db renamed one and its slug fell back to another.
+/// The [`BY_REPORTER`] and [`SORTS_LAST`] entries that name no edition in
+/// `editions`, which means reporters-db renamed one and its slug fell back to
+/// another or its order changed.
 pub fn unmatched_by_reporter(editions: &[EditionSlug]) -> Vec<String> {
+    let named = |n: &str, r: &str| editions.iter().any(|e| e.name == n && e.reporter == r);
     BY_REPORTER
         .iter()
-        .filter(|(n, r, _)| !editions.iter().any(|e| e.name == *n && e.reporter == *r))
+        .filter(|(n, r, _)| !named(n, r))
         .map(|(n, r, s)| format!("BY_REPORTER entry {n:?} of {r:?} ({s:?}) names no edition"))
+        .chain(
+            SORTS_LAST
+                .iter()
+                .filter(|(n, r, _)| !named(n, r))
+                .map(|(n, r, _)| format!("SORTS_LAST entry {n:?} of {r:?} names no edition")),
+        )
         .collect()
 }
 
@@ -543,6 +577,13 @@ mod tests {
             .map(|(_, _, s)| *s)
             .collect();
         assert_eq!(split.len(), 16, "{split:?}");
+    }
+
+    #[test]
+    fn sorts_last_by_edition_and_reporter() {
+        assert!(sorts_last("Bradf.", "Iowa Reports, Bradford"));
+        assert!(!sorts_last("Bradf.", "Bradford's Surrogate Reports (N.Y.)"));
+        assert!(!sorts_last("Brad.", "Iowa Reports, Bradford"));
     }
 
     #[test]

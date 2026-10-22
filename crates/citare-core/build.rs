@@ -27,8 +27,9 @@ struct BuildEdition {
     reporter_short_name: String,
     /// Sorts an edition split off a shared name (`hill-sc`, `wash-va`) after
     /// the one that keeps the name's slug, so an ambiguous citation's first
-    /// edition is that one (citare_data_build::slugs::split_off). Not in the
-    /// bundle; it only orders the editions.
+    /// edition is that one (citare_data_build::slugs::split_off), and an
+    /// edition in citare_data_build::slugs::SORTS_LAST after the others of
+    /// its name. Not in the bundle; it only orders the editions.
     split_off: bool,
     reporter_name: String,
     reporter_cite_type: String,
@@ -372,7 +373,8 @@ fn main() {
 
                 let edition = BuildEdition {
                     reporter_short_name: source_key.clone(),
-                    split_off: slugs::split_off(edition_name, &slug, &cap_volumes),
+                    split_off: slugs::split_off(edition_name, &slug, &cap_volumes)
+                        || slugs::sorts_last(edition_name, &source.name),
                     reporter_name: source.name.clone(),
                     reporter_cite_type: source.cite_type.clone(),
                     reporter_source: 0, // Reporters
