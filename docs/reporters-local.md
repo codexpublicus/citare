@@ -109,7 +109,12 @@ otherwise.
 Released slugs never change, so `Cai. R.` keeps `cai-r` and `P.R.R.` keeps `p-r-r`, though each
 is the same books as CAP's `cai` and `pr`. The Puerto Rico Supreme Court's own opinions write
 `P.R.R.` (30,866 of the `cites_to` entries in `pr`, which CAP doesn't resolve), so most
-citations of the Puerto Rico Reports still take `p-r-r`, a slug CAP has no volumes under.
+citations of the Puerto Rico Reports still take `p-r-r`, a slug CAP has no volumes under. Both
+slugs are published: stare.pub's `reporters.json` lists them, with `P.R.` and `Puerto Rico` as
+variations of `p-r-r`, and citare 0.7.0 and 0.7.1 release them in `data/edition-slugs.json`.
+So their editions keep them and take CAP's slug as their `harvard_slug` instead (the owner's
+ruling D73): `45 P.R.R. 100` is `p-r-r` with `harvard_slug` `pr`, and `2 Cai. R. 169` is
+`cai-r` with `cai`. `citare_data_build::slugs::CAP_SLUG_OF` lists the two.
 
 An exact edition comes before a variation's when citare guesses a citation's edition, as in
 eyecite, so `P.R.` would have made `1 P.R. 1 (1831)`, which eyecite's own tests read as Penrose

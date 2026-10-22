@@ -125,8 +125,9 @@ pub struct JsCitation {
     pub harvard_slug: Option<String>,
     /// The edition's stable slug: `harvard_slug` where CAP has the
     /// reporter, else one derived from the reporters-db edition name
-    /// (`ny-slip-op`). Every case reporter has one; laws and journals
-    /// don't.
+    /// (`ny-slip-op`). A released slug for books CAP files under
+    /// another slug keeps it, with CAP's as `harvard_slug` (`p-r-r`,
+    /// `pr`). Every case reporter has one; laws and journals don't.
     pub slug: Option<String>,
     pub ambiguous: bool,
     pub metadata: BTreeMap<String, Option<String>>,

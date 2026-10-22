@@ -19,7 +19,8 @@
 //! slugs whose reporters-db reporters are one set of books.
 //!
 //! An edition's CAP slug (`harvard_slug`) follows from its slug
-//! ([`cap_slug`]), and [`split_off`] says which editions sort after the one
+//! ([`cap_slug`]), or from [`CAP_SLUG_OF`] where a released slug names books
+//! CAP files under another, and [`split_off`] says which editions sort after the one
 //! that keeps a shared name's plain slug.
 
 use std::collections::BTreeMap;
@@ -118,6 +119,25 @@ pub const SAME_BOOKS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Released slugs whose books CAP files under another slug, as `(slug, CAP
+/// slug, reason)`. An edition with one of these slugs keeps it, since slugs
+/// never change once released, and takes the CAP slug as its `harvard_slug`
+/// ([`cap_slug`]), so a citation of it still names CAP's volumes. Add an entry
+/// only for a slug CAP has no volumes under and only when the two reporters
+/// are one set of books.
+pub const CAP_SLUG_OF: &[(&str, &str, &str)] = &[
+    (
+        "cai-r",
+        "cai",
+        "`Cai. R.` and `Cai.` are both Caines' Reports, vols 1-3",
+    ),
+    (
+        "p-r-r",
+        "pr",
+        "`P.R.R.` and `P.R.` are both the Puerto Rico Reports, vols 1-100",
+    ),
+];
+
 /// A numbered reporter shares a slug with a year-volume one only when its
 /// highest volume is below this.
 pub const FIRST_YEAR_VOLUME: u32 = 1700;
@@ -166,11 +186,13 @@ pub fn assign(
 }
 
 /// The CAP slug of an edition with slug `slug` whose citation regexes are
-/// `regexes`: `slug` itself when it is a CAP slug (a key of `cap_volumes`,
-/// CAP slug → its first and last volume) and the edition's volumes are of the
-/// kind CAP files under it, years or numbers. Otherwise `None`.
+/// `regexes`: `slug` itself, or its [`CAP_SLUG_OF`] entry's CAP slug, when
+/// that is a CAP slug (a key of `cap_volumes`, CAP slug → its first and last
+/// volume) and the edition's volumes are of the kind CAP files under it,
+/// years or numbers. Otherwise `None`.
 ///
-/// So an edition's `harvard_slug` follows its `slug`: the federal `Ct. Cl.`
+/// So an edition's `harvard_slug` follows its `slug`: `P.R.R.` (`p-r-r`) is
+/// CAP's `pr`, the federal `Ct. Cl.`
 /// is `us-ct-cl`, not West Virginia's `wv-ct-cl`, and South Carolina's `Hill`
 /// (`hill-sc`) has none. A year-volume neutral citation that shares a
 /// numbered CAP reporter's slug (`2019-Ohio-1234`, slug `ohio`, CAP's Ohio
@@ -180,9 +202,13 @@ pub fn cap_slug(
     regexes: &[String],
     cap_volumes: &BTreeMap<String, (u32, u32)>,
 ) -> Option<String> {
-    let &(first, _) = cap_volumes.get(slug)?;
+    let cap = CAP_SLUG_OF
+        .iter()
+        .find(|(s, _, _)| *s == slug)
+        .map_or(slug, |(_, c, _)| c);
+    let &(first, _) = cap_volumes.get(cap)?;
     let years = volumes(regexes) == Volumes::Years;
-    (years == (first >= FIRST_YEAR_VOLUME)).then(|| slug.to_string())
+    (years == (first >= FIRST_YEAR_VOLUME)).then(|| cap.to_string())
 }
 
 /// Whether an edition named `edition_name` with slug `slug` was split off a
@@ -481,6 +507,21 @@ mod tests {
         );
         // A slug CAP doesn't have.
         assert_eq!(cap_slug("hill-sc", &r(ANY), &caps), None);
+        // A released slug for books CAP files under another.
+        let caps = BTreeMap::from([("pr".to_string(), (3, 100))]);
+        assert_eq!(cap_slug("p-r-r", &r(ANY), &caps).as_deref(), Some("pr"));
+        assert_eq!(cap_slug("p-r-r", &r(YEAR), &caps), None);
+    }
+
+    #[test]
+    fn cap_slug_of_names_cap_slugs_only() {
+        let caps: BTreeMap<String, (u32, u32)> =
+            serde_json::from_str(include_str!("../../../data/cap_volumes.json")).unwrap();
+        for (slug, cap, _) in CAP_SLUG_OF {
+            assert!(is_slug(slug) && slug != cap, "{slug}");
+            assert!(!caps.contains_key(*slug), "CAP has volumes under {slug}");
+            assert!(caps.contains_key(*cap), "CAP has no {cap}");
+        }
     }
 
     #[test]
