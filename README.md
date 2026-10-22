@@ -340,3 +340,4 @@ comparisons with eyecite cross machine types until those runs are re-baselined o
 ## Acknowledgments
 
 Citare is a Rust port of [eyecite](https://github.com/freelawproject/eyecite) by the [Free Law Project](https://free.law).
+eyecite's copyright notice and licence are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
