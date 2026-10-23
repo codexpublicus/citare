@@ -197,6 +197,12 @@ pub struct LocalEdition {
     pub name: String,
     pub edition: String,
     pub regexes: Vec<String>,
+    /// A start date that replaces reporters-db's, given only to correct it.
+    #[serde(default)]
+    pub start: Option<String>,
+    /// An end date that replaces reporters-db's, given only to correct it.
+    #[serde(default)]
+    pub end: Option<String>,
     /// Citations the entry must recognize, with the volume each must have;
     /// citare's tests check each.
     #[serde(default)]
@@ -407,6 +413,20 @@ fn apply_local_editions(
             ));
         }
         edition.regexes = Some(l.regexes.clone());
+        for (date, local_date, what) in [
+            (&mut edition.start, &l.start, "start"),
+            (&mut edition.end, &l.end, "end"),
+        ] {
+            if let Some(d) = local_date {
+                if date.as_ref() == Some(d) {
+                    return Err(format!(
+                        "reporters-local.json: reporters-db now has {what} {d:?} for {:?}; drop the local one",
+                        l.edition
+                    ));
+                }
+                *date = Some(d.clone());
+            }
+        }
     }
     Ok(())
 }
@@ -486,6 +506,29 @@ mod tests {
         let err = apply_local_reporters(&mut reporters, &local_variation("Ohio St.", "O.S."))
             .unwrap_err();
         assert!(err.contains("now has variation"), "{err}");
+    }
+
+    fn local_dates(start: &str, end: &str) -> LocalReporters {
+        parse_local_reporters(&format!(
+            r##"{{"#": [], "editions": [{{"reporter": "Pa. Fid.",
+               "name": "Pennsylvania Fiduciary Reporter", "edition": "Pa. Fid.",
+               "regexes": ["$full_cite"], "start": "{start}", "end": "{end}", "notes": ""}}]}}"##
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn local_edition_dates_replace_reporters_dbs_until_they_agree() {
+        let data = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
+        let mut reporters = parse_reporters(data).unwrap();
+        let local = local_dates("1977-01-01T00:00:00", "2010-12-31T00:00:00");
+        let err = apply_local_reporters(&mut reporters, &local).unwrap_err();
+        assert!(err.contains("now has start"), "{err}");
+        let local = local_dates("1978-01-01T00:00:00", "2010-12-31T00:00:00");
+        apply_local_reporters(&mut reporters, &local).unwrap();
+        let e = &reporters["Pa. Fid."][0].editions["Pa. Fid."];
+        assert_eq!(e.start.as_deref(), Some("1978-01-01T00:00:00"));
+        assert_eq!(e.end.as_deref(), Some("2010-12-31T00:00:00"));
     }
 
     #[test]
