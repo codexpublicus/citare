@@ -4,6 +4,13 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.3 - 2026-10-23
+
+### Fixes
+
+- *(data)* Read the Pennsylvania Fiduciary Reporter's four series as courts write them ([#113](https://github.com/codexpublicus/citare/pull/113))
+- *(data)* Cap only ended series, with sources, and tell N.M. App. from N.M. by year ([#109](https://github.com/codexpublicus/citare/pull/109))
+
 ## v0.7.2 - 2026-10-22
 
 ### Fixes
