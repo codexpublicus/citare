@@ -160,7 +160,11 @@ jobs:
   # Conformance ratchet (#12) and benchmark report (#35). The ratchet runs
   # citation-bench's vectors against this checkout and fails on any vector that isn't in
   # citation-bench's baselines/citare.known-failures, listing the listed ones that now
-  # pass so the baseline only shrinks. It is the job's only pass/fail gate.
+  # pass so the baseline only shrinks. It runs citation-bench's divergence set
+  # (vectors/divergences, where citare differs from eyecite on purpose; see
+  # docs/divergences.md) the same way, against the same known-failures file, so a
+  # divergence citare stops giving fails too. The two ratchets are the job's only
+  # pass/fail gates.
   #
   # The report then runs citare over citation-bench's stare.pub sample, the primary
   # corpus, and the one-percent file of eyecite's comparison sample, the secondary one,
@@ -172,8 +176,9 @@ jobs:
   # citation-bench is pinned in .github/citation-bench-ref, so a new vector, a
   # rebaselined known-failures file or a new report can't change this job unannounced.
   # To bump it, take a commit from citation-bench's main, run
-  # `CITARE_PATH=<this checkout> mise run bench:citare` in citation-bench at that
-  # commit, and update the file in its own PR.
+  # `CITARE_PATH=<this checkout> mise run bench:citare` and
+  # `CITARE_PATH=<this checkout> mise run bench:divergences citare` in citation-bench at
+  # that commit, and update the file in its own PR.
   parity:
     name: Parity (citation-bench)
     runs-on: homelab
@@ -294,6 +299,45 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The divergence set, where the expected output is citare's rather than eyecite's.
+      - name: Run the divergence vectors
+        if: env.HAS_BENCH_KEY == 'true'
+        id: divergences
+        working-directory: citation-bench
+        env:
+          CITARE_PATH: ${{ github.workspace }}/citare
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ github.token }}@github.com/codexpublicus/citare.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/codexpublicus/citare
+        run: |
+          set -o pipefail
+          status=0
+          mise run bench:divergences citare 2>&1 | tee "$RUNNER_TEMP/divergences.log" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          {
+            echo
+            echo "### Divergence vectors"
+            echo
+            grep -m1 'vectors pass' "$RUNNER_TEMP/divergences.log" || echo 'no score line'
+            regressions=$(grep '^REGRESSION: ' "$RUNNER_TEMP/divergences.log" || true)
+            fixed=$(sed -n 's/^newly passing (remove from known failures): //p' "$RUNNER_TEMP/divergences.log")
+            if [[ -n "$regressions" ]]; then
+              echo
+              echo "#### Regressions"
+              echo
+              sed 's/^REGRESSION: /- /' <<<"$regressions"
+            fi
+            if [[ -n "$fixed" ]]; then
+              echo
+              echo "#### Newly passing"
+              echo
+              echo "Remove these from citation-bench's \`baselines/citare.known-failures\`:"
+              echo
+              sed 's/^/- `/; s/$/`/' <<<"$fixed"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The last release's saved runs, which the release benchmark attaches as assets.
       - name: Fetch the last release's runs
         if: env.HAS_BENCH_KEY == 'true'
@@ -364,7 +408,10 @@ jobs:
         if: env.HAS_BENCH_KEY == 'true'
         env:
           STATUS: ${{ steps.vectors.outputs.status }}
-        run: exit "${STATUS:-1}"
+          DIVERGENCES_STATUS: ${{ steps.divergences.outputs.status }}
+        run: |
+          [[ "${STATUS:-1}" == 0 ]] || { echo "::error::citation-bench vectors regressed (see the job summary)"; exit 1; }
+          [[ "${DIVERGENCES_STATUS:-1}" == 0 ]] || { echo "::error::citation-bench divergence vectors regressed (see the job summary)"; exit 1; }
 
   # Posts the report as one PR comment and edits it on later pushes. Kept apart from
   # parity so the job that builds and runs PR code never holds a write token. Same-repo
