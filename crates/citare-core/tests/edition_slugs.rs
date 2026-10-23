@@ -267,6 +267,54 @@ fn cap_reporters_without_an_edition_take_caps_slug(
     assert_eq!(harvard_slug_of(text).as_deref(), harvard, "{text}");
 }
 
+// The Fiduciary Reporter (Pa.) has four series (D82). CAP's one volume,
+// `pa-fid`, which CAP and reporters-db call `Pa. Fid.`, is volume 1 of the
+// second series, so `Fid. Rep. 2d` and its variations share CAP's slug and
+// `harvard_slug`; the other series, which CAP doesn't have, take derived
+// slugs and no `harvard_slug`. The closed series take only their volumes.
+#[rstest]
+#[case("6 Fid. Rep. 192", "fid-rep", "6", None)]
+#[case("24 Fiduc. Rep. 1", "fid-rep", "24", None)]
+#[case("27 Pa. Fiduc. 599 (1977)", "fid-rep", "27", None)]
+#[case("1 Fid. Rep. 2d 281 (1980)", "pa-fid", "1", Some("pa-fid"))]
+#[case("15 Fiduc.Rep.2d 348 (1995)", "pa-fid", "15", Some("pa-fid"))]
+#[case("5 Pa. Fiduc. 2d 247 (1985)", "pa-fid", "5", Some("pa-fid"))]
+#[case("1 Pa. Fid. 1 (1979)", "pa-fid", "1", Some("pa-fid"))]
+#[case("30 Pa. Fid. 12", "pa-fid", "30", Some("pa-fid"))]
+#[case("2 Fid. Rep. 3d 431 (2012)", "fid-rep-3d", "2", None)]
+#[case("12 Fid.Rep.3d 562 (2022)", "fid-rep-3d", "12", None)]
+#[case("1 Fid.Rep.4th 267 (2022)", "fid-rep-4th", "1", None)]
+#[case("40 Fid. Rep. 4th 1", "fid-rep-4th", "40", None)]
+fn fiduciary_reporter_series_take_their_slugs(
+    #[case] text: &str,
+    #[case] slug: &str,
+    #[case] volume: &str,
+    #[case] harvard: Option<&str>,
+) {
+    let (s, v) = path_of(text);
+    assert_eq!(
+        (s.as_deref(), v.as_deref()),
+        (Some(slug), Some(volume)),
+        "{text}"
+    );
+    assert_eq!(harvard_slug_of(text).as_deref(), harvard, "{text}");
+}
+
+// A volume past a closed Fiduciary Reporter series' last is no citation.
+#[rstest]
+#[case("31 Fid. Rep. 1")]
+#[case("31 Fid. Rep. 2d 1")]
+#[case("31 Pa. Fid. 1")]
+#[case("14 Fid. Rep. 3d 1")]
+fn fiduciary_reporter_closed_series_end_at_their_last_volume(#[case] text: &str) {
+    assert!(
+        !get_citations(text, false, "", &[])
+            .iter()
+            .any(|c| matches!(c, Citation::FullCase(_))),
+        "{text}"
+    );
+}
+
 // `P.R.` is also a reporters-db variation of Penrose and Watts (1829-1832):
 // a year in its run picks it over the Puerto Rico Reports.
 #[test]

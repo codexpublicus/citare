@@ -204,10 +204,84 @@ L. J.` written with spaces, which matches both reporters-db's `N.Y.L.J.` reporte
 L.J.` journal, both the New York Law Journal. They were journal citations without an edition
 and now have the journal's.
 
+## Fiduciary Reporter
+
+reporters-db has one entry for the Fiduciary Reporter (Pa.), `Pa. Fid.`, "Pennsylvania Fiduciary
+Reporter", dated 1977 to 1981. Those are the decision dates of the one volume CAP has, `pa-fid`
+(volume 1, published 1981 by Geo. T. Bisel, nominative reporter "Smith & Aker", 93 cases dated
+1977-02-10 to 1981-11-03, which CAP cites as `1 Pa. Fid. 1`). stare-builder had to treat `pa-fid`
+as running to keep its closed-series filter from cutting it off at 1981
+([stare-builder#45](https://github.com/codexpublicus/stare-builder/issues/45)).
+
+The Fiduciary Reporter has four series (Geo. T. Bisel; selected decisions of the Pennsylvania
+orphans' courts on trusts and decedents' estates):
+
+| Series | Volumes | Decisions | Abbreviation in citare | Slug |
+|---|---|---|---|---|
+| First | v. 1 (1951) to v. 30 (1980) | 1947-1980 | `Fid. Rep.` | `fid-rep` |
+| Second | v. 1 (1981) to v. 30 (2010) | 1977-2010 | `Fid. Rep. 2d`; `Pa. Fid.` | `pa-fid` |
+| Third | v. 1 (2011) to v. 13 (2022) | 2011-2022 | `Fid. Rep. 3d` | `fid-rep-3d` |
+| Fourth | v. 1 (2023), running | 2022- | `Fid. Rep. 4th` | `fid-rep-4th` |
+
+The volume runs are Jenkins Law Library's catalogue record
+(<https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056>), which also gives the
+abbreviations `Fid.Rep.2d`, `Pa.Fiduc.2d`, `Fid.Rep.3d`, `Pa.Fiduc.3d`, `Fid.Rep.4d` and
+`Pa.Fiduc.4d`, and, for the first two series, Berkeley Law's (<https://lawcat.berkeley.edu/record/281833>).
+A volume reports decisions from before its publication year, so the start dates are the
+earliest decisions I found cited in each: `Kyle Estate, 1 Fiduc. Rep. 131 (1947)` (CAP
+`pa-d-c2d/29`, 0464-01), CAP's own `pa-fid` cases from 1977, and `Dembosky Estate, 1 Fid.Rep.4th
+267 (Lackawanna O.C. 2022)` (<https://resources.evans-legal.com/?p=10351>). The end dates are the
+last volume's year; `Pendergrass Will, 30 Fid.Rep.2d 430 (Montgomery O.C. 2010)` and `Cassalia
+Trusts, 12 Fid.Rep.3d 562 (Montgomery O.C. 2022)` are in them.
+
+CAP's `pa-fid` is volume 1 of the second series. I counted `<volume> <form> <page>` in the opinion
+text of CAP's 33 Pennsylvania reporters (all but `a2d` and `a3d`, 210,730 opinions). All 12
+citations of volume 1 of the second series give the first page of the CAP `pa-fid` case of the same
+name, in six spellings: `Lieberman Estate, 1 Fid. Rep. 2d 281` (0281-01), `Equitable Life
+Assurance Society v. Stitzel, (1 Fiduciary Reporter 2d 316 ...)` (0316-01), `Omelchenko Estate, 1
+Fiduciary Rep. 2d 273` and `1 Pa. Fiduc. 2d 273` (0273-01), `Freedman Estate, 1 Pa. Fiduc. Rep.2d
+60` (0060-01), `Hornsey Will, 1 Fiduc. Rep. 2d 149` (0149-01) among them. No opinion writes `Pa.
+Fid.`; it is CAP's form, and `Pa.Fid.2d` appears three times.
+
+Courts write the first series `Fiduc. Rep.` far more than anything else (volumes 1 to 40 only):
+
+| Form | First series | Second series |
+|---|---|---|
+| `Fiduc. Rep.`, `Fiduc.Rep.` (and `2d`) | 916 | 27 |
+| `Fid. Rep.`, `Fid.Rep.` (and `2d`) | 119 | 23 |
+| `Pa. Fiduc.`, `Pa.Fiduc.` (and `2d`) | 29 | 24 |
+| `Fiduciary Rep.`, `Fiduciary Reporter` (and `2d`) | 22 | 8 |
+| `Pa. Fiduc. Rep.`, `Pa.Fid.2d` | 1 | 6 |
+| `Fidu. Rep.`, `Fiduc. Reptr.`, `Fid. Reptr.`, `Fiduciary Reptr.`, `Fid. Reporter` (and `2d`) | 8 | 1 |
+| `Fiduciary`, `Fiduc.`, `Fid.`, `Fid. 2d` and misprints (`Fidue. Rep.`, `Fid Rep. 2d`) | 24 | 6 |
+
+CourtListener's opinions outside CAP (the 2026-09-30 export's 924,551 opinions that stare-builder
+stages) add `Fiduc. Rep. 2d` five times, `Fiduc.Rep.` three times and `Fiduc.Rep.2d` and
+`Fid.Rep.2d` once each; none of CAP's opinions is recent enough to cite the third or fourth series.
+
+reporters-local.json corrects `Pa. Fid.` to the second series (volumes 1 to 30, ending in 2010;
+its 1977 start stays), adds each series as a reporter of its own and adds the spellings above as
+variations, except the bare `Fiduciary`, `Fiduc.` and `Fid.`, which also match other text (`951 Fid
+751` is a misprinted `F.2d`), and the misprints. `Fid. Rep. 2d` shares CAP's slug with `Pa. Fid.`
+(`citare_data_build::slugs::BY_REPORTER` and `SAME_BOOKS`), so a citation of the second series has
+the slug and `harvard_slug` `pa-fid`; the other three series take slugs derived from their names
+and no `harvard_slug`. The first three series are closed and take only their volumes ([Volume
+caps](volume-caps.md)); the fourth takes any. An `editions` entry may now give dates as well as
+regexes, which is how `Pa. Fid.` gets its end date.
+
+Before and after over the same 210,730 CAP opinions (2,680,362 citations), citare gains 1,196
+citations and loses or changes none: 1,098 of the first series (`fid-rep`, 15 of them short
+citations) and 98 of the second (`pa-fid`, 9 short). CAP's own `Pa. Fid.` citations don't change.
+Over the 7,775 CourtListener opinions above that mention `Fid` (472,424 citations), it gains 7,
+three `fid-rep` and four `pa-fid`, and loses or changes none. Three it still misses split the
+reporter and the page across a line (`21 Fiduc. Rep. 2d\n197`), which no reporter regex reads.
+
 ## Format
 
 `editions` entries name an edition by reporters.json key, cluster name and edition name, and
-replace its regexes; the build fails if one no longer matches an edition. `reporters` entries add
+replace its regexes; the build fails if one no longer matches an edition. An entry may also give a
+`start` or `end` date, which replaces reporters-db's, to correct it; the build fails once
+reporters-db has the same date, so the local one can be dropped. `reporters` entries add
 a reporter reporters-db doesn't have under a reporters.json key, with one edition; the build
 fails if reporters-db gains a reporter of the same name under that key, so the local one can be
 dropped. The reporter may be one reporters-db has under another key (`Cai.` and `Cai. R.` are

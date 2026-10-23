@@ -37,8 +37,14 @@ edition, so it loses no citation; its note says the cap is CAP's holdings only.
 | `Cai.`, `Cai. R.` (Caines' Reports) | 1-3 | Closed series | "Caine's reports, 3 v." in the contents of the New York Common Law Reports ([archive.org](https://archive.org/details/reportsofcasesad04newyiala)) |
 | `P.R.`, `P.R.R.` (Puerto Rico Reports) | 1-100 | Closed series | v. 3 (1899) to v. 100 (1972); vols 1-2 were published in Spanish only ([Berkeley Law catalogue](https://lawcat.berkeley.edu/record/183605); [Washington State Law Library](https://lawlibrary.courts.wa.gov/cgi-bin/koha/opac-detail.pl?biblionumber=13950)) |
 | `Charlton Rep.` (T.U.P. Charlton's Reports) | 1 | Closed series | One volume, 1824, covering 1805-1810 ([VIAF](https://viaf.org/viaf/53766484); [Cardiff Index to Legal Abbreviations](https://www.legalabbrevs.cardiff.ac.uk/titles/view/id/4942)) |
+| `Fid. Rep.` and its variations (Fiduciary Reporter, first series) | 1-30 | Closed series | Vol. 1 (1951) to v. 30 (1980), then the second series ([Jenkins Law Library catalogue](https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056); [Berkeley Law catalogue](https://lawcat.berkeley.edu/record/281833)) |
+| `Fid. Rep. 2d`, `Pa. Fid.` and their variations (Fiduciary Reporter, second series) | 1-30 | Closed series | 2nd ser., v. 1 (1981) to v. 30 (2010) ([Jenkins Law Library catalogue](https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056); [Berkeley Law catalogue](https://lawcat.berkeley.edu/record/281833)) |
+| `Fid. Rep. 3d` and its variations (Fiduciary Reporter, third series) | 1-13 | Closed series | 3rd ser., v. 1 (2011) to v. 13 (2022), then the fourth series from 2023 ([Jenkins Law Library catalogue](https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056)) |
 | `Conn. Super. Ct.` | three digits | Disambiguation | The numbered Reports (1986-1994) against the Superior Court's neutral citation, whose volume is a year |
 | `Mass. App. Div.` (numbered series) | three digits | Disambiguation | CAP's numbered series (vols 1-15) against the annual series, whose volume is a year |
+
+The Fiduciary Reporter's fourth series (`Fid. Rep. 4th`, 2023-) is still published and takes
+any volume.
 
 The two disambiguation caps give way to the year in the only way they can: the other series'
 volume is the year itself, so a four-digit volume is read as the year series and a one- to
