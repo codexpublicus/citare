@@ -1,7 +1,7 @@
 {
   "#": [
     "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
-    "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes.",
+    "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes and, when it gives start or end, that date.",
     "Each reporters entry adds a reporter reporters-db doesn't have under its reporters.json key, as a cluster of its own with one edition; reporters-db may have the same books under another key, which then shares the slug (citare_data_build::slugs::SAME_BOOKS).",
     "Each variations entry adds another abbreviation (variation) for one edition, named like an editions or reporters entry, that matches only through the entry's own regexes.",
     "Each journals entry adds a secondary source journals.json doesn't have, such as an encyclopedia, to the journals under its abbreviation (edition), so a citation of it is a journal citation even when a reporter has the same abbreviation.",
@@ -116,6 +116,16 @@
       "examples": [{"cite": "10 Mass. App. Div. 12", "volume": "10"}],
       "rejects": ["1995 Mass. App. Div. 12"],
       "notes": "The numbered series (CAP's `mass-app-div`, vols 1-15). reporters-db takes any volume, which also matches the annual series added below (`1995 Mass. App. Div. 12`, volume a year); capping the volume at three digits tells the two apart. A disambiguation cap, not a last volume (docs/volume-caps.md): it says only that a four-digit volume is the annual series' year, and the year written as the volume is what decides."
+    },
+    {
+      "reporter": "Pa. Fid.",
+      "name": "Pennsylvania Fiduciary Reporter",
+      "edition": "Pa. Fid.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "end": "2010-12-31T00:00:00",
+      "examples": [{"cite": "1 Pa. Fid. 1", "volume": "1"}, {"cite": "30 Pa. Fid. 12", "volume": "30"}],
+      "rejects": ["31 Pa. Fid. 1"],
+      "notes": "CAP's `pa-fid` (one volume, 'Pa. Fid.', published 1981 by Geo. T. Bisel, cases 1977-1981) is volume 1 of the Fiduciary Reporter's second series (`Fid. Rep. 2d`): all 12 citations of `1 Fid. Rep. 2d` in the CAP opinions measured (docs/reporters-local.md), written six ways, give the first page of the CAP case of the same name (`Lieberman Estate, 1 Fid. Rep. 2d 281`, CAP pa-fid/1 0281-01). reporters-db's dates (1977-1981) are that one volume's; the second series ran from v. 1 (1981) to v. 30 (2010) (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056; https://lawcat.berkeley.edu/record/281833), so the edition takes volumes 1 to 30 and ends in 2010 (D82). No opinion measured writes `Pa. Fid.`; it is CAP's form, and `Fid. Rep. 2d` shares its slug."
     }
   ],
   "reporters": [
@@ -201,6 +211,53 @@
       "examples": [{"cite": "45 P.R. 100", "volume": "45"}, {"cite": "100 P.R. 1", "volume": "100"}, {"cite": "16 P. R. 153", "volume": "16"}],
       "rejects": ["101 P.R. 1"],
       "notes": "CAP's `pr` (vols 3-100), the English Puerto Rico Reports, whose cases CAP cites as `3 P.R. 2`. reporters-db has the reporter as `P.R.R.` (released as `p-r-r`, now `pr`) and `P.R.` as a variation of it, the Pacific Reporter and Penrose and Watts, so `45 P.R. 100` was ambiguous and took the Pacific Reporter's slug `p` (#99). All 85 `P.R.` and `P. R.` citations in the CAP case metadata measured (docs/reporters-local.md) that CAP resolves to a case name one in `pr`. Its own opinions write `P.R.R.` (30,866 times in `pr`), reporters-db's entry, which shares `pr` (D78). The series closed at volume 100: v. 3 (1899) to v. 100 (1972), vols 1-2 published in Spanish only (Berkeley Law catalogue, https://lawcat.berkeley.edu/record/183605; Washington State Law Library, https://lawlibrary.courts.wa.gov/cgi-bin/koha/opac-detail.pl?biblionumber=13950; docs/volume-caps.md). The 1,239 CourtListener citations written `P.R.` of vols 168-193 (2006-2015) are the Decisiones de Puerto Rico, a different reporter (citare#108)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "cite_type": "state",
+      "edition": "Fid. Rep.",
+      "start": "1947-01-01T00:00:00",
+      "end": "1980-12-31T00:00:00",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "6 Fid. Rep. 192", "volume": "6"}, {"cite": "30 Fid. Rep. 545", "volume": "30"}, {"cite": "25 Fid.Rep. 151", "volume": "25"}],
+      "rejects": ["31 Fid. Rep. 1", "1 Fid. Rep. 2d 281"],
+      "notes": "The Fiduciary Reporter's first series (Geo. T. Bisel; selected Pennsylvania orphans' court decisions), vol. 1 (1951) to v. 30 (1980) (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056; https://lawcat.berkeley.edu/record/281833), which CAP doesn't have. Opinions cite vol. 1 cases decided as early as 1947 (`Kyle Estate, 1 Fiduc. Rep. 131 (1947)`, CAP pa-d-c2d/29/0464-01), hence the 1947 start. reporters-db has no entry for it (D82). Courts write it most often `Fiduc. Rep.`; the variations entries add the forms counted in docs/reporters-local.md."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "cite_type": "state",
+      "edition": "Fid. Rep. 2d",
+      "start": "1977-01-01T00:00:00",
+      "end": "2010-12-31T00:00:00",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "1 Fid. Rep. 2d 281", "volume": "1"}, {"cite": "16 Fid.Rep.2d 159", "volume": "16"}, {"cite": "30 Fid. Rep. 2d 430", "volume": "30"}],
+      "rejects": ["31 Fid. Rep. 2d 1"],
+      "notes": "The Fiduciary Reporter's second series, 2nd ser., v. 1 (1981) to v. 30 (2010) (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056; https://lawcat.berkeley.edu/record/281833), abbreviated `Fid.Rep.2d` and `Pa.Fiduc.2d` in Jenkins Law Library's record. Volume 1, with cases decided 1977-1981, is CAP's `pa-fid`, which CAP and reporters-db call `Pa. Fid.`; the two share that slug (citare_data_build::slugs::SAME_BOOKS). The last volume has 2010 decisions (`Pendergrass Will, 30 Fid.Rep.2d 430 (Montgomery O.C. 2010)`, https://resources.evans-legal.com/?p=4501) (D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 3d",
+      "name": "Fiduciary Reporter, Third Series (Pa.)",
+      "cite_type": "state",
+      "edition": "Fid. Rep. 3d",
+      "start": "2011-01-01T00:00:00",
+      "end": "2022-12-31T00:00:00",
+      "regexes": ["(?P<volume>[1-9]|1[0-3]) $reporter,? $page"],
+      "examples": [{"cite": "2 Fid. Rep. 3d 431", "volume": "2"}, {"cite": "12 Fid.Rep.3d 562", "volume": "12"}],
+      "rejects": ["14 Fid. Rep. 3d 1"],
+      "notes": "The Fiduciary Reporter's third series, 3rd ser., v. 1 (2011) to v. 13 (2022), followed by the fourth series in 2023 (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056, which gives the abbreviations `Fid.Rep.3d` and `Pa.Fiduc.3d`). `Cassalia Trusts, 12 Fid.Rep.3d 562 (Montgomery O.C. 2022)` (https://resources.evans-legal.com/?p=9630) (D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 4th",
+      "name": "Fiduciary Reporter, Fourth Series (Pa.)",
+      "cite_type": "state",
+      "edition": "Fid. Rep. 4th",
+      "start": "2022-01-01T00:00:00",
+      "end": null,
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "1 Fid.Rep.4th 267", "volume": "1"}, {"cite": "2 Fid. Rep. 4th 339", "volume": "2"}],
+      "notes": "The Fiduciary Reporter's fourth series, 4th ser., v. 1 (2023)- (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056), still published, so it takes any volume (docs/volume-caps.md). Volume 1 reports 2022 decisions (`Dembosky Estate, 1 Fid.Rep.4th 267 (Lackawanna O.C. 2022)`, https://resources.evans-legal.com/?p=10351), hence the 2022 start. The catalogue abbreviates it `Fid.Rep.4d` and `Pa.Fiduc.4d`; opinions and practitioners write `Fid.Rep.4th` (D82)."
     }
   ],
   "variations": [
@@ -222,6 +279,211 @@
       "examples": [{"cite": "127 Ohio 545", "volume": "127"}, {"cite": "36 Ohio, 201", "volume": "36"}],
       "rejects": ["14 Ohio 511", "178 Ohio 1", "2016 Ohio 2813"],
       "notes": "Older opinions, most often Illinois and Indiana ones, cite the Ohio State Reports (1852-1964, CAP's `ohio-st`, vols 1-177) as `Ohio`. A volume of 21 to 177 can't be the Ohio Reports, which end at volume 20; of 142 such citations in CAP's case metadata for Ohio, Illinois, Indiana and Massachusetts courts and N.E.2d vols 1-250, 103 name the first page of an Ohio State Reports case and 37 a page inside one (#80). Volumes 1 to 20 stay the Ohio Reports, which they are far more often. The cap at 177 is the Ohio State Reports' last volume (1964; the Ohio State Reports, Second Series, begin at volume 1 in 1965), from the University of Akron's case citation guide (https://libguides.uakron.edu/LARW/casecitations); it gates only the spelling `Ohio`, not the Ohio State Reports (docs/volume-caps.md)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fiduc. Rep.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "24 Fiduc. Rep. 1", "volume": "24"}, {"cite": "21 Fiduc.Rep. 664", "volume": "21"}],
+      "rejects": ["5 Fiduc. Rep. 2d 1"],
+      "notes": "`Fiduc. Rep.` for the Fiduciary Reporter's first series: 916 citations in the CAP opinions measured (876 `Fiduc. Rep.`, 40 `Fiduc.Rep.`) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Pa. Fiduc.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "27 Pa. Fiduc. 599", "volume": "27"}, {"cite": "29 Pa.Fiduc. 573", "volume": "29"}],
+      "rejects": ["5 Pa. Fiduc. 2d 247"],
+      "notes": "`Pa. Fiduc.` for the Fiduciary Reporter's first series: 29 citations (18 `Pa. Fiduc.`, 11 `Pa.Fiduc.`) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Pa. Fiduc. Rep.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "12 Pa.Fiduc.Rep. 416", "volume": "12"}],
+      "rejects": ["1 Pa. Fiduc. Rep. 2d 60"],
+      "notes": "`Pa. Fiduc. Rep.` for the Fiduciary Reporter's first series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fiduciary Rep.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "2 Fiduciary Rep. 242", "volume": "2"}],
+      "rejects": ["10 Fiduciary Rep. 2d 382"],
+      "notes": "`Fiduciary Rep.` for the Fiduciary Reporter's first series: 14 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fiduciary Reporter",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "2 Fiduciary Reporter 204", "volume": "2"}],
+      "rejects": ["1 Fiduciary Reporter 2d 316"],
+      "notes": "`Fiduciary Reporter` for the Fiduciary Reporter's first series: 8 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fidu. Rep.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "16 Fidu. Rep. 206", "volume": "16"}],
+      "notes": "`Fidu. Rep.` for the Fiduciary Reporter's first series: 4 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fiduc. Reptr.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "17 Fiduc. Reptr. 454", "volume": "17"}],
+      "rejects": ["4 Fiduc. Reptr. 2d 6"],
+      "notes": "`Fiduc. Reptr.` for the Fiduciary Reporter's first series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fid. Reptr.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "21 Fid. Reptr. 509", "volume": "21"}],
+      "notes": "`Fid. Reptr.` for the Fiduciary Reporter's first series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fiduciary Reptr.",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "15 Fiduciary Reptr. 1", "volume": "15"}],
+      "notes": "`Fiduciary Reptr.` for the Fiduciary Reporter's first series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep.",
+      "name": "Fiduciary Reporter (Pa.)",
+      "edition": "Fid. Rep.",
+      "variation": "Fid. Reporter",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "3 Fid. Reporter 627", "volume": "3"}],
+      "notes": "`Fid. Reporter` for the Fiduciary Reporter's first series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Fiduc. Rep. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "2 Fiduc. Rep. 2d 7", "volume": "2"}, {"cite": "15 Fiduc.Rep.2d 348", "volume": "15"}],
+      "rejects": ["31 Fiduc. Rep. 2d 1"],
+      "notes": "`Fiduc. Rep. 2d` for the Fiduciary Reporter's second series: 27 citations (12 `Fiduc. Rep. 2d`, 9 `Fiduc.Rep.2d`, 6 `Fiduc. Rep.2d`), and 6 more in CourtListener's opinions (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Pa. Fiduc. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "5 Pa. Fiduc. 2d 247", "volume": "5"}, {"cite": "8 Pa.Fiduc.2d 111", "volume": "8"}],
+      "notes": "`Pa. Fiduc. 2d` for the Fiduciary Reporter's second series: 24 citations (18 `Pa. Fiduc. 2d`, 4 `Pa.Fiduc.2d`, 2 `Pa. Fiduc.2d`) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Pa. Fiduc. Rep. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "1 Pa. Fiduc. Rep.2d 60", "volume": "1"}, {"cite": "7 Pa. Fiduc. Rep. 2d 138", "volume": "7"}],
+      "notes": "`Pa. Fiduc. Rep. 2d` for the Fiduciary Reporter's second series: 3 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Pa. Fid. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "4 Pa.Fid.2d 243", "volume": "4"}],
+      "notes": "`Pa. Fid. 2d` for the Fiduciary Reporter's second series: 3 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Fiduciary Rep. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "1 Fiduciary Rep. 2d 273", "volume": "1"}, {"cite": "10 Fiduciary Rep.2d 382", "volume": "10"}],
+      "notes": "`Fiduciary Rep. 2d` for the Fiduciary Reporter's second series: 5 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Fiduciary Reporter 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "1 Fiduciary Reporter 2d 316", "volume": "1"}],
+      "notes": "`Fiduciary Reporter 2d` for the Fiduciary Reporter's second series: 3 citations (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 2d",
+      "name": "Fiduciary Reporter, Second Series (Pa.)",
+      "edition": "Fid. Rep. 2d",
+      "variation": "Fiduc. Reptr. 2d",
+      "regexes": ["(?P<volume>[1-9]|[12]\\d|30) $reporter,? $page"],
+      "examples": [{"cite": "4 Fiduc. Reptr. 2d 6", "volume": "4"}],
+      "notes": "`Fiduc. Reptr. 2d` for the Fiduciary Reporter's second series: 1 citation (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 3d",
+      "name": "Fiduciary Reporter, Third Series (Pa.)",
+      "edition": "Fid. Rep. 3d",
+      "variation": "Fiduc. Rep. 3d",
+      "regexes": ["(?P<volume>[1-9]|1[0-3]) $reporter,? $page"],
+      "examples": [{"cite": "5 Fiduc. Rep. 3d 384", "volume": "5"}],
+      "notes": "`Fiduc. Rep. 3d` for the Fiduciary Reporter's third series: no citation in the opinions measured; the third series' form of the `Fiduc. Rep.` most opinions write (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 3d",
+      "name": "Fiduciary Reporter, Third Series (Pa.)",
+      "edition": "Fid. Rep. 3d",
+      "variation": "Pa. Fiduc. 3d",
+      "regexes": ["(?P<volume>[1-9]|1[0-3]) $reporter,? $page"],
+      "examples": [{"cite": "5 Pa. Fiduc. 3d 384", "volume": "5"}],
+      "notes": "`Pa. Fiduc. 3d` for the Fiduciary Reporter's third series: the catalogue abbreviation (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 4th",
+      "name": "Fiduciary Reporter, Fourth Series (Pa.)",
+      "edition": "Fid. Rep. 4th",
+      "variation": "Fiduc. Rep. 4th",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "1 Fiduc. Rep. 4th 52", "volume": "1"}],
+      "notes": "`Fiduc. Rep. 4th` for the Fiduciary Reporter's fourth series: no citation in the opinions measured; the fourth series' form of the `Fiduc. Rep.` most opinions write (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 4th",
+      "name": "Fiduciary Reporter, Fourth Series (Pa.)",
+      "edition": "Fid. Rep. 4th",
+      "variation": "Fid. Rep. 4d",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "1 Fid.Rep.4d 52", "volume": "1"}],
+      "notes": "`Fid. Rep. 4d` for the Fiduciary Reporter's fourth series: the catalogue abbreviation (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "Fid. Rep. 4th",
+      "name": "Fiduciary Reporter, Fourth Series (Pa.)",
+      "edition": "Fid. Rep. 4th",
+      "variation": "Pa. Fiduc. 4d",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "1 Pa.Fiduc.4d 52", "volume": "1"}],
+      "notes": "`Pa. Fiduc. 4d` for the Fiduciary Reporter's fourth series: the catalogue abbreviation (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056) (docs/reporters-local.md, D82)."
     }
   ],
   "journals": [

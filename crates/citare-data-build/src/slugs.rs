@@ -70,6 +70,13 @@ pub const BY_REPORTER: &[(&str, &str, &str)] = &[
     // `p-r-r` named no CAP volume and are gone.
     ("Cai. R.", "Caines' Reports", "cai"),
     ("P.R.R.", "Puerto Rico Reports", "pr"),
+    // The Fiduciary Reporter's second series, whose volume 1 is CAP's
+    // `pa-fid`, which CAP and reporters-db call `Pa. Fid.` (D82).
+    (
+        "Fid. Rep. 2d",
+        "Fiduciary Reporter, Second Series (Pa.)",
+        "pa-fid",
+    ),
     // Year-volume neutral citations under the CAP reporter with the same
     // letters, whose volumes all fall below 1700 (data/cap_volumes.json).
     // All but `ME` take a year only through data/reporters-local.json.
@@ -124,6 +131,10 @@ pub const SAME_BOOKS: &[(&str, &str)] = &[
         "`Cai.` and `Cai. R.` are both Caines' Reports, vols 1-3",
     ),
     ("day", "`Day` and `Day.` are both Day's Connecticut Reports"),
+    (
+        "pa-fid",
+        "`Pa. Fid.` and `Fid. Rep. 2d` are both the Fiduciary Reporter's second series, vols 1-30 (data/reporters-local.json)",
+    ),
     (
         "hun",
         "both entries are Hun's New York Supreme Court Reports",
