@@ -162,11 +162,12 @@ jobs:
   # citation-bench's baselines/citare.known-failures, listing the listed ones that now
   # pass so the baseline only shrinks. It is the job's only pass/fail gate.
   #
-  # The report then runs citare over the one-percent CourtListener sample and compares
-  # it with eyecite (citation-bench's stored run, so eyecite itself doesn't run here)
-  # and with the last release's saved run, when that release has one attached. It goes
-  # to the job summary and the bench-report artifact, and the bench-comment job posts
-  # it on the PR. Nothing in it fails the build.
+  # The report then runs citare over citation-bench's stare.pub sample, the primary
+  # corpus, and the one-percent file of eyecite's comparison sample, the secondary one,
+  # and compares each with eyecite (citation-bench's stored runs, so eyecite itself
+  # doesn't run here) and with the last release's saved run on it, when that release has
+  # one attached. It goes to the job summary and the bench-report artifact, and the
+  # bench-comment job posts it on the PR. Nothing in it fails the build.
   #
   # citation-bench is pinned in .github/citation-bench-ref, so a new vector, a
   # rebaselined known-failures file or a new report can't change this job unannounced.
@@ -243,6 +244,15 @@ jobs:
             ${{ runner.os }}-homelab-parity-${{ steps.pin.outputs.ref }}-
             ${{ runner.os }}-homelab-parity-
 
+      # The stare.pub sample's downloads, so each run doesn't fetch 1,000 cases again.
+      # The key is the pinned sample's manifest, which pins every case by sha256.
+      - name: Cache the stare.pub sample
+        if: env.HAS_BENCH_KEY == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: citation-bench/.cache/stare
+          key: stare-pub-${{ hashFiles('citation-bench/corpora/stare-pub-*.json') }}
+
       # The adapter's Cargo.toml names citare by its git URL, and cargo fetches that
       # source even when CITARE_PATH patches it with this checkout. The job's own
       # read-only token covers the fetch.
@@ -303,6 +313,13 @@ jobs:
           else
             echo "note=$tag has no saved benchmark runs attached, so there is nothing to compare it with. The Release benchmark workflow attaches them (run it on $tag to backfill)." >> "$GITHUB_OUTPUT"
           fi
+          # The stare.pub run, which releases benchmarked before it existed don't have.
+          if gh release download "$tag" -R "$GITHUB_REPOSITORY" -D "$DIR" -p 'citare-stare-pub-*.json.gz'; then
+            for f in "$DIR"/citare-stare-pub-*.json.gz; do
+              name=$(basename "$f" .json.gz)
+              gunzip -c "$f" > "$DIR/${name#citare-}.json"
+            done
+          fi
 
       - name: Benchmark report
         if: env.HAS_BENCH_KEY == 'true'
@@ -330,6 +347,11 @@ jobs:
           mkdir -p reports/citare/runs
           cp results/vectors/citare.json reports/citare/runs/citare-vectors.json
           cp results/corpus-1pct/citare.json reports/citare/runs/citare-corpus-1pct.json
+          for f in results/stare-pub-*/citare.json; do
+            if [[ -f "$f" ]]; then
+              cp "$f" "reports/citare/runs/citare-$(basename "$(dirname "$f")").json"
+            fi
+          done
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.report.outcome == 'success'

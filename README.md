@@ -301,20 +301,25 @@ CITARE_PATH=../citare mise run bench:divergences citare
 
 ### Benchmark reports
 
-After the ratchet, the same job runs citare over the one-percent CourtListener sample
-(779 opinions) and writes a report: vector scores per request kind, speed (ms/vector,
-ms/KB, median and slowest opinion, cold start), and the citations gained, lost and
-changed against eyecite 2.7.8 and against the last release. eyecite's side is
-citation-bench's stored run, keyed by eyecite's version and the harness files, so eyecite
-only runs here when that key misses. The report goes to the job summary, the
+After the ratchet, the same job runs citare over two corpora and writes a report. The
+primary one is citation-bench's stare.pub sample (500 Caselaw Access Project cases and
+500 CourtListener records, as stare.pub serves them); the secondary one is the
+one-percent file of eyecite's comparison sample (779 CourtListener opinions), labelled
+as such, to read beside eyecite's own published numbers. The report has vector scores
+per request kind, and on each corpus speed (ms/KB, median and slowest opinion, cold
+start) and the citations gained, lost and changed against eyecite 2.7.8 and against the
+last release. eyecite's side is citation-bench's stored runs, keyed by eyecite's version
+and the harness files, so eyecite only runs here when a key misses. The report goes to the job summary, the
 `bench-report` artifact (with the CSVs and the saved runs) and one PR comment that later
 pushes edit in place. It never fails the build; the ratchet does.
 
-Each release gets the same report on the ten-percent sample (7,632 opinions):
+Each release gets the same report, with the ten-percent file of eyecite's comparison
+sample (7,632 opinions) as the secondary corpus:
 `release-plz.yml` calls `bench-release.yml` once it cuts the tag, which attaches
 `bench-report.md`, `bench-summary.json` and the saved runs to the GitHub release and
 adds the headline numbers to its notes. PR reports compare against the latest release's
-attached one-percent run. To backfill a release, or rerun one:
+attached stare.pub and one-percent runs; a release benchmarked before the stare.pub
+sample has only the latter, and the report says so. To backfill a release, or rerun one:
 
 ```bash
 gh workflow run bench-release.yml -f tag=v0.4.1                # attach to the release
