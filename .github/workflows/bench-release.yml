@@ -194,7 +194,7 @@ jobs:
         with:
           name: release-bench-${{ inputs.tag }}
           path: ${{ runner.temp }}/assets/
-          retention-days: 30
+          retention-days: 1
 
   # Holds the write token, and runs none of the benchmarked code.
   publish:
