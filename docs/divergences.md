@@ -31,7 +31,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [`Am. Jur.` is American Jurisprudence](#am-jur) | #93 | drafted in [`am-jur.md`](eyecite-issue-drafts/am-jur.md) (reporters-db) |
 | [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
 | [A year outside every exact edition picks a variation's](#year-rules-out-exact) | #102 | drafted in [`year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md) |
-| [Inline markup doesn't split a word](#html-inline-join) | #PRNUM | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
+| [Inline markup doesn't split a word](#html-inline-join) | #121 | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
