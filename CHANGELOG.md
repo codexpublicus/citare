@@ -4,6 +4,12 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.4 - 2026-10-25
+
+### Fixes
+
+- *(clean)* Don't add a space where an inline element ends ([#121](https://github.com/codexpublicus/citare/pull/121))
+
 ## v0.7.3 - 2026-10-23
 
 ### Fixes
