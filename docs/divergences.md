@@ -31,6 +31,7 @@ A new divergence goes in this file before it's merged, with all four.
 | [`Am. Jur.` is American Jurisprudence](#am-jur) | #93 | drafted in [`am-jur.md`](eyecite-issue-drafts/am-jur.md) (reporters-db) |
 | [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
 | [A year outside every exact edition picks a variation's](#year-rules-out-exact) | #102 | drafted in [`year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md) |
+| [Inline markup doesn't split a word](#html-inline-join) | #121 | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -945,3 +946,111 @@ correct change on record is eyecite's test vector.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md).
+
+<a id="html-inline-join"></a>
+## Inline markup doesn't split a word
+
+eyecite's `html` clean step collects the visible text nodes of the markup and joins them with a
+space (`" ".join(text)`, `eyecite/clean.py` line 58 at v2.7.8), so wherever an element ends
+inside a token the cleaned text gets a space the page doesn't show. CAP's case HTML wraps every
+citation it recognized in `<a class="citation">`, and the link ends where CAP's own citation
+ends: before the pin cite, and in the middle of a statute section when CAP's pattern stopped
+short. In one Connecticut opinion CAP links `Conn. Gen. Stat. § 10` and leaves `-236b(f)` outside,
+and the same opinion's `§ 10-236b(6)(b)` and `(m)` split the same way; the court's PDF prints
+`§ 10-236b(f)`.
+
+citare's `html` step (`clean::html` in `crates/citare-core/src/clean.rs`) selects the same text
+nodes and adds a space only where the markup separates them:
+
+- at the start and end of a block-level element (`<p>`, `<div>`, `<br>`, list items, table rows
+  and cells, headings, `<blockquote>`, `<pre>`, and CAP's `<opinion>`, `<author>`, `<footnote>`
+  and head matter);
+- on either side of a footnote mark (`<sup>`, `<footnotemark>`, `<a class="footnotemark">`) or a
+  CAP page label (`<a class="page-label">`), so `1 U.S. 1<sup>2</sup>` stays page 1;
+- where any other element opens, so `<em>Jin Fuey Moy</em><em>v. United States,</em>` (eyecite's
+  own `test_markup_plaintiff_and_antecedent_guesses`) and `17<i>C.F.R.</i>` stay two words;
+- where whitespace-only text lies between.
+
+Text after a closing inline element (`<a>`, `<span>`, `<em>`, `<i>`, and any unknown or custom
+element, such as CAP's `<extracted-citation>` or CourtListener's `<cross_reference>`) runs on.
+Text eyecite suppresses (`<page-number>`, star pagination) drops out without leaving a space, so
+`can<page-number>*642</page-number>not` reads `cannot`.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `<a class="citation">Conn. Gen. Stat. § 10</a>-236b(f)` | `§ 10 -236b(f)`: section `10` | `§ 10-236b(f)`: section `10-236b`, pin cite `(f)` |
+| `<a class="citation">410 U.S. 113</a>, 115 (1973)` | `410 U.S. 113 , 115`: no pin cite, extra `, 115` | pin cite `115` |
+| `<a class="citation">18 U.S.C. § 751</a>(a)` | parenthetical `a` | pin cite `(a)` |
+| `In <em>Twombly, supra</em>, at 553-554` | supra, no pin cite | supra, pin cite `at 553-554` |
+| `<em>Id</em>. at 263` | `Id .`: no citation | id. citation, pin cite `at 263` |
+| `104 <i>L.Ed.</i>2d 487` | reporter `L.Ed. 2d` | reporter `L.Ed.2d` (both normalize to `L. Ed. 2d`) |
+| `they can<page-number>*642</page-number>not` | `they can not` | `they cannot` |
+
+The rule for an opening element is there because real markup glues the start of an element to
+the word before it far more often than it splits a word that way. A first version that ran text
+on at both ends of an inline element lost 83 citations and gained 16 on the sample below, most of
+them `(<em>Id.</em>`, `Hertz, supra;</em><em>Best` and `<em>Miley,</em><em>supra</em>`.
+
+### Evidence
+
+I ran citare with eyecite's join and with this one over 1,279 HTML opinions, with the clean steps
+`html` and `inline_whitespace`: the 500 CAP cases of citation-bench's pinned stare.pub sample
+(`stare-pub-v2026.10.22`), as CAP's case HTML (`html/<case>.html` in the volume zips on
+data.stare.pub), and the 779 opinions of eyecite's one-percent CourtListener comparison sample
+(`courtlistener-1pct`, markup from `xml_harvard`, `html_lawbox`, `html_columbia`,
+`html_anon_2020` or `html`). Citations are matched by type and span in the markup; one whose
+span grew or shrank counts as changed, not as lost and gained.
+
+| | CAP (500) | CourtListener (779) |
+|---|---|---|
+| citations before / after | 10,342 / 10,341 | 15,880 / 15,873 |
+| documents with a change | 235 | 61 |
+| citations changed | 3,870 | 359 |
+| pin cite found where there was none | 2,922 | 123 |
+| pin cite lost | 0 | 2 |
+| court or year found | 26, 79 | 0, 2 |
+| volume, reporter or page changed (`A.2d` for `461 <i>A.</i>2d`) | 1 | 89 |
+| gained | 0 | 10 |
+| lost | 1 | 17 |
+
+The CAP changes are almost all CAP's citation links: the pin cite after a link now reads as one
+(`<a>81 S.W.3d 349</a>, 356 (Tex.App.-El Paso 2002, no pet.)` gets pin cite `356`, and the
+court and year in the parenthetical after it are reached), `extra` loses the pin cites and stray
+` , ` it held (1,750 citations), 162 statute subsections read as parentheticals become pin
+cites, and 766 short citations' spans take in the whole pin cite (`510 U.S. at 146-47`).
+
+Of the gains, 9 are `<i>Id</i>.` and one is `102 <span>Colum. L. Rev</span>. 2291`. Of the
+losses, 16 are id. citations written `(<i>Id.</i>)` or `<em>Id.</em>;`: eyecite's tokenizer finds
+neither `(Id.)` nor `Id.;` in plain text, and found these only because the join put a space before
+the `)` or `;`. The other two are `17 <i>A.D.</i>2<i>d</i> 225`, which eyecite read as page 2 of
+`A.D.`, and CAP's `<a>253 P. 3</a>, <a>257 P. 16</a>`, which now reads as eyecite and citare
+read the same plain text, `253 P. 3, 257` (`P. 3` is a reporters-db variation of `P.3d`). The two
+lost pin cites are `<i>Atwood</i>, ¶ 44` and `¶ 46`, which eyecite doesn't read as a pin cite in
+plain text either.
+
+Eleven citations in four parallel strings get a different year, and the new one is wrong in
+each (`… 83 L.Ed.2d 622 (1985); Inryco, 708 F.2d at 1234` gives 1234). eyecite 2.7.8 returns the
+same years on the same cleaned text; the year scan runs past the parenthetical once the ` , `
+no longer stops it.
+
+### Tests
+
+- `crates/citare-core/src/clean.rs`: `test_html_inline_tag_splitting_a_citation` (the CAP
+  statute and pin cite links, `<em>Id</em>.`, `461 <i>A.</i>2d` and twenty inline and custom
+  tags), `test_html_block_boundaries`, `test_html_footnote_marks_and_page_labels_stay_separate`,
+  `test_html_suppressed_text_leaves_no_gap`, and `test_html_keeps_text_node_whitespace` (with
+  eyecite's `Jin Fuey Moy` markup).
+- `crates/citare-core/tests/annotate_offsets.rs`: `markup_whitespace_matches_eyecite` keeps
+  eyecite's annotation for six of its seven inputs; the seventh is noted where it differs.
+- citation-bench: `eyecite-2.7.8/find/test_reference_extraction_from_markup/0` (`L.Ed.2d`) and
+  `eyecite-2.7.8/find/test_reference_filtering/0` (the `Twombly, supra` pin cite) expect
+  eyecite's answers and fail with this change, so they belong in
+  `baselines/citare.known-failures`. The table's rows can become `vectors/divergences/` vectors.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md). eyecite
+[#210](https://github.com/freelawproject/eyecite/issues/210) noted that its own cleaning puts a
+space between `Twombly` and the comma and widened the supra antecedent regex to allow it; the
+join itself is unchanged.

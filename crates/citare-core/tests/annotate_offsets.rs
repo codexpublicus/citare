@@ -312,7 +312,7 @@ fn markup_annotates_every_citation_in_one_pass() {
     );
 }
 
-/// Where eyecite 2.7.8 puts the wrappers around each citation's
+/// Where eyecite 2.7.8 puts the wrappers (all but one case, noted below) around each citation's
 /// `full_span` (`annotate_citations(plain_text, [(span, "[", "]")],
 /// markup)` after `get_citations(markup_text=..., clean_steps=["html",
 /// "inline_whitespace"])`). Whitespace that cleaning collapses next to a
@@ -330,9 +330,13 @@ fn markup_whitespace_matches_eyecite() {
             "<p></b>”<b></i>,  42 U.S.C. § 1983  <b> \n“, ",
             "<p></b>”<b></i>,  [42 U.S.C. § 1983  <b> ]\n“, ",
         ),
+        // citare's html step runs the closing </i> into the quote after it, where
+        // eyecite adds a space (docs/divergences.md#html-inline-join); the case name
+        // then starts after the opening quotes, and so does the wrapper. eyecite gives
+        // " [“<i>“aPeña</p> Bär v. Peña, 410 U.S. 113 (1973)]</i>“, “  a".
         (
             " “<i>“aPeña</p> Bär v. Peña, 410 U.S. 113 (1973)</i>“, “  a",
-            " [“<i>“aPeña</p> Bär v. Peña, 410 U.S. 113 (1973)]</i>“, “  a",
+            " “<i>“[aPeña</p> Bär v. Peña, 410 U.S. 113 (1973)]</i>“, “  a",
         ),
         (
             "<i>”</p>, Bär 42 U.S.C. § 1983  \n<i>",

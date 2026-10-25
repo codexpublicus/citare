@@ -272,7 +272,7 @@ fn markup_plaintiff_shift_counts_characters() {
     let plain = clean_text(markup, &steps).unwrap();
     assert_boundaries(&plain, &citations, "plaintiff shift");
     let (start, end) = citations[0].full_span();
-    assert_eq!(&plain[start..end], "xyz\u{a0} v. Bar , 1 U.S. 1 (1999)");
+    assert_eq!(&plain[start..end], "xyz\u{a0} v. Bar, 1 U.S. 1 (1999)");
 }
 
 /// A parenthesized word opening with a lowercase non-ASCII letter ends the

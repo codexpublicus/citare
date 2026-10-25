@@ -802,7 +802,7 @@ mod tests {
 
         // `clean --html` adds the html step and prints what `find` indexes.
         let cleaned = build_document_from(HTML, &input(true, &["all_whitespace"])).plain_text;
-        assert!(cleaned.starts_with("“Quoted” 🎉 In Café v. Bär , 410 U.S. 113"));
+        assert!(cleaned.starts_with("“Quoted” 🎉 In Café v. Bär, 410 U.S. 113"));
         assert_eq!(
             cleaned,
             citare_core::clean_text(HTML, &[CleanStep::Html, CleanStep::AllWhitespace]).unwrap()
