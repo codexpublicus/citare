@@ -45,48 +45,188 @@ pub fn underscores(text: &str) -> String {
     re_underscores().replace_all(text, "").into_owned()
 }
 
+/// Elements that start a new block of text: HTML's block-level and table elements, plus
+/// the block elements of CAP's case XML (`opinion`, `author`, `footnote` and the head
+/// matter). Text on either side of one of these is separated by a space.
+fn is_block(name: &str) -> bool {
+    matches!(
+        name,
+        "address"
+            | "article"
+            | "aside"
+            | "blockquote"
+            | "body"
+            | "br"
+            | "caption"
+            | "center"
+            | "col"
+            | "colgroup"
+            | "dd"
+            | "details"
+            | "dialog"
+            | "dir"
+            | "div"
+            | "dl"
+            | "dt"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "head"
+            | "header"
+            | "hgroup"
+            | "hr"
+            | "html"
+            | "legend"
+            | "li"
+            | "main"
+            | "menu"
+            | "nav"
+            | "ol"
+            | "option"
+            | "p"
+            | "pre"
+            | "section"
+            | "summary"
+            | "table"
+            | "tbody"
+            | "td"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "title"
+            | "tr"
+            | "ul"
+            // CAP case XML (`xml_harvard` in CourtListener)
+            | "casebody"
+            | "opinion"
+            | "author"
+            | "footnote"
+            | "parties"
+            | "docketnumber"
+            | "court"
+            | "decisiondate"
+            | "otherdate"
+            | "attorneys"
+            | "judges"
+            | "headnotes"
+            | "syllabus"
+            | "disposition"
+            | "history"
+            | "correction"
+    )
+}
+
+/// Inline elements that mark a place in the running text rather than continuing it:
+/// footnote references (`<sup>`, CAP's `<footnotemark>` and `<a class="footnotemark">`)
+/// and CAP's page labels (`<a class="page-label">*289</a>`). They keep a space on either
+/// side, as eyecite gives them, so a footnote number never runs into a page number before
+/// it (`1 U.S. 1<sup>2</sup>` stays `1 U.S. 1 2`).
+fn is_marker(elem: &scraper::node::Element) -> bool {
+    matches!(elem.name(), "sup" | "footnotemark")
+        || elem
+            .classes()
+            .any(|c| c == "footnotemark" || c == "page-label")
+}
+
+/// Whether eyecite drops the text directly inside this element.
+fn hides_its_text(elem: &scraper::node::Element) -> bool {
+    matches!(
+        elem.name(),
+        "style" | "script" | "head" | "link" | "page-number"
+    ) || elem.attr("class") == Some("star-pagination")
+}
+
 /// Extract visible text from HTML.
 ///
-/// Mirrors eyecite's `clean.html`, which selects every text node with
-/// non-blank content (XPath `normalize-space()`) whose *direct* parent is not
-/// `<style>`, `<link>`, `<head>`, `<page-number>`, `<script>` or an element
-/// with `class="star-pagination"`, and joins those nodes with a single space.
-/// Text nodes are kept verbatim (not trimmed), so whitespace around inline
-/// tags survives: `In <i>Foo</i>` becomes `"In  Foo"`.
+/// Selects the same text nodes as eyecite's `clean.html`: every text node with non-blank
+/// content (XPath `normalize-space()`) whose *direct* parent is not `<style>`, `<link>`,
+/// `<head>`, `<page-number>`, `<script>` or an element with `class="star-pagination"`.
+/// Text nodes are kept verbatim (not trimmed).
+///
+/// eyecite joins every pair of text nodes with a space, which splits a word or citation
+/// where an inline element ends inside it: CAP wraps `Conn. Gen. Stat. § 10` in a citation
+/// tag, so eyecite reads `§ 10 -236b(f)`, and every CAP citation link ends before its pin
+/// cite (`410 U.S. 113 , 115`). citare adds a space before a text node only where the
+/// markup separates it from the text before:
+///
+/// - at the start or end of a block-level element (`<p>`, `<div>`, `<br>`, table cells,
+///   CAP's `<opinion>` and `<footnote>`, ...; see `is_block`);
+/// - on either side of a footnote mark or page label (see `is_marker`);
+/// - where any other element opens, since text glued to the start of an element is
+///   usually a new word in real markup (`<em>Moy</em><em>v. United States</em>`,
+///   `17<i>C.F.R.</i>`), unless the element's own text is suppressed: a
+///   `<page-number>` can sit inside a word (`can<page-number>*642</page-number>not`);
+/// - where whitespace-only text lies between.
+///
+/// Where an inline element closes, the text after it runs on with nothing added. See
+/// docs/divergences.md#html-inline-join.
 pub fn html(html_content: &str) -> String {
     let document = Html::parse_document(html_content);
-    let mut parts: Vec<&str> = Vec::new();
+    let mut out = String::with_capacity(html_content.len() / 2);
+    // A break is due before the next text that is kept.
+    let mut pending_break = false;
 
-    for node in document.tree.nodes() {
-        let Node::Text(ref text) = node.value() else {
-            continue;
-        };
-
-        // XPath normalize-space() only strips space, tab, CR and LF.
-        if text
-            .text
-            .chars()
-            .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
-        {
-            continue;
-        }
-
-        let suppressed = node.parent().is_some_and(|parent| match parent.value() {
+    // Depth-first, in document order; `true` marks the close of an element.
+    let mut stack = vec![(document.tree.root(), false)];
+    while let Some((node, closing)) = stack.pop() {
+        match node.value() {
             Node::Element(elem) => {
-                matches!(
-                    elem.name(),
-                    "style" | "script" | "head" | "link" | "page-number"
-                ) || elem.attr("class") == Some("star-pagination")
+                // Blocks and markers break on both sides. Any other element breaks where it
+                // opens, unless its own text is hidden: a page number can sit inside a word.
+                if is_block(elem.name()) || is_marker(elem) || (!closing && !hides_its_text(elem)) {
+                    pending_break = true;
+                }
+                if !closing {
+                    stack.push((node, true));
+                    let mut children: Vec<_> = node.children().collect();
+                    children.reverse();
+                    stack.extend(children.into_iter().map(|c| (c, false)));
+                }
             }
-            _ => false,
-        });
+            Node::Text(text) => {
+                // XPath normalize-space() only strips space, tab, CR and LF.
+                if text
+                    .text
+                    .chars()
+                    .all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+                {
+                    pending_break = true;
+                    continue;
+                }
 
-        if !suppressed {
-            parts.push(&text.text);
+                let suppressed = node.parent().is_some_and(|parent| match parent.value() {
+                    Node::Element(elem) => hides_its_text(elem),
+                    _ => false,
+                });
+                if suppressed {
+                    continue;
+                }
+
+                if pending_break && !out.is_empty() {
+                    out.push(' ');
+                }
+                pending_break = false;
+                out.push_str(&text.text);
+            }
+            // Only elements are pushed again to close.
+            Node::Document | Node::Fragment => {
+                let mut children: Vec<_> = node.children().collect();
+                children.reverse();
+                stack.extend(children.into_iter().map(|c| (c, false)));
+            }
+            _ => {}
         }
     }
 
-    parts.join(" ")
+    out
 }
 
 /// Remove the XML processing instruction from the start of a string.
@@ -194,12 +334,137 @@ mod tests {
 
     #[test]
     fn test_html_keeps_text_node_whitespace() {
-        // Matches eyecite/lxml: text nodes are joined verbatim with " ".
+        // Text nodes are kept verbatim; an opening inline tag adds a space, a closing one
+        // nothing.
         assert_eq!(
             html("<p>In <i>Foo</i> v. <i>Bar,</i> 1 U.S. 1</p>"),
-            "In  Foo  v.  Bar,  1 U.S. 1"
+            "In  Foo v.  Bar, 1 U.S. 1"
         );
-        assert_eq!(html("See <em>Bivens </em>v. x"), "See  Bivens  v. x");
+        assert_eq!(html("See <em>Bivens </em>v. x"), "See  Bivens v. x");
+        // Whitespace-only text between inline elements is one space.
+        assert_eq!(html("<i>Foo</i> <i>v.</i>\n<i>Bar</i>"), "Foo v. Bar");
+        // Adjacent elements stay separate words (eyecite's test_markup_plaintiff...).
+        assert_eq!(
+            html("<em>Jin Fuey Moy</em><em>v. United States,</em> 254 U.S. 189"),
+            "Jin Fuey Moy v. United States, 254 U.S. 189"
+        );
+    }
+
+    #[test]
+    fn test_html_inline_tag_splitting_a_citation() {
+        // CAP wraps only part of a statute citation in its citation tag (D116).
+        let markup = "<p>under <extracted-citation index=\"3\">Conn. Gen. Stat. \u{a7} 10</extracted-citation>-236b(f), and</p>";
+        assert_eq!(
+            html(markup),
+            "under  Conn. Gen. Stat. \u{a7} 10-236b(f), and"
+        );
+        // CAP's citation links end before the pin cite.
+        assert_eq!(
+            html(r#"<p>See <a class="citation" href="/us/410/113">410 U.S. 113</a>, 115.</p>"#),
+            "See  410 U.S. 113, 115."
+        );
+        assert_eq!(html("<p>(<em>Id</em>. at 5)</p>"), "( Id. at 5)");
+        assert_eq!(html("<p>461 <i>A.</i>2d 138</p>"), "461  A.2d 138");
+        for tag in [
+            "a",
+            "span",
+            "em",
+            "i",
+            "b",
+            "strong",
+            "sub",
+            "small",
+            "u",
+            "cite",
+            "abbr",
+            "code",
+            "mark",
+            "q",
+            "s",
+            "time",
+            "var",
+            "font",
+            "cross_reference",
+            "x-custom",
+        ] {
+            assert_eq!(
+                html(&format!("<p>ab<{tag}>cd</{tag}>ef</p>")),
+                "ab cdef",
+                "{tag}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_html_block_boundaries() {
+        for tag in [
+            "p",
+            "div",
+            "li",
+            "h1",
+            "h6",
+            "blockquote",
+            "section",
+            "article",
+            "header",
+            "footer",
+            "pre",
+            "dd",
+            "dt",
+            "center",
+            "opinion",
+            "author",
+            "footnote",
+        ] {
+            assert_eq!(html(&format!("ab<{tag}>cd</{tag}>ef")), "ab cd ef", "{tag}");
+        }
+        assert_eq!(html("<p>one</p><p>two</p>"), "one two");
+        assert_eq!(html("a<br>b<hr>c"), "a b c");
+        assert_eq!(
+            html("<ul><li>a</li><li>b</li></ul><ol><li>c</li></ol>"),
+            "a b c"
+        );
+        assert_eq!(
+            html("<table><tr><td>a</td><td>b</td></tr><tr><th>c</th></tr></table>"),
+            "a b c"
+        );
+        assert_eq!(html("<dl><dt>a</dt><dd>b</dd></dl>"), "a b");
+        // No leading or trailing separator.
+        assert_eq!(html("<div><p>a</p></div>"), "a");
+    }
+
+    #[test]
+    fn test_html_footnote_marks_and_page_labels_stay_separate() {
+        assert_eq!(html("<p>1 U.S. 1<sup>2</sup> and</p>"), "1 U.S. 1 2  and");
+        assert_eq!(
+            html("<p>1 U.S. 1<footnotemark>2</footnotemark> and</p>"),
+            "1 U.S. 1 2  and"
+        );
+        assert_eq!(
+            html(r##"<p>1 U.S. 1<a class="footnotemark" href="#f2">2</a> and</p>"##),
+            "1 U.S. 1 2  and"
+        );
+        assert_eq!(
+            html(r##"<p>amend<a class="page-label" href="#p262">*262</a>ment</p>"##),
+            "amend *262 ment"
+        );
+    }
+
+    #[test]
+    fn test_html_suppressed_text_leaves_no_gap() {
+        // A page break inside a word or citation joins back up.
+        assert_eq!(
+            html(r#"<p>they can<page-number label="642">*642</page-number>not meet</p>"#),
+            "they cannot meet"
+        );
+        assert_eq!(
+            html(r#"<p>218 <page-number label="161">*161</page-number>So.2d 580</p>"#),
+            "218 So.2d 580"
+        );
+        assert_eq!(
+            html(r#"<p>the<span class="star-pagination">*2631 </span> assessment</p>"#),
+            "the assessment"
+        );
     }
 
     #[test]
@@ -209,7 +474,7 @@ mod tests {
             html(
                 r#"a <span class="star-pagination"><b>*5</b></span> b <span class="x star-pagination">*6</span>"#
             ),
-            "a  *5  b  *6"
+            "a  *5 b  *6"
         );
         assert_eq!(
             html("<html><head><title>t</title></head><body>b</body></html>"),
