@@ -3,7 +3,7 @@
 //!
 //! Spans are UTF-8 byte offsets, but eyecite computes them in code points,
 //! and several of its offsets are "length of these words, plus one" or "the
-//! first N characters". Ported naively, each of those lands inside a
+//! first N characters". Converted to bytes naively, each of those lands inside a
 //! multibyte character as soon as one sits at the wrong place. These tests
 //! put one at every place.
 

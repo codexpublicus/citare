@@ -183,7 +183,7 @@ fn test_harvard_slug_a2d_via_pipeline() {
     );
 }
 
-// Ported from eyecite tests/test_AnnotateTest.py: the annotator still
+// Mirrors eyecite tests/test_AnnotateTest.py: the annotator still
 // renders the original underscores even though `page` is None.
 #[test]
 fn test_annotate_blank_page() {

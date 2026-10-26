@@ -10,7 +10,7 @@ use crate::utils::placeholder_markup;
 
 /// Represents a document being processed for citation extraction.
 ///
-/// Ported from eyecite's `models.Document`. All offsets (citation spans,
+/// The counterpart of eyecite's `models.Document`. All offsets (citation spans,
 /// span maps and `emphasis_tags`) are UTF-8 byte offsets.
 #[derive(Debug, Clone)]
 pub struct Document {

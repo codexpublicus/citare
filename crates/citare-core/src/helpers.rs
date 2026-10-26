@@ -1,6 +1,6 @@
 //! Helper functions for the citation finding pipeline.
 //!
-//! Ported from eyecite's `helpers.py`. Provides token scanning, metadata
+//! The counterpart of eyecite's `helpers.py`. Provides token scanning, metadata
 //! extraction, court lookup, overlap filtering, and case name extraction.
 
 use std::collections::HashMap;

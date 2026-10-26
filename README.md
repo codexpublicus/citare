@@ -347,5 +347,11 @@ comparisons with eyecite cross machine types until those runs are re-baselined o
 
 ## Acknowledgments
 
-Citare is a Rust port of [eyecite](https://github.com/freelawproject/eyecite) by the [Free Law Project](https://free.law).
-eyecite's copyright notice and licence are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+citare's design was informed by [eyecite](https://github.com/freelawproject/eyecite), the
+[Free Law Project](https://free.law)'s citation extractor, and its behaviour is measured
+against eyecite's. eyecite is the `upstream/eyecite` git submodule (v2.7.8), used for parity
+tests and benchmarking ([citation-bench](https://github.com/codexpublicus/citation-bench)),
+and [docs/divergences.md](docs/divergences.md) compares the two where they differ. The
+Python package's compatibility tests run eyecite's own test cases against citare's API
+([crates/citare-py/README.md](crates/citare-py/README.md#tests)). citare's library and
+bindings contain no eyecite code.

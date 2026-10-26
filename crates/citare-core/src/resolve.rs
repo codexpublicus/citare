@@ -4,7 +4,7 @@
 //! Full citations create new Resources; short, supra, id, and reference
 //! citations are resolved to previously-seen full citations' Resources.
 //!
-//! Ported from eyecite's `resolve.py`.
+//! The counterpart of eyecite's `resolve.py`.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
@@ -891,7 +891,7 @@ mod tests {
         assert_eq!(cites.len(), 2);
     }
 
-    // Ported from eyecite tests/test_ResolveTest.py: two otherwise identical
+    // Mirrors eyecite tests/test_ResolveTest.py: two otherwise identical
     // full citations with missing pages must not resolve to the same
     // resource.
     #[test]
@@ -917,7 +917,7 @@ mod tests {
         assert_eq!(resource, resolve_full_citation(&citations[0]));
     }
 
-    // Ported from eyecite: an Id. pin cite after a full citation that only
+    // Mirrors an eyecite test: an Id. pin cite after a full citation that only
     // has a placeholder page can't be resolved.
     #[test]
     fn test_id_after_blank_page_not_resolved() {
