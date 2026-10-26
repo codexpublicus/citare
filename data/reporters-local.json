@@ -484,6 +484,69 @@
       "regexes": ["$volume $reporter,? $page"],
       "examples": [{"cite": "1 Pa.Fiduc.4d 52", "volume": "1"}],
       "notes": "`Pa. Fiduc. 4d` for the Fiduciary Reporter's fourth series: the catalogue abbreviation (https://encore.jenkinslaw.org/iii/encore/record/C__Rb111056) (docs/reporters-local.md, D82)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "Civ. Pro.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "7 Civ. Pro. 104", "volume": "7"}],
+      "notes": "`Civ. Pro.` for the New York Civil Procedure Reports: 277 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `Lacy v. Wilkinson, 7 Civ. Pro. 104` (CAP misc/32, 0426-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "Civ. Proc. Rep.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "2 Civ. Proc. Rep. 422", "volume": "2"}],
+      "notes": "`Civ. Proc. Rep.` for the New York Civil Procedure Reports: 273 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `2 Civ. Proc. Rep. 422` (ad/1, 0032-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "Civ. Pro. Rep.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "18 Civ. Pro. Rep. 215", "volume": "18"}],
+      "notes": "`Civ. Pro. Rep.` for the New York Civil Procedure Reports: 12 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `18 Civ. Pro. Rep. 215` (misc/1, 0012-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "Civ. Proc.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "12 Civ. Proc. 125", "volume": "12"}],
+      "notes": "`Civ. Proc.` for the New York Civil Procedure Reports: 11 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `12 Civ. Proc. 125` (ad/46, 0156-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "Civ. Pro. R.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "8 Civ. Pro. R. 212", "volume": "8"}],
+      "notes": "`Civ. Pro. R.` for the New York Civil Procedure Reports: 10 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `8 Civ. Pro. R. 212` (misc/16, 0331-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "N.Y. Civ. Pro.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "5 N. Y. Civ. Pro., 224", "volume": "5"}],
+      "notes": "`N.Y. Civ. Pro.` for the New York Civil Procedure Reports: 2 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `5 N. Y. Civ. Pro., 224` (misc/16, 0334-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "N.Y. Civ. Proc. R.",
+      "name": "New York Civil Procedure Reports",
+      "edition": "N.Y. Civ. Proc. R.",
+      "variation": "N.Y. Civ. Proc.",
+      "regexes": ["$volume $reporter,? $page"],
+      "examples": [{"cite": "5 N. Y. Civ. Proc. 224", "volume": "5"}],
+      "notes": "`N.Y. Civ. Proc.` for the New York Civil Procedure Reports: 2 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `5 N. Y. Civ. Proc. 224` (nys/39, 0720-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
     }
   ],
   "journals": [

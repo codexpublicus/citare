@@ -276,6 +276,45 @@ Over the 7,775 CourtListener opinions above that mention `Fid` (472,424 citation
 three `fid-rep` and four `pa-fid`, and loses or changes none. Three it still misses split the
 reporter and the page across a line (`21 Fiduc. Rep. 2d\n197`), which no reporter regex reads.
 
+## New York Civil Procedure Reports
+
+reporters-db has the New York Civil Procedure Reports as `N.Y. Civ. Proc. R.`, with the
+variations `Civ. Proc. R.`, `Civ. Proc. N.S.`, `Civil Proc. R.`, `N.Y. Civ. Proc. Rep.` and
+`N.Y.Civ.Proc.R.`. CAP doesn't have the reporter, and New York opinions of the 1880s to 1900s
+mostly write it otherwise. In Paddock v. Palmer (CAP `misc/32`, 0426-01) `Lacy v. Wilkinson, 7
+Civ. Pro. 104` was no citation at all, so the opinion's `Lacy v. Wilkinson, supra` had nothing to
+resolve to (#127).
+
+I counted `<volume> <form> <page>` in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S.
+1-60 and Hun 1-40 (65,670 opinions):
+
+| Form | Citations | Found before |
+|---|---|---|
+| `Civ. Proc. R.` | 321 | yes |
+| `Civ. Pro.` | 277 | no |
+| `Civ. Proc. Rep.` | 273 | no |
+| `N. Y. Civ. Proc. Rep.`, `N. Y. Civ. Proc. R.` | 16 | yes |
+| `Civ. Pro. Rep.` | 12 | no |
+| `Civ. Proc.` | 11 | no |
+| `Civ. Pro. R.` | 10 | no |
+| `N. Y. Civ. Pro.`, `N. Y. Civ. Proc.` | 4 | no |
+| misprints: `Civ. Proc. R`, `Civ. Proc R.`, `Civ Proc. R.`, `Civ Pro.`, `Civ. Proc. Rep` | 7 | no |
+
+The file adds the seven forms citare didn't find, other than the misprints, as variations of `N.Y. Civ. Proc. R.`, with
+reporters-db's own regex, `$volume $reporter,? $page`. None of them is an abbreviation of another
+reporter or a code: `Code Civ. Proc.` is cited by section, with no volume before it. The volumes
+cited run from 1 to 34, with one 71, so there is no cap; the series' last volume isn't settled
+here.
+
+Before and after over the same opinions, citare finds 587 more full case citations, all of the
+forms added: `Civ. Pro.` 277, `Civ. Proc. Rep.` 273, `Civ. Pro. Rep.` 12, `Civ. Proc.` 11, `Civ.
+Pro. R.` 10, and `N. Y. Civ. Pro.` and `N. Y. Civ. Proc.` 2 each. No other citation is found or
+lost. 28 supras and 8 id. citations now resolve to one of them. I read ten of each, the supras
+and the new citations, in context, and all are the Civil Procedure Reports (`Gannon v. Myars, 11
+Civ. Pro. 187`, `O’Shea v. McLear, supra` to `15 Civ. Pro. 69`). Some opinions write the
+reporter's volume as `id.` (`Maas v. Ellis, 12 id. 323` after `7 Civ. Proc. Rep. 188`), which
+citare reads as an id. citation, before and after.
+
 ## Format
 
 `editions` entries name an edition by reporters.json key, cluster name and edition name, and
