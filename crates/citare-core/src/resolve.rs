@@ -11,8 +11,8 @@ use std::hash::Hash;
 use std::sync::LazyLock;
 
 use crate::models::{
-    Citation, IdCitationData, ReferenceCitationData, Resource, ShortCaseCitationData,
-    SupraCitationData,
+    Citation, FullCaseCitationData, IdCitationData, ReferenceCitationData, Resource,
+    ShortCaseCitationData, SupraCitationData,
 };
 
 // ---------------------------------------------------------------------------
@@ -603,17 +603,74 @@ fn resolve_shortcase_citation<R: Clone + Hash>(
     None
 }
 
+/// eyecite's rule, the full case citations whose party names contain the
+/// supra's `antecedent_guess` when they are one decision, and then citare's:
+/// when they are more than one, those whose plaintiff matches the case name
+/// the supra repeats, or else whose plaintiff and defendant both do.
+/// "Mulholland v. United States, supra" has the antecedent guess `States`,
+/// which every case against the United States matches.
 fn resolve_supra_citation<R: Clone + Hash>(
     data: &SupraCitationData,
     resolved_full_cites: &ResolvedFullCites<R>,
 ) -> Option<R> {
     let antecedent = data.metadata.antecedent_guess.as_ref()?;
-    filter_by_matching_antecedent(
+    let matches = matching_antecedent(
         resolved_full_cites,
         0..resolved_full_cites.cites.len(),
         antecedent,
-        None,
-    )
+    );
+    if let Some(resource) = decision_resource(resolved_full_cites, matches.iter().copied(), None) {
+        return Some(resource.clone());
+    }
+    let (Some(plaintiff), Some(defendant)) = (&data.metadata.plaintiff, &data.metadata.defendant)
+    else {
+        return None;
+    };
+    let (plaintiff, defendant) = (party_words(plaintiff), party_words(defendant));
+    let party = |i: usize, field: fn(&FullCaseCitationData) -> &Option<String>| {
+        let Citation::FullCase(full) = &resolved_full_cites.cites[i].citation else {
+            return None;
+        };
+        field(full).as_deref().map(party_words)
+    };
+    let by_plaintiff: Vec<usize> = matches
+        .into_iter()
+        .filter(|&i| {
+            party(i, |f| &f.metadata.plaintiff).is_some_and(|p| same_party(&p, &plaintiff))
+        })
+        .collect();
+    if let Some(resource) =
+        decision_resource(resolved_full_cites, by_plaintiff.iter().copied(), None)
+    {
+        return Some(resource.clone());
+    }
+    let by_both = by_plaintiff.into_iter().filter(|&i| {
+        party(i, |f| &f.metadata.defendant).is_some_and(|d| same_party(&d, &defendant))
+    });
+    decision_resource(resolved_full_cites, by_both, None).cloned()
+}
+
+/// A party name as words to compare: lowercase, letters and digits only,
+/// with curly apostrophes and periods dropped inside a word ("O’Neil" and
+/// "O'Neil" are `oneil`, "Comm'r" is `commr`).
+fn party_words(name: &str) -> Vec<String> {
+    name.split(|c: char| c.is_whitespace() || c == ',' || c == '&' || c == '-')
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .flat_map(char::to_lowercase)
+                .collect::<String>()
+        })
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Whether two party names are the same party: one's words are the other's
+/// or a run of them ("Commissioner" and "Commissioner of Internal Revenue",
+/// "See Smith" and "Smith").
+fn same_party(a: &[String], b: &[String]) -> bool {
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    !short.is_empty() && long.windows(short.len()).any(|w| w == short)
 }
 
 fn resolve_id_citation<R: Clone + Eq + Hash>(
@@ -673,27 +730,38 @@ fn filter_by_matching_antecedent<R: Clone + Hash>(
     antecedent_guess: &str,
     reporter: Option<&str>,
 ) -> Option<R> {
+    let matches = matching_antecedent(resolved_full_cites, candidates, antecedent_guess);
+    decision_resource(resolved_full_cites, matches.into_iter(), reporter).cloned()
+}
+
+/// The full case citations at `candidates` whose defendant or plaintiff
+/// contains `antecedent_guess`.
+fn matching_antecedent<R>(
+    resolved_full_cites: &ResolvedFullCites<R>,
+    candidates: impl Iterator<Item = usize>,
+    antecedent_guess: &str,
+) -> Vec<usize> {
     use crate::utils::strip_punct;
 
     let ag = strip_punct(antecedent_guess);
-    let matches = candidates.filter(|&i| {
-        let Citation::FullCase(data) = &resolved_full_cites.cites[i].citation else {
-            return false;
-        };
-        let defendant_match = data
-            .metadata
-            .defendant
-            .as_ref()
-            .is_some_and(|d| d.contains(&ag));
-        let plaintiff_match = data
-            .metadata
-            .plaintiff
-            .as_ref()
-            .is_some_and(|p| p.contains(&ag));
-        defendant_match || plaintiff_match
-    });
-
-    decision_resource(resolved_full_cites, matches, reporter).cloned()
+    candidates
+        .filter(|&i| {
+            let Citation::FullCase(data) = &resolved_full_cites.cites[i].citation else {
+                return false;
+            };
+            let defendant_match = data
+                .metadata
+                .defendant
+                .as_ref()
+                .is_some_and(|d| d.contains(&ag));
+            let plaintiff_match = data
+                .metadata
+                .plaintiff
+                .as_ref()
+                .is_some_and(|p| p.contains(&ag));
+            defendant_match || plaintiff_match
+        })
+        .collect()
 }
 
 /// Whether a pin cite names a section: `§ 5`, `§§ 5-7`, `at § 12(b)`.
@@ -1227,5 +1295,71 @@ mod tests {
             .map(|c| c.type_name())
             .collect();
         assert_eq!(hun, ["IdCitation", "FullCaseCitation"]);
+    }
+
+    // #127: a supra whose last word matches two decisions ("States") resolves
+    // by the plaintiff of the case name it repeats, as in CourtListener
+    // opinion 4555376.
+    #[test]
+    fn test_supra_narrowed_by_case_name() {
+        let text = "Mulholland v. United States, 28 Fed. Cl. 320 (1993). American Auto. \
+                    Association v. United States, 367 U.S. 687 (1961). See Mulholland v. \
+                    United States, supra. See American Auto. Association v. United States, \
+                    supra. United States, supra.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("28 Fed. Cl. 320")),
+                ("FullCaseCitation", to("367 U.S. 687")),
+                ("SupraCitation", to("28 Fed. Cl. 320")),
+                ("SupraCitation", to("367 U.S. 687")),
+                // No plaintiff to tell the two apart.
+                ("SupraCitation", None),
+            ]
+        );
+    }
+
+    // The plaintiff decides even where the defendant is written differently
+    // ("Comm'r" for "Commissioner"), and a curly apostrophe matches a
+    // straight one.
+    #[test]
+    fn test_supra_narrowed_by_plaintiff() {
+        let text = "Weishan v. Commissioner, 97 T.C. 1 (1991); Lindsey v. Commissioner, 98 \
+                    T.C. 2 (1992); State v. O'Neil, 261 Conn. 49 (2002); State v. O'Neil, 262 \
+                    Conn. 1 (2002). See Weishan v. Comm'r, supra; Lindsey v. Comm'r, supra. \
+                    State v. O\u{2019}Neil, supra.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("97 T.C. 1")),
+                ("FullCaseCitation", to("98 T.C. 2")),
+                ("FullCaseCitation", to("261 Conn. 49")),
+                ("FullCaseCitation", to("262 Conn. 1")),
+                ("SupraCitation", to("97 T.C. 1")),
+                ("SupraCitation", to("98 T.C. 2")),
+                // Two decisions with the same name stay ambiguous.
+                ("SupraCitation", None),
+            ]
+        );
+    }
+
+    // #127: the case in stare.pub's misc/32/426-01 (Paddock v. Palmer, 32
+    // Misc. 426). Its full citation is in the Civil Procedure Reports as New
+    // York courts wrote them, `Civ. Pro.`, which citare now finds, and the
+    // supra resolves to it.
+    #[test]
+    fn test_supra_of_civ_pro_citation() {
+        let text = "The case of Lacy v. Wilkinson, 7 Civ. Pro. 104, is not an authority \
+                    against this proposition. Hartley v. James, 18 Abb. Pr. 299. The pleading \
+                    would be good in behalf of the defendant verifying. Lacy v. Wilkinson, \
+                    supra.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("7 Civ. Pro. 104")),
+                ("FullCaseCitation", to("18 Abb. Pr. 299")),
+                ("SupraCitation", to("7 Civ. Pro. 104")),
+            ]
+        );
     }
 }

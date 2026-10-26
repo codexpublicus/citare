@@ -1007,8 +1007,8 @@ pub fn add_pre_citation(citation: &mut FullCaseCitationData, words: &Tokens) {
 /// Updates `citation.metadata.plaintiff`, `citation.metadata.defendant`,
 /// and `citation.full_span_start`.
 pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short: bool) {
-    let mut state = initialize_search_state(citation);
-    scan_for_case_boundaries(words, citation, &mut state);
+    let mut state = initialize_search_state(citation.resource.common.index);
+    scan_for_case_boundaries(words, citation.resource.common.index, &mut state);
 
     // A citation that starts a sentence, with no case name, starts its
     // own full span. Without that, a full span start of none would be the
@@ -1041,7 +1041,7 @@ pub fn find_case_name(citation: &mut FullCaseCitationData, words: &Tokens, short
 pub fn add_pre_cite_year(citation: &mut FullCaseCitationData, words: &Tokens) {
     let state = SearchState {
         pre_cite_year: year_before_volume(words, citation.resource.common.index),
-        ..initialize_search_state(citation)
+        ..initialize_search_state(citation.resource.common.index)
     };
     set_pre_cite_year(citation, &state);
 }
@@ -1216,8 +1216,7 @@ struct SearchState {
     starts_sentence: bool,
 }
 
-fn initialize_search_state(citation: &FullCaseCitationData) -> SearchState {
-    let index = citation.resource.common.index;
+fn initialize_search_state(index: usize) -> SearchState {
     SearchState {
         offset: 0,
         v_token_found: false,
@@ -1231,12 +1230,7 @@ fn initialize_search_state(citation: &FullCaseCitationData) -> SearchState {
     }
 }
 
-fn scan_for_case_boundaries(
-    words: &Tokens,
-    citation: &FullCaseCitationData,
-    state: &mut SearchState,
-) {
-    let index = citation.resource.common.index;
+fn scan_for_case_boundaries(words: &Tokens, index: usize, state: &mut SearchState) {
     if index == 0 {
         return;
     }
@@ -1459,24 +1453,11 @@ fn process_case_name(
         .unwrap_or_else(|| citation.resource.common.token.start());
 
     if state.v_token_found {
-        let v_re = re_v_split();
-        let splits: Vec<&str> = v_re.splitn(&candidate, 2).collect();
-        let (plaintiff, defendant) = if splits.len() == 2 {
-            (splits[0].to_string(), splits[1].to_string())
-        } else {
-            (String::new(), splits[0].to_string())
-        };
-
-        let plaintiff = plaintiff.trim_matches(&[' ', ',', '('][..]).to_string();
-        // Remove lowercase words from plaintiff
-        let lc_re = re_lowercase_word();
-        let clean_plaintiff = lc_re.replace_all(&plaintiff, "").to_string();
-        let plaintiff = strip_stop_words(&clean_plaintiff);
+        let (plaintiff, defendant) = split_parties(&candidate);
         if !short {
             citation.metadata.plaintiff = Some(plaintiff).filter(|s| !s.is_empty());
         }
 
-        let defendant = strip_stop_words(&defendant);
         if !short {
             citation.metadata.defendant = Some(defendant.clone()).filter(|s| !s.is_empty());
         } else {
@@ -1506,6 +1487,50 @@ fn process_case_name(
     }
 
     set_pre_cite_year(citation, state);
+}
+
+/// A case name with a "v." split into its plaintiff and defendant, cleaned
+/// as a full citation's are: lowercase words dropped from the plaintiff
+/// ("see also Smith" is "Smith"), and stop words from both.
+fn split_parties(candidate: &str) -> (String, String) {
+    let splits: Vec<&str> = re_v_split().splitn(candidate, 2).collect();
+    let (plaintiff, defendant) = if splits.len() == 2 {
+        (splits[0], splits[1])
+    } else {
+        ("", splits[0])
+    };
+    let plaintiff = plaintiff.trim_matches(&[' ', ',', '('][..]);
+    let plaintiff = re_lowercase_word().replace_all(plaintiff, "");
+    (strip_stop_words(&plaintiff), strip_stop_words(defendant))
+}
+
+/// The case name a supra citation repeats, as `(plaintiff, defendant)`:
+/// "Mulholland v. United States, supra" is `("Mulholland", "United
+/// States")`. `index` is the supra token's word index. The words before it
+/// are scanned as a full case citation's are ([`find_case_name`]), and only
+/// a name with a "v." and both parties counts, since it is the plaintiff
+/// that tells two cases against one defendant apart. The scan passes over
+/// a supra, as a full citation's must ("Canning v. Lensink, supra, 221
+/// Conn. 351"), but a supra's name can't run back through another supra or
+/// id. citation ("Smith v. Jones, supra. Jones, supra" names no plaintiff).
+/// eyecite keeps only the word before "supra" (`antecedent_guess`); citare
+/// narrows a supra that word leaves ambiguous by the whole name
+/// ([`crate::resolve`]'s `resolve_supra_citation`).
+pub fn find_supra_case_name(words: &Tokens, index: usize) -> Option<(String, String)> {
+    let mut state = initialize_search_state(index);
+    scan_for_case_boundaries(words, index, &mut state);
+    if !state.v_token_found {
+        return None;
+    }
+    let start = state.start_index?.min(index);
+    if words[start..index]
+        .iter()
+        .any(|w| matches!(w, TokenOrStr::Token(Token::Supra(_) | Token::Id(_))))
+    {
+        return None;
+    }
+    let (plaintiff, defendant) = split_parties(state.candidate_case_name.as_deref()?);
+    (!plaintiff.is_empty() && !defendant.is_empty()).then_some((plaintiff, defendant))
 }
 
 // ---------------------------------------------------------------------------
