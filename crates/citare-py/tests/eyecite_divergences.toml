@@ -1,0 +1,96 @@
+# eyecite's tests that citare's Python API deliberately fails or can't run.
+#
+# tests/test_eyecite.py runs eyecite's own test suite from the upstream/eyecite submodule
+# (upstream/eyecite/tests) against citare. Each entry below is expected to fail: it is marked
+# xfail(strict=True), so the run fails if a listed test passes (the divergence is gone; remove
+# the entry) as well as when an unlisted test fails (fix citare, or add an entry here and its
+# section in docs/divergences.md). The run also fails on an entry that matches no test, or whose
+# doc isn't a section of docs/divergences.md.
+#
+#   test     eyecite's test id under upstream/eyecite/tests: a module ("test_RegexTest.py"),
+#            which covers its import and every test in it, or a test
+#            ("test_FindTest.py::FindTest::test_find_citations").
+#   subtest  optional: only the subtests of that test whose parameters include these values.
+#            eyecite's run_test_pairs names each pair by its input, {q = "..."}; checkResolution
+#            and checkReferenceResolution calls are subtests too, {call = "checkResolution(...)"}
+#            (eyecite_compat/suite.py, SUBTEST_HELPERS). Every tokenizer's run of a pair matches.
+#   reason   why citare fails it.
+#   doc      the docs/divergences.md section that explains it.
+#   issue    optional: the citare issue for a difference that is a bug, not a decision.
+
+[[divergence]]
+test = "test_RegexTest.py"
+reason = "tests eyecite.regexes with exrex and roman; citare's patterns are in Rust and the Python API doesn't expose them"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_TokenizeTest.py"
+reason = "tests eyecite's token classes, eyecite.regexes and reporters_db; citare's tokenizers don't return tokens to Python"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_AnnotateTest.py::AnnotateTest::test_tag_balancing"
+reason = "calls eyecite.utils.maybe_balance_style_tags, which citare's Python API doesn't expose"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_FindTest.py::FindTest::test_citation_filtering"
+reason = "calls eyecite.helpers.filter_citations, which citare's Python API doesn't expose"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_FindTest.py::FindTest::test_citation_in_parenthetical_does_not_emit_warning"
+reason = "patches eyecite.helpers.logger, which citare's Python API doesn't have"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_FindTest.py::FindTest::test_reference_extraction_using_resolved_names"
+reason = "calls eyecite.find.extract_reference_citations, which citare's Python API doesn't expose"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_ResolveTest.py::ResolveTest::test_reference_resolution"
+subtest = { call = "checkReferenceResolution([[0, 1], [2]], 'State v. Dze 3 U.S. 22; something something. In Doe at 122, something more. In State v. Doe 4 U.S. 33', 'Doe')" }
+reason = "with resolved_case_name_short, checkReferenceResolution calls eyecite.find.extract_reference_citations and eyecite.helpers.filter_citations, which citare's Python API doesn't expose"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_ResolveTest.py::ResolveTest::test_reference_resolution"
+subtest = { call = "checkReferenceResolution([[0], [1]], 'State v. Smlth 3 U.S. 22; something something. In State v. Smith 4 U.S. 33. In Smith at 122, something more', 'Smith')" }
+reason = "with resolved_case_name_short, checkReferenceResolution calls eyecite.find.extract_reference_citations and eyecite.helpers.filter_citations, which citare's Python API doesn't expose"
+doc = "docs/divergences.md#eyecite-suite-internals"
+
+[[divergence]]
+test = "test_ModelsTest.py::ModelsTest::test_persistent_hash"
+reason = "pins eyecite's hash values; citare's hashes are stable across runs but are its own numbers"
+doc = "docs/divergences.md#eyecite-suite-hashes"
+
+[[divergence]]
+test = "test_UtilsTest.py::UtilsTest::test_dump_citations"
+reason = "citare's dump_citations prints citare-core's description (spans, sorted groups, corrected reporter and edition guess, no pin_cite_span_end); test_api.py checks it"
+doc = "docs/divergences.md#eyecite-suite-dump"
+
+[[divergence]]
+test = "test_ResolveTest.py::ResolveTest::test_supra_resolution"
+subtest = { call = "checkResolution((0, 'Foo v. Bar, 1 U.S. 1.'), (1, 'Foo v. Bar, 1 U.S. 2.'), (None, 'Foo, supra, at 2.'))" }
+reason = "checkResolution finds each citation in its own text, so both full citations start at offset 0 under the same case name, which citare reads as one decision cited in parallel and resolves the supra to it; in one document they would have different case-name offsets, and test_api.py checks that neither short form resolves there"
+doc = "docs/divergences.md#supra-after-parallel"
+
+[[divergence]]
+test = "test_ResolveTest.py::ResolveTest::test_short_resolution"
+subtest = { call = "checkResolution((0, 'Foo v. Bar, 1 U.S. 1.'), (1, 'Foo v. Bar, 1 U.S. 2.'), (None, 'Foo, 1 U.S., at 2.'))" }
+reason = "checkResolution finds each citation in its own text, so both full citations start at offset 0 under the same case name, which citare reads as one decision cited in parallel and resolves the short form to it; in one document they would have different case-name offsets, and test_api.py checks that neither short form resolves there"
+doc = "docs/divergences.md#supra-after-parallel"
+
+[[divergence]]
+test = "test_FindTest.py::FindTest::test_markup_plaintiff_and_antecedent_guesses"
+subtest = { q = "this Court.\n  <em>\n   Holm; In Re Carroll’s Estate\n  </em>\n  (1921), 59 Mont. 403, 413." }
+reason = "citare takes the year printed between the case name and the volume, 1921; eyecite finds no year"
+doc = "docs/divergences.md#year-before-volume"
+
+[[divergence]]
+test = "test_FindTest.py::FindTest::test_disambiguate_citations"
+subtest = { q = "1 Wash. 1 (1890)" }
+reason = "citare finds Wash., as eyecite does, but citare's EDITIONS_LOOKUP lists Wash. Terr. first for 'Wash.', so eyecite's factory (EDITIONS_LOOKUP[reporter][0]) expects Wash. Terr."
+doc = "docs/divergences.md#eyecite-suite-bugs"
+issue = "https://github.com/codexpublicus/citare/issues/125"

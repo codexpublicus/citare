@@ -121,15 +121,23 @@ Gaps, which eyecite has and this package doesn't:
 
 ## Tests
 
-`tests/eyecite_port` is eyecite v2.7.8's own tests, from `upstream/eyecite/tests`, run against
-citare with the import swapped: `test_find_citations` and the law, journal and tax court tables,
-`test_custom_tokenizer`, `test_citation_fullspan`, the resolution tests, the model comparison and
-correction tests, `test_annotate` (plain text and markup), `test_long_diff`,
-`test_span_with_pincite` and the clean-text tests. Their provenance is engine tests: they show
-eyecite's API works unchanged, and they aren't ground truth for what citare should find. A case
-where citare differs on purpose is `xfail` with the reason. Tests that need eyecite's internals
-or hand-built citations are left out, and the factory-built comparisons in `test_models.py` use
-found citations instead.
+`tests/test_eyecite.py` runs eyecite's own test suite, the test modules in the `upstream/eyecite`
+submodule (eyecite v2.7.8's `tests/`), against citare's Python API. No copy of them is kept here:
+`tests/eyecite_compat` imports them from the submodule at test time with `import eyecite`
+resolving to citare, and stands in for `eyecite.test_factories` with factories that build
+citare's citation objects from eyecite's arguments. Their provenance is engine tests: they show
+eyecite's API works unchanged, and they aren't ground truth for what citare should find.
+
+The tests citare fails on purpose are listed in `tests/eyecite_divergences.toml`, each with its
+reason and its section of [docs/divergences.md](../../docs/divergences.md#eyecite-suite), and run
+as `xfail(strict=True)`. An entry can name a module, a test, or one subtest (one input of
+`run_test_pairs`, or one `checkResolution` call). The run fails when a listed test passes, when an
+unlisted one fails, and when an entry matches nothing. To add one, write its section in
+docs/divergences.md, then its entry, as [docs/divergences.md](../../docs/divergences.md#eyecite-suite)
+describes. Bumping the `upstream/eyecite` submodule re-runs everything: new tests run at once, and
+an entry for a test that changed or now passes fails until the list is updated. The suite needs
+the submodule (`git submodule update --init upstream/eyecite`) and pytest 9, which reports
+eyecite's `subTest`s one by one.
 
 `tests/test_api.py` is citare's own: spans over non-ASCII text, markup input, resolver
 callbacks and their arguments, errors raised from callbacks, tokenizers and extractors, and

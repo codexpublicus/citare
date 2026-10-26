@@ -223,6 +223,19 @@ def test_citations_from_several_texts():
     assert list(groups.values()) == [citations]
 
 
+def test_two_candidates_in_one_document():
+    """eyecite's test_supra_resolution and test_short_resolution cases with
+    two candidates, as one document: neither short form resolves. Found in
+    separate texts, as eyecite's checkResolution finds them, they resolve
+    (eyecite_divergences.toml)."""
+    for short in ("Foo, supra, at 2.", "Foo, 1 U.S., at 2."):
+        text = f"Foo v. Bar, 1 U.S. 1. Foo v. Bar, 1 U.S. 2. {short}"
+        citations = get_citations(text)
+        assert len(citations) == 3
+        groups = resolve_citations(citations)
+        assert [len(v) for v in groups.values()] == [1, 1]
+
+
 # ---------------------------------------------------------------------------
 # Cleaning and annotating
 # ---------------------------------------------------------------------------
