@@ -96,6 +96,13 @@ pub struct SupraMetadata {
     pub pin_cite_span_end: Option<usize>,
     pub antecedent_guess: Option<String>,
     pub volume: Option<String>,
+    /// The case name before "supra" when it has a "v.": "Mulholland v.
+    /// United States, supra" has plaintiff `Mulholland` and defendant
+    /// `United States`. citare's, not eyecite's: resolution narrows a supra
+    /// whose `antecedent_guess` matches more than one decision by it. Not in
+    /// [`Citation::metadata_fields`], which follows eyecite's metadata.
+    pub plaintiff: Option<String>,
+    pub defendant: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

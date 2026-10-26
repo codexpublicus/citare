@@ -36,6 +36,7 @@ on purpose, and how to list a new one, are under
 | [A case name starts after a sentence that ends in a parenthetical](#name-after-sentence) | #95 | drafted in [`name-after-sentence.md`](eyecite-issue-drafts/name-after-sentence.md) |
 | [A year outside every exact edition picks a variation's](#year-rules-out-exact) | #102 | drafted in [`year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md) |
 | [Inline markup doesn't split a word](#html-inline-join) | #121 | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
+| [A supra's case name decides between cases its last word matches](#supra-case-name) | #127 | drafted in [`supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -304,7 +305,8 @@ Celotex.
 left all 52 unresolved: every case it cites by supra was first cited in Conn. and A.2d or A.3d.
 With this change 45 resolve. The other 7 are `Cotto v. Board of Education, supra` and `Swanson
 v. Groton, supra`, whose antecedent guess is the defendant (`Education`, `Groton`), which two
-other cases in the opinion share; that ambiguity is real and is left alone. In a sample of 38
+other cases in the opinion share; [a supra's case name](#supra-case-name) can now tell such
+cases apart by their plaintiffs (the opinion hasn't been rerun). In a sample of 38
 recent opinions from A.3d, P.3d, N.E.3d, So. 3d, S.E.2d, S.W.3d and N.W.2d, eyecite and citare
 both resolved 13 of 49 supras; citare now resolves 35.
 
@@ -1058,6 +1060,85 @@ Not filed; a draft is in
 [#210](https://github.com/freelawproject/eyecite/issues/210) noted that its own cleaning puts a
 space between `Twombly` and the comma and widened the supra antecedent regex to allow it; the
 join itself is unchanged.
+
+<a id="supra-case-name"></a>
+## A supra's case name decides between cases its last word matches
+
+eyecite's antecedent guess for a supra is the one word before it, and the supra resolves only
+when the earlier full citations whose plaintiff or defendant contains that word are one
+decision. The word is often the end of a name many cases share: `States` in `Mulholland v.
+United States, supra`, `Co.` or `Inc.` after a corporate defendant, `Commissioner` in a Tax
+Court opinion, `r` in `Comm'r`. Then the supra resolves to nothing, though the name before it
+tells the cases apart.
+
+citare keeps the case name a supra repeats when it has a "v." (`plaintiff` and `defendant` on
+`SupraMetadata`, found by the same backward scan as a full citation's, and never through another
+supra or id. citation). Where eyecite's rule leaves the supra ambiguous, citare keeps the
+matches whose plaintiff is the supra's plaintiff, and if those are still more than one decision,
+the ones whose defendant is the supra's defendant too. Two party names are the same when one's
+words, lowercased and without punctuation, are a run of the other's (`Commissioner` and
+`Commissioner of Internal Revenue`, `O’Neil` and `O'Neil`). A supra eyecite's rule resolves
+keeps that resolution, and `antecedent_guess` is still eyecite's.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Mulholland v. United States, 28 Fed. Cl. 320 (1993). American Auto. Association v. United States, 367 U.S. 687 (1961). See Mulholland v. United States, supra.` | **unresolved** | `28 Fed. Cl. 320` |
+| `Franchi v. Farmholme, Inc., 191 Conn. 201 (1983); Swanson v. Groton, Inc., 1 Conn. 2 (1990). Franchi v. Farmholme, Inc., supra.` | **unresolved** | `191 Conn. 201` |
+| `Weishan v. Commissioner, 97 T.C. 1 (1991); Lindsey v. Commissioner, 98 T.C. 2 (1992). See Weishan v. Comm'r, supra.` | **unresolved** | `97 T.C. 1` |
+| `Mulholland v. United States, 28 Fed. Cl. 320 (1993). American Auto. Association v. United States, 367 U.S. 687 (1961). United States, supra.` | unresolved | unresolved (no plaintiff) |
+| `State v. O'Neil, 261 Conn. 49 (2002); State v. O'Neil, 262 Conn. 1 (2002). State v. O'Neil, supra.` | unresolved | unresolved (two decisions, one name) |
+
+The `Cotto v. Board of Education, supra` and `Swanson v. Groton, supra` that
+[Supra after parallel citations](#supra-after-parallel) leaves unresolved in Brooks v. Powers
+are supras of this kind, whose antecedent guess is a defendant other cases share; I haven't
+rerun that opinion.
+
+### Evidence
+
+Over citation-bench's stare.pub sample (`stare-pub-v2026.10.22`, 1,000 opinions, 771 supras),
+citare resolved 296 supras before and 417 after, and 3 more id. citations (the ones after a
+newly resolved supra). Over the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60
+and Hun 1-40 (65,670 opinions, 13,544 supras), it resolves 1,219 more supras; with the
+Civil Procedure Reports forms that came with this change
+([reporters-local.md](reporters-local.md#new-york-civil-procedure-reports)), 28 of them resolve
+to a citation that is new. No supra or id. citation that resolved before resolves to a different
+case. Three supras and one id. citation that resolved before no longer do, all in the CAP
+sample, where the newly found Civil Procedure Reports citations add a match: two supras and the
+id. citation had resolved to the wrong case (`Wooden v. W. N. Y. & P. R. R. Co., supra` to
+`Usher v. W. J. R. Co.`), and the third, `Matter of Anthony & Co. (supra)`, had no "v." to
+narrow by. Two id. citations written `12 id. 323`, `id.` for the reporter just named, move from
+one wrong citation to another.
+
+I read 70 of the newly resolved supras in context, picked at random: 30 from the stare.pub
+sample, 30 from the CAP sample and 10 of the 28 that resolve to a Civil Procedure Reports
+citation. Each resolves to the case it names (`Grooms v. Commissioner, supra` to `T.C. Memo
+1992-291`, `Bushby v. N. Y., L. E. & W. R. R. Co. supra` to `107 N. Y. 374`, `O’Shea v. McLear,
+supra` to `15 Civ. Pro. 69`). In one, a Connecticut `Canning v. Lensink, supra, 221 Conn. 351`,
+the citation it resolves to is the repeated cite after it, `221 Conn. 351`, rather than the
+first full citation, `221 Conn. 346`, which the opinion spells `Cannine`; 9 of the 121 new
+resolutions in the stare.pub sample and 1 of the 1,219 in the CAP sample are to such a repeated
+cite, as 5 of the 296 earlier ones already were.
+
+Of the stare.pub sample's 354 supras still unresolved, 90 match more than one decision with no
+name to decide by or two decisions of one name, 134 are of a statute, footnote, treatise or
+record (`Canon 9, supra`, `3 Mallen, supra`), 96 have no antecedent guess, 27 name a case citare
+doesn't find, and 7 have their full citation only later in the text, in a footnote CAP's text
+puts after the opinion.
+
+### Tests
+
+- `crates/citare-core/src/resolve.rs`: `test_supra_narrowed_by_case_name` (the first and fourth
+  rows), `test_supra_narrowed_by_plaintiff` (`Comm'r`, and two decisions named `State v.
+  O'Neil` with a curly apostrophe in the supra) and `test_supra_of_civ_pro_citation` (#127's
+  example).
+- `crates/citare-core/src/find.rs`: `test_supra_case_name`.
+- citation-bench: none yet; the table's rows can become `resolve` vectors in
+  `vectors/divergences/`.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md).
 
 <a id="eyecite-suite"></a>
 ## eyecite's test suite against the Python API

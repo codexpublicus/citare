@@ -556,6 +556,8 @@ fn extract_supra_citation(words: &Tokens, index: usize) -> Citation {
         antecedent_length = m.end - m.start;
     }
 
+    let (plaintiff, defendant) = crate::helpers::find_supra_case_name(words, index).unzip();
+
     let common = CitationCommon {
         token: token.clone(),
         index,
@@ -573,6 +575,8 @@ fn extract_supra_citation(words: &Tokens, index: usize) -> Citation {
             pin_cite,
             parenthetical,
             volume,
+            plaintiff,
+            defendant,
             ..Default::default()
         },
     })
@@ -2137,5 +2141,37 @@ mod tests {
         let rc = cites[0].resource_common().unwrap();
         assert_eq!(rc.all_editions.len(), 2);
         assert_ne!(rc.all_editions[0], rc.all_editions[1]);
+    }
+
+    // A supra keeps the case name it repeats, when it has a "v.", for
+    // resolution to narrow by (#127); `antecedent_guess` stays eyecite's.
+    #[test]
+    fn test_supra_case_name() {
+        let parties = |text: &str| {
+            get_citations(text, false, "", &[])
+                .into_iter()
+                .filter_map(|c| match c {
+                    Citation::Supra(d) => Some((
+                        d.metadata.antecedent_guess,
+                        d.metadata.plaintiff,
+                        d.metadata.defendant,
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(
+            parties("It is not. See Mulholland v. United States, supra, at 3."),
+            [(some("States"), some("Mulholland"), some("United States"))]
+        );
+        assert_eq!(
+            parties("Commissioner v. Sunnen, supra; see also Franchi v. Farmholme, Inc., supra."),
+            [
+                (some("Sunnen"), some("Commissioner"), some("Sunnen")),
+                (some("Inc."), some("Franchi"), some("Farmholme, Inc.")),
+            ]
+        );
+        assert_eq!(parties("Foo, supra, at 2."), [(some("Foo"), None, None)]);
     }
 }
