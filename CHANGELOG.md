@@ -4,6 +4,16 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.5 - 2026-10-26
+
+### Fixes
+
+- *(resolve)* Narrow a supra by the case name in front of it, and read Civ. Pro. ([#128](https://github.com/codexpublicus/citare/pull/128))
+
+### Documentation
+
+- Acknowledge eyecite as prior work, not as a source of citare's code ([#123](https://github.com/codexpublicus/citare/pull/123))
+
 ## v0.7.4 - 2026-10-25
 
 ### Fixes
