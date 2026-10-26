@@ -16,6 +16,10 @@ eyecite's answer is wrong. An entry has:
 
 A new divergence goes in this file before it's merged, with all four.
 
+The Python package also runs eyecite's own test suite against citare's API. The tests it fails
+on purpose, and how to list a new one, are under
+[eyecite's test suite against the Python API](#eyecite-suite).
+
 | Entry | Since | eyecite issue |
 |---|---|---|
 | [`§` pin cites on `Id.` and `Ibid.`](#id-section-pin) | #41, #48 | [freelawproject/eyecite#299](https://github.com/freelawproject/eyecite/issues/299); follow-up drafted in [`id-section-pin.md`](eyecite-issue-drafts/id-section-pin.md) |
@@ -1054,3 +1058,72 @@ Not filed; a draft is in
 [#210](https://github.com/freelawproject/eyecite/issues/210) noted that its own cleaning puts a
 space between `Twombly` and the comma and widened the supra antecedent regex to allow it; the
 join itself is unchanged.
+
+<a id="eyecite-suite"></a>
+## eyecite's test suite against the Python API
+
+The Python package runs eyecite's own test suite, the test modules in the `upstream/eyecite`
+submodule (`upstream/eyecite/tests`), against citare's Python API: `crates/citare-py/tests/test_eyecite.py`
+collects them at test time with `import eyecite` resolving to citare
+(`crates/citare-py/tests/eyecite_compat/`), and no copy of them is kept in this repository.
+eyecite's `test_factories` build citations by hand, which citare's API can't, so a stand-in of
+citare's (`eyecite_compat/factories.py`) takes their arguments and builds citare's citation
+objects.
+
+The tests citare fails on purpose are listed in
+[`crates/citare-py/tests/eyecite_divergences.toml`](../crates/citare-py/tests/eyecite_divergences.toml),
+each with its reason and a link to its section of this file, and run as `xfail(strict=True)`.
+An entry names a test module, a test, or the subtests of a test whose parameters match (one
+`run_test_pairs` input, or one `checkResolution` call). The run fails when a listed test
+passes, when an unlisted one fails, and when an entry matches nothing or links to no section
+here, so a fixed divergence and a new one both show up.
+
+To add a divergence: write its section in this file first (a behaviour difference gets the
+input, evidence, tests and upstream report the other entries have), then add an entry to
+`eyecite_divergences.toml` with the test id, the narrowest `subtest` that covers it, the reason
+and the `doc` link. A difference that is a bug, not a decision, gets a citare issue in `issue`
+and is listed under [bugs](#eyecite-suite-bugs) until it's fixed.
+
+Bumping the `upstream/eyecite` submodule re-runs everything against the new tests: new tests and
+new pairs run as soon as the submodule moves, and an entry whose test was renamed, removed or
+now passes fails the run until the list is updated.
+
+The entries that aren't behaviour differences covered above:
+
+<a id="eyecite-suite-internals"></a>
+### eyecite's internals
+
+Tests that call or patch eyecite's internal functions fail, because citare's Python API has
+eyecite's public functions and classes but not its internals (the
+[gaps](../crates/citare-py/README.md#where-it-differs-from-eyecite) in the package's README):
+`eyecite.regexes` (`test_RegexTest.py`), the token classes and a tokenizer's `tokenize()` output
+(`test_TokenizeTest.py`, which also needs `reporters_db`), `eyecite.utils.maybe_balance_style_tags`
+(`test_tag_balancing`), `eyecite.helpers.filter_citations` (`test_citation_filtering`),
+`eyecite.helpers.logger` (`test_citation_in_parenthetical_does_not_emit_warning`) and
+`eyecite.find.extract_reference_citations` (`test_reference_extraction_using_resolved_names` and
+the two `checkReferenceResolution` calls with `resolved_case_name_short`). The `eyecite` module
+the suite sees has these three functions only so the modules that import them load; calling one
+raises `NotImplementedError`.
+
+<a id="eyecite-suite-hashes"></a>
+### Hash values
+
+citare's citation and resource hashes are stable across runs but aren't eyecite's numbers, so
+`test_persistent_hash`, which pins eyecite's values, fails. The comparison tests in
+`test_ModelsTest.py`, which check which citations hash alike, pass.
+
+<a id="eyecite-suite-dump"></a>
+### `dump_citations` output
+
+citare's `dump_citations` prints citare-core's description of each citation: its span (UTF-8
+byte offsets), the groups sorted, the metadata, the year, the corrected reporter and the edition
+guess, without `pin_cite_span_end`. eyecite's `test_dump_citations` expects eyecite's layout;
+`crates/citare-py/tests/test_api.py` checks citare's.
+
+<a id="eyecite-suite-bugs"></a>
+### Bugs
+
+- [citare#125](https://github.com/codexpublicus/citare/issues/125): `EDITIONS_LOOKUP` lists a
+  reporter string's editions in a different order from eyecite's for 23 strings. eyecite's test
+  factories expect `EDITIONS_LOOKUP[reporter][0]`, so `test_disambiguate_citations` expects
+  `Wash. Terr.` for `1 Wash. 1 (1890)`, where eyecite and citare both find `Wash.`.

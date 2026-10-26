@@ -20,7 +20,8 @@ classifiers = [
 Repository = "https://github.com/codexpublicus/citare"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+# pytest 9 reports unittest subtests, which eyecite's tests use (tests/test_eyecite.py).
+dev = ["pytest>=9", "tomli>=2; python_version < '3.11'"]
 
 [tool.maturin]
 python-source = "python"

@@ -114,9 +114,11 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm --no-default-features
 
   # The Python package (crates/citare-py): build the abi3 wheel with maturin, then
-  # run its pytest suite (citare's tests and the eyecite tests it runs) against
-  # the installed wheel on the oldest and newest CPython it supports. Nothing is
-  # published.
+  # run its pytest suite against the installed wheel on the oldest and newest
+  # CPython it supports: citare's own tests, and eyecite's own test suite from the
+  # upstream/eyecite submodule run against citare's API, with the tests citare
+  # fails on purpose in crates/citare-py/tests/eyecite_divergences.toml. Nothing
+  # is published.
   python:
     name: Python package
     runs-on: homelab
@@ -152,7 +154,7 @@ jobs:
           for py in 3.10 3.13; do
             echo "::group::CPython $py"
             uv venv --python "$py" "$RUNNER_TEMP/venv-$py"
-            VIRTUAL_ENV="$RUNNER_TEMP/venv-$py" uv pip install dist/*.whl 'pytest>=8'
+            VIRTUAL_ENV="$RUNNER_TEMP/venv-$py" uv pip install dist/*.whl 'pytest>=9' 'tomli>=2; python_version < "3.11"'
             "$RUNNER_TEMP/venv-$py/bin/python" -m pytest crates/citare-py/tests -q
             echo "::endgroup::"
           done

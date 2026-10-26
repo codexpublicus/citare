@@ -352,6 +352,6 @@ citare's design was informed by [eyecite](https://github.com/freelawproject/eyec
 against eyecite's. eyecite is the `upstream/eyecite` git submodule (v2.7.8), used for parity
 tests and benchmarking ([citation-bench](https://github.com/codexpublicus/citation-bench)),
 and [docs/divergences.md](docs/divergences.md) compares the two where they differ. The
-Python package's compatibility tests run eyecite's own test cases against citare's API
-([crates/citare-py/README.md](crates/citare-py/README.md#tests)). citare's library and
+Python package's compatibility tests run eyecite's own test suite from the `upstream/eyecite`
+submodule against citare's API ([crates/citare-py/README.md](crates/citare-py/README.md#tests)). citare's library and
 bindings contain no eyecite code.
