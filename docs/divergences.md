@@ -1098,7 +1098,7 @@ rerun that opinion.
 Over citation-bench's stare.pub sample (`stare-pub-v2026.10.22`, 1,000 opinions, 771 supras),
 citare resolved 296 supras before and 417 after, and 3 more id. citations (the ones after a
 newly resolved supra). Over the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60
-and Hun 1-40 (65,670 opinions, 13,544 supras), it resolves 1,219 more supras; with the
+and Hun 1-40 (65,670 opinions, 13,547 supras), it resolves 1,219 more supras; with the
 Civil Procedure Reports forms that came with this change
 ([reporters-local.md](reporters-local.md#new-york-civil-procedure-reports)), 28 of them resolve
 to a citation that is new. No supra or id. citation that resolved before resolves to a different

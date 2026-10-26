@@ -49,5 +49,5 @@ Internal Revenue`. The scan has to stop at an earlier `supra` or `Id.`: `find_ca
 over `supra` on purpose (`Canning v. Lensink, supra, 221 Conn. 351`), and in `Smith v. Jones,
 supra. Jones, supra.` it would give the second supra the first one's plaintiff. A supra the
 current rule resolves keeps its resolution. In citare, a Rust citation extractor that had
-eyecite's rule, this resolves 121 more of the 771 supras, and 1,219 more of 13,544 in 65,670
+eyecite's rule, this resolves 121 more of the 771 supras, and 1,219 more of 13,547 in 65,670
 New York opinions, with none moving to a different case.
