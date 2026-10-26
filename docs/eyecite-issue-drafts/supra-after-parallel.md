@@ -31,7 +31,7 @@ for text in [
 
 The id. citation after the supra is lost with it. State court opinions cite almost everything in
 parallel, so this is most supras in them: in 138 A.3d 1012 (Brooks v. Powers, Conn. App. 2016)
-all 52 are unresolved. In citare, a Rust port of eyecite with the same rule, resolving them as
+all 52 are unresolved. In citare, a Rust citation extractor that had the same rule, resolving them as
 below takes the supras that resolve on the ten-percent CourtListener sample eyecite's benchmark
 uses from 1,227 of 5,140 to 2,263.
 

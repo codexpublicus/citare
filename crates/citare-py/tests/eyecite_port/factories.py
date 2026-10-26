@@ -1,4 +1,4 @@
-"""Expected citations for the ported eyecite tests.
+"""Expected citations for the eyecite tests run against citare.
 
 eyecite's tests build expected citations with ``eyecite.test_factories``
 and compare their groups, metadata, year and corrected reporter with what

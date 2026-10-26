@@ -114,7 +114,7 @@ jobs:
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm --no-default-features
 
   # The Python package (crates/citare-py): build the abi3 wheel with maturin, then
-  # run its pytest suite (citare's tests and the eyecite tests it ports) against
+  # run its pytest suite (citare's tests and the eyecite tests it runs) against
   # the installed wheel on the oldest and newest CPython it supports. Nothing is
   # published.
   python:

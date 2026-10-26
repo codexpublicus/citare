@@ -1,6 +1,6 @@
 //! Tokenizer: extract citation tokens from legal text.
 //!
-//! Ported from eyecite's `tokenizers.py`. Provides both a simple [`Tokenizer`]
+//! The counterpart of eyecite's `tokenizers.py`. Provides both a simple [`Tokenizer`]
 //! and a performance-optimised [`AhocorasickTokenizer`] that pre-filters
 //! extractors using Aho-Corasick string matching.
 
@@ -839,7 +839,7 @@ mod tests {
         assert_eq!(strs, vec!["hello"]);
     }
 
-    /// Port of eyecite's updated `test_extractor_filter` (eyecite #305): the
+    /// Mirrors eyecite's updated `test_extractor_filter` (eyecite #305): the
     /// prefilter matches whitespace-insensitively, so the compact `U.S.` in
     /// the text also selects the extractors for spaced variations like
     /// `U. S.`, and spaced text selects the compact reporter's extractor.
@@ -953,7 +953,7 @@ mod tests {
         }
     }
 
-    /// Port of eyecite's updated `test_tokenize`: "U. S." is both a
+    /// Mirrors eyecite's updated `test_tokenize`: "U. S." is both a
     /// registered variation and, with relaxed whitespace, an exact match for
     /// "U.S.". The overlapping matches merge into one token that keeps the
     /// edition as an exact match only (eyecite #317).

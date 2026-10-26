@@ -1,6 +1,6 @@
 //! Regex patterns for legal citation extraction.
 //!
-//! Ported from eyecite's `regexes.py`. Tokenizer regexes use the standard
+//! The counterpart of eyecite's `regexes.py`. Tokenizer regexes use the standard
 //! `regex` crate. Metadata regexes (which require lookahead) use `fancy-regex`.
 //!
 //! Some Python regexes have duplicate named capture groups across alternation

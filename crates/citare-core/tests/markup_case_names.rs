@@ -1,5 +1,5 @@
-//! Markup-aware case names and references, ported from eyecite 2.7.8
-//! `tests/test_FindTest.py`.
+//! Markup-aware case names and references, after the cases in eyecite
+//! 2.7.8's `tests/test_FindTest.py`.
 
 use citare_core::{get_citations, Citation, CleanStep};
 

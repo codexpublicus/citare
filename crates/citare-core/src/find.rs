@@ -1,7 +1,7 @@
 //! Citation finding pipeline.
 //!
 //! This is the main entry point for extracting citations from legal text.
-//! Ported from eyecite's `find.py`.
+//! The counterpart of eyecite's `find.py`.
 
 use std::collections::HashMap;
 
@@ -1424,7 +1424,7 @@ mod tests {
         }
     }
 
-    // Ported from eyecite tests/test_FindTest.py: a page made only of
+    // Mirrors eyecite tests/test_FindTest.py: a page made only of
     // underscores is a known-missing page and is normalized to None.
     #[test]
     fn test_blank_page_is_none() {
@@ -1493,7 +1493,7 @@ mod tests {
             .collect()
     }
 
-    // Ported from eyecite tests/test_FindTest.py: a reference citation
+    // Mirrors eyecite tests/test_FindTest.py: a reference citation
     // carries its pin cite and only the party name that matched.
     #[test]
     fn test_reference_citation_plaintiff_and_pin_cite() {
@@ -1565,7 +1565,7 @@ mod tests {
         assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 795"));
     }
 
-    // Ported from eyecite test_reference_extraction_using_resolved_names:
+    // Mirrors eyecite test_reference_extraction_using_resolved_names:
     // resolved case names are also used to find references.
     #[test]
     fn test_reference_extraction_using_resolved_names() {
@@ -1593,7 +1593,7 @@ mod tests {
         }
     }
 
-    // Ported from eyecite: a "v." at the very start of the input leaves no
+    // Mirrors an eyecite test: a "v." at the very start of the input leaves no
     // case name, so the party falls through to antecedent_guess.
     #[test]
     fn test_missing_plaintiff_at_start_of_input() {
@@ -1999,7 +1999,7 @@ mod tests {
         assert!(!cites[0].is_ambiguous(), "U.S. should not be ambiguous");
     }
 
-    /// Port of eyecite's `test_relaxed_reporter_whitespace` (eyecite #305):
+    /// Mirrors eyecite's `test_relaxed_reporter_whitespace` (eyecite #305):
     /// reporters printed with spaced-out abbreviations still match, while
     /// periods stay mandatory.
     #[test]
@@ -2109,7 +2109,7 @@ mod tests {
         assert!(get_citations("123 N Y S 2d 456", false, "", &[]).is_empty());
     }
 
-    /// Port of eyecite's `test_no_duplicate_editions` (eyecite #317): the
+    /// Mirrors eyecite's `test_no_duplicate_editions` (eyecite #317): the
     /// same edition is never listed twice in `all_editions`, but genuine
     /// ambiguity between distinct editions is preserved.
     #[test]
