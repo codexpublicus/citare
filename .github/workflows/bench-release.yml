@@ -42,8 +42,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Runs on the self-hosted homelab runners, so release speeds compare with eyecite's
+  # stored runs, which were timed there. Its only triggers are a manual dispatch, which
+  # needs write access, and release-plz.yml's call on a push to main; the guard keeps it
+  # to those in this repository, so no fork or fork PR reaches the runner or the
+  # CITATION_BENCH_DEPLOY_KEY secret.
   bench:
     name: Benchmark ${{ inputs.tag }}
+    if: >-
+      github.repository == 'codexpublicus/citare'
+      && (github.event_name == 'workflow_dispatch'
+          || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: homelab
     timeout-minutes: 120
     permissions:
@@ -196,12 +205,13 @@ jobs:
           path: ${{ runner.temp }}/assets/
           retention-days: 1
 
-  # Holds the write token, and runs none of the benchmarked code.
+  # Holds the write token, and runs none of the benchmarked code, so a GitHub-hosted
+  # runner does.
   publish:
     name: Attach to ${{ inputs.tag }}
     needs: bench
     if: inputs.publish
-    runs-on: homelab
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write

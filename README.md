@@ -331,15 +331,25 @@ gh workflow run bench-release.yml -f tag=v0.4.1 -f publish=false  # report only
 
 ## CI runners
 
-Every workflow job runs on the org's self-hosted `homelab` runners (`runs-on: homelab`,
-from lokkju/infra's GARM setup): one ephemeral pod per job, on an actions-runner image
-with gh, git, curl, jq, build-essential and pkg-config and no passwordless sudo.
-`.github/actions/homelab-setup` checks for the C toolchain and pkg-config the Rust jobs
-need and fails, naming what's missing, if the image lacks them and sudo doesn't work;
-rustup, mise and uv come from their own actions.
+CI (`ci.yml`), the PR title check and the release workflow run on GitHub-hosted
+`ubuntu-latest` runners. A `pull_request` workflow runs the PR's own copy of its file, so
+nothing a PR can start runs on a self-hosted runner. A fork's PR gets no secrets, so the
+parity job skips there with a notice; `CITATION_BENCH_DEPLOY_KEY` and the yeet App's key
+must never reach a job a fork can start.
+
+The release benchmark's `bench` job (`bench-release.yml`) is the one job on the org's
+self-hosted `homelab` runners (`runs-on: homelab`): one ephemeral pod per job, on an
+actions-runner image with gh, git, curl, jq, build-essential and pkg-config and no
+passwordless sudo. It starts only from a manual dispatch or from `release-plz.yml` on a
+push to main, and a job guard holds it to those in this repository.
+`.github/actions/homelab-setup` checks for the C toolchain and pkg-config it needs and
+fails, naming what's missing, if the image lacks them and sudo doesn't work; rustup, mise
+and uv come from their own actions.
+
 Benchmark speeds depend on the machine, so each report names the runner it ran on.
-eyecite's stored runs in citation-bench were timed on GitHub-hosted runners, so ms/KB
-comparisons with eyecite cross machine types until those runs are re-baselined on homelab.
+eyecite's stored runs in citation-bench and the release runs attached since v0.5.1 were
+timed on homelab, so the PR report's ms/KB comparisons, from a GitHub-hosted runner,
+cross machine types.
 
 ## License
 
