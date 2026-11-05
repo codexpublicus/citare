@@ -187,7 +187,7 @@ jobs:
     permissions:
       contents: read
     env:
-      # The deploy key comes from codexpublicus/infra. Until it exists the job skips
+      # The deploy key is a repository secret. Until it exists the job skips
       # rather than failing; a secret can't be tested in `if:` directly.
       HAS_BENCH_KEY: ${{ secrets.CITATION_BENCH_DEPLOY_KEY != '' }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/citation-bench
@@ -195,7 +195,7 @@ jobs:
       - name: Skip without the citation-bench deploy key
         if: env.HAS_BENCH_KEY != 'true'
         run: |
-          msg="CITATION_BENCH_DEPLOY_KEY is not set, so the citation-bench parity check was skipped. codexpublicus/infra provisions it."
+          msg="CITATION_BENCH_DEPLOY_KEY is not set, so the citation-bench parity check was skipped. Add it as a repository secret to run it."
           echo "::notice title=Parity skipped::$msg"
           echo "$msg" >> "$GITHUB_STEP_SUMMARY"
 

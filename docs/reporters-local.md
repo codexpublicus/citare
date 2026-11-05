@@ -209,9 +209,8 @@ and now have the journal's.
 reporters-db has one entry for the Fiduciary Reporter (Pa.), `Pa. Fid.`, "Pennsylvania Fiduciary
 Reporter", dated 1977 to 1981. Those are the decision dates of the one volume CAP has, `pa-fid`
 (volume 1, published 1981 by Geo. T. Bisel, nominative reporter "Smith & Aker", 93 cases dated
-1977-02-10 to 1981-11-03, which CAP cites as `1 Pa. Fid. 1`). stare-builder had to treat `pa-fid`
-as running to keep its closed-series filter from cutting it off at 1981
-([stare-builder#45](https://github.com/codexpublicus/stare-builder/issues/45)).
+1977-02-10 to 1981-11-03, which CAP cites as `1 Pa. Fid. 1`). stare.pub's index build had to treat `pa-fid`
+as running to keep its closed-series filter from cutting it off at 1981.
 
 The Fiduciary Reporter has four series (Geo. T. Bisel; selected decisions of the Pennsylvania
 orphans' courts on trusts and decedents' estates):
@@ -255,8 +254,8 @@ Courts write the first series `Fiduc. Rep.` far more than anything else (volumes
 | `Fidu. Rep.`, `Fiduc. Reptr.`, `Fid. Reptr.`, `Fiduciary Reptr.`, `Fid. Reporter` (and `2d`) | 8 | 1 |
 | `Fiduciary`, `Fiduc.`, `Fid.`, `Fid. 2d` and misprints (`Fidue. Rep.`, `Fid Rep. 2d`) | 24 | 6 |
 
-CourtListener's opinions outside CAP (the 2026-09-30 export's 924,551 opinions that stare-builder
-stages) add `Fiduc. Rep. 2d` five times, `Fiduc.Rep.` three times and `Fiduc.Rep.2d` and
+CourtListener's opinions outside CAP (the 2026-09-30 export's 924,551 opinions that stare.pub
+indexes) add `Fiduc. Rep. 2d` five times, `Fiduc.Rep.` three times and `Fiduc.Rep.2d` and
 `Fid.Rep.2d` once each; none of CAP's opinions is recent enough to cite the third or fourth series.
 
 reporters-local.json corrects `Pa. Fid.` to the second series (volumes 1 to 30, ending in 2010;

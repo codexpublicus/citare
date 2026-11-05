@@ -3,7 +3,7 @@ description: >-
   Checks for what a Rust build needs from the homelab runner image: a C toolchain
   (cargo links with cc, and build scripts compile with it) and pkg-config, plus any
   extra packages a job names. The image has build-essential and pkg-config
-  (lokkju/infra#81) but no passwordless sudo (lokkju/infra#105), so this only tries
+  but no passwordless sudo, so this only tries
   `sudo -n apt-get` for missing packages and fails naming them if it can't. rustup,
   mise and uv come from their own actions.
 
@@ -52,7 +52,7 @@ runs:
         elif sudo -n true 2>/dev/null; then
           sudo=(sudo -n)
         else
-          echo "::error::the runner image lacks ${missing[*]} and has no passwordless sudo to install them (lokkju/infra#105); add them to homelab/images/garm-runner/Dockerfile in lokkju/infra"
+          echo "::error::the runner image lacks ${missing[*]} and has no passwordless sudo to install them; add them to the runner image"
           exit 1
         fi
         echo "installing ${missing[*]}"

@@ -305,8 +305,8 @@ aho-corasick = "1"
 - [ ] **Step 2: Commit**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare add Cargo.toml
-git -C /home/lokkju/projects/lokkju/citare commit -m "feat: initialize Cargo workspace"
+git add Cargo.toml
+git commit -m "feat: initialize Cargo workspace"
 ```
 
 #### Task 1.2: Create citare-core crate skeleton
@@ -386,8 +386,8 @@ Expected: compiles with no errors (just empty modules)
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare add crates/citare-core/
-git -C /home/lokkju/projects/lokkju/citare commit -m "feat: add citare-core crate skeleton"
+git add crates/citare-core/
+git commit -m "feat: add citare-core crate skeleton"
 ```
 
 #### Task 1.3: Create citare-wasm crate skeleton
@@ -436,8 +436,8 @@ pub fn get_citations(_text: &str) -> JsValue {
 - [ ] **Step 3: Commit**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare add crates/citare-wasm/
-git -C /home/lokkju/projects/lokkju/citare commit -m "feat: add citare-wasm crate skeleton"
+git add crates/citare-wasm/
+git commit -m "feat: add citare-wasm crate skeleton"
 ```
 
 #### Task 1.4: Create citare-data-build crate skeleton
@@ -480,8 +480,8 @@ pub mod template;
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare add crates/citare-data-build/
-git -C /home/lokkju/projects/lokkju/citare commit -m "feat: add citare-data-build crate skeleton"
+git add crates/citare-data-build/
+git commit -m "feat: add citare-data-build crate skeleton"
 ```
 
 #### Task 1.5: Add git submodules
@@ -489,26 +489,26 @@ git -C /home/lokkju/projects/lokkju/citare commit -m "feat: add citare-data-buil
 - [ ] **Step 1: Add eyecite as reference submodule**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare submodule add https://github.com/freelawproject/eyecite.git upstream/eyecite
+git submodule add https://github.com/freelawproject/eyecite.git upstream/eyecite
 ```
 
 - [ ] **Step 2: Add reporters-db**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare submodule add https://github.com/freelawproject/reporters-db.git data/reporters-db
+git submodule add https://github.com/freelawproject/reporters-db.git data/reporters-db
 ```
 
 - [ ] **Step 3: Add courts-db**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare submodule add https://github.com/freelawproject/courts-db.git data/courts-db
+git submodule add https://github.com/freelawproject/courts-db.git data/courts-db
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /home/lokkju/projects/lokkju/citare add .gitmodules upstream/ data/
-git -C /home/lokkju/projects/lokkju/citare commit -m "feat: add upstream submodules (eyecite, reporters-db, courts-db)"
+git add .gitmodules upstream/ data/
+git commit -m "feat: add upstream submodules (eyecite, reporters-db, courts-db)"
 ```
 
 #### Task 1.6–1.9: Boilerplate
