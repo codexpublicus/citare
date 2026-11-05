@@ -338,7 +338,7 @@ parity job skips there with a notice; `CITATION_BENCH_DEPLOY_KEY` and the yeet A
 must never reach a job a fork can start.
 
 The release benchmark's `bench` job (`bench-release.yml`) is the one job on the org's
-self-hosted `homelab` runners (`runs-on: homelab`): one ephemeral pod per job, on an
+self-hosted homelab runners (`runs-on: homelab-public`): one ephemeral pod per job, on an
 actions-runner image with gh, git, curl, jq, build-essential and pkg-config and no
 passwordless sudo. It starts only from a manual dispatch or from `release-plz.yml` on a
 push to main, and a job guard holds it to those in this repository.
