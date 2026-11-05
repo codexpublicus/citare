@@ -353,7 +353,12 @@ cross machine types.
 
 ## License
 
-[Polyform Shield 1.0.0](LICENSE.md)
+citare's code is under [PolyForm Shield 1.0.0](LICENSE.md). Its supplements to
+reporters-db, [`data/reporters-local.json`](data/reporters-local.json) and
+[`data/laws-local.json`](data/laws-local.json), are under
+[CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) ([data/README.md](data/README.md)).
+reporters-db's and courts-db's copyright notices and BSD 2-Clause licence, for the JSON
+compiled into the data bundle, are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Acknowledgments
 
