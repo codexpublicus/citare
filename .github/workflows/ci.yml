@@ -12,13 +12,11 @@ env:
 jobs:
   test:
     name: Test
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: ./.github/actions/homelab-setup
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -30,22 +28,20 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homelab-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-homelab-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Run tests
         run: cargo test --workspace
 
   clippy:
     name: Clippy
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: ./.github/actions/homelab-setup
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -59,16 +55,16 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homelab-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-homelab-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   fmt:
     name: Rustfmt
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -82,13 +78,11 @@ jobs:
 
   wasm:
     name: WASM Build
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: ./.github/actions/homelab-setup
 
       - name: Install Rust stable with wasm32 target
         uses: dtolnay/rust-toolchain@stable
@@ -102,9 +96,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homelab-cargo-wasm-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-homelab-cargo-wasm-
+            ${{ runner.os }}-cargo-wasm-
 
       - name: Build WASM
         run: cargo build --release --target wasm32-unknown-unknown -p citare-wasm
@@ -121,13 +115,11 @@ jobs:
   # is published.
   python:
     name: Python package
-    runs-on: homelab
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - uses: ./.github/actions/homelab-setup
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -139,9 +131,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homelab-cargo-python-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-homelab-cargo-python-
+            ${{ runner.os }}-cargo-python-
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
@@ -181,9 +173,16 @@ jobs:
   # `CITARE_PATH=<this checkout> mise run bench:citare` and
   # `CITARE_PATH=<this checkout> mise run bench:divergences citare` in citation-bench at
   # that commit, and update the file in its own PR.
+  #
+  # Every job in this workflow runs on GitHub-hosted runners, because a pull_request
+  # workflow runs the PR's own copy of this file and so can't be kept off a self-hosted
+  # runner from inside it. GitHub gives a fork's PR no secrets, so parity skips there
+  # through the deploy-key check below. Keep it that way: CITATION_BENCH_DEPLOY_KEY reads
+  # the private citation-bench, and no job a fork can start (pull_request_target,
+  # workflow_run on a fork's run) may be given it.
   parity:
     name: Parity (citation-bench)
-    runs-on: homelab
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -206,9 +205,6 @@ jobs:
           path: citare
           submodules: recursive
           persist-credentials: false
-
-      - uses: ./citare/.github/actions/homelab-setup
-        if: env.HAS_BENCH_KEY == 'true'
 
       - name: Read the citation-bench pin
         if: env.HAS_BENCH_KEY == 'true'
@@ -246,10 +242,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             citation-bench/target
-          key: ${{ runner.os }}-homelab-parity-${{ steps.pin.outputs.ref }}-${{ hashFiles('citare/**/Cargo.toml') }}
+          key: ${{ runner.os }}-parity-${{ steps.pin.outputs.ref }}-${{ hashFiles('citare/**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-homelab-parity-${{ steps.pin.outputs.ref }}-
-            ${{ runner.os }}-homelab-parity-
+            ${{ runner.os }}-parity-${{ steps.pin.outputs.ref }}-
+            ${{ runner.os }}-parity-
 
       # The stare.pub sample's downloads, so each run doesn't fetch 1,000 cases again.
       # The key is the pinned sample's manifest, which pins every case by sha256.
@@ -386,7 +382,7 @@ jobs:
             --previous-note "$PREVIOUS_NOTE" --link "$RUN_URL" --out reports/citare
           # Speed depends on the machine. Name it, since the stored eyecite runs weren't timed on it.
           cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -1)
-          runner="Runner: \`$RUNNER_NAME\` (homelab, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs are timed on homelab too. Release runs attached before v0.5.1 were timed on GitHub-hosted runners, so speed comparisons with those cross machine types."
+          runner="Runner: \`$RUNNER_NAME\` (GitHub-hosted, ${cpu:-unknown CPU}, $(nproc) CPUs). eyecite's stored runs and the release runs attached since v0.5.1 are timed on the self-hosted homelab runners, so speed comparisons with them cross machine types."
           for f in bench-report.md comment.md; do printf '\n%s\n' "$runner" >> "reports/citare/$f"; done
           echo "Report: $(( SECONDS - start )) s, from the eyecite restore to the Markdown." >> reports/citare/timing.txt
           cat reports/citare/bench-report.md >> "$GITHUB_STEP_SUMMARY"
@@ -426,7 +422,7 @@ jobs:
       always() && github.event_name == 'pull_request'
       && github.event.pull_request.head.repo.full_name == github.repository
       && needs.parity.result != 'cancelled'
-    runs-on: homelab
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       pull-requests: write

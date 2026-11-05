@@ -12,10 +12,13 @@ jobs:
   # to crates.io: citare is consumed as a git dependency pinned by tag, so
   # release-plz.toml sets `git_only` and `publish = false`, and only
   # citare-core creates the one workspace tag `vX.Y.Z` and its release.
-  # A no-op on any push that isn't a merged release PR.
+  # A no-op on any push that isn't a merged release PR. Both jobs run only in
+  # codexpublicus/citare, on GitHub-hosted runners: push to main is the only
+  # trigger, so no fork PR starts them, and a fork's own main skips them.
   release:
     name: Release
-    runs-on: homelab
+    if: github.repository == 'codexpublicus/citare'
+    runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     permissions:
@@ -28,7 +31,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-      - uses: ./.github/actions/homelab-setup
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         id: release-plz
@@ -74,7 +76,8 @@ jobs:
   # the bench job above is chained to it instead.
   release-pr:
     name: Release PR
-    runs-on: homelab
+    if: github.repository == 'codexpublicus/citare'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
@@ -113,7 +116,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
           token: ${{ steps.app-token.outputs.token }}
-      - uses: ./.github/actions/homelab-setup
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - uses: release-plz/action@b8d6b54b02889ff2ae2bb82e8b57c3a8fc1683a5 # v0.5.139
         with:
