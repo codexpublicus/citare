@@ -19,7 +19,7 @@ past CAP's last volume, so the owner's ruling D80 (2026-10-22, from the audit in
    `reporters.json` list CAP's volumes, so a cap derived from them is "CAP doesn't have it"
    under another name, and it feeds itself: a cap drops citations, the next index lacks them,
    and the next derivation confirms the cap.
-5. **Each index build reports what the caps cost.** stare-builder's index-build report counts,
+5. **Each index build reports what the caps cost.** stare.pub's index-build report counts,
    per cap or filter, the CourtListener citations it drops, and how many of those have a
    cluster date inside the series' own dates. That subset is where real volumes hide.
 

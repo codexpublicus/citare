@@ -66,12 +66,12 @@ jobs:
   # GitHub App's token, so CI runs on the release PR like any other; GitHub
   # holds the checks on a PR that GITHUB_TOKEN opens until someone approves
   # them. YEET_APP_ID (a variable, the App's client ID) and
-  # YEET_APP_PRIVATE_KEY (a secret) are pushed by codexpublicus/infra
-  # (yeet.py), and the App's installation must list this repo. The App is
+  # YEET_APP_PRIVATE_KEY (a secret) are set on this repository, and the
+  # App's installation must list this repo. The App is
   # required: a missing value, or a token that won't mint (the App not
   # installed here), fails the job. There is no GITHUB_TOKEN fallback,
-  # because codexpublicus/infra turns off Actions' permission to create pull
-  # requests in this repo (`release_bot: false`). The release job keeps
+  # because Actions' permission to create pull requests is off in this
+  # repo. The release job keeps
   # GITHUB_TOKEN: its tag and release start no workflows and open no PR, and
   # the bench job above is chained to it instead.
   release-pr:
@@ -91,7 +91,7 @@ jobs:
           HAS_KEY: ${{ secrets.YEET_APP_PRIVATE_KEY != '' }}
         run: |
           if [ -z "$APP_ID" ] || [ "$HAS_KEY" != "true" ]; then
-            echo "::error title=yeet App not configured::YEET_APP_ID (variable) or YEET_APP_PRIVATE_KEY (secret) is missing. codexpublicus/infra's yeet module (pulumi/codexpublicus_infra/yeet.py) sets both; run its Pulumi stack for this repo. The release PR is opened only with the App's token."
+            echo "::error title=yeet App not configured::YEET_APP_ID (variable) or YEET_APP_PRIVATE_KEY (secret) is missing. Set both on this repository and install the App on it. The release PR is opened only with the App's token."
             exit 1
           fi
       - name: Generate the yeet App token
