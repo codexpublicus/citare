@@ -53,7 +53,7 @@ jobs:
       github.repository == 'codexpublicus/citare'
       && (github.event_name == 'workflow_dispatch'
           || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
-    runs-on: homelab
+    runs-on: homelab-public
     timeout-minutes: 120
     permissions:
       contents: read
