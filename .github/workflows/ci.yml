@@ -176,10 +176,8 @@ jobs:
   #
   # Every job in this workflow runs on GitHub-hosted runners, because a pull_request
   # workflow runs the PR's own copy of this file and so can't be kept off a self-hosted
-  # runner from inside it. GitHub gives a fork's PR no secrets, so parity skips there
-  # through the deploy-key check below. Keep it that way: CITATION_BENCH_DEPLOY_KEY reads
-  # the private citation-bench, and no job a fork can start (pull_request_target,
-  # workflow_run on a fork's run) may be given it.
+  # runner from inside it. citation-bench is public and checked out anonymously, so
+  # parity needs no secret and runs on a fork's PR too.
   parity:
     name: Parity (citation-bench)
     runs-on: ubuntu-latest
@@ -187,27 +185,15 @@ jobs:
     permissions:
       contents: read
     env:
-      # The deploy key is a repository secret. Until it exists the job skips
-      # rather than failing; a secret can't be tested in `if:` directly.
-      HAS_BENCH_KEY: ${{ secrets.CITATION_BENCH_DEPLOY_KEY != '' }}
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/citation-bench
     steps:
-      - name: Skip without the citation-bench deploy key
-        if: env.HAS_BENCH_KEY != 'true'
-        run: |
-          msg="CITATION_BENCH_DEPLOY_KEY is not set, so the citation-bench parity check was skipped. Add it as a repository secret to run it."
-          echo "::notice title=Parity skipped::$msg"
-          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.HAS_BENCH_KEY == 'true'
         with:
           path: citare
           submodules: recursive
           persist-credentials: false
 
       - name: Read the citation-bench pin
-        if: env.HAS_BENCH_KEY == 'true'
         id: pin
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -220,22 +206,18 @@ jobs:
           echo "CITARE_LABEL=citare-${PR:+pr$PR-}${HEAD_SHA:0:7}" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.HAS_BENCH_KEY == 'true'
         with:
           repository: codexpublicus/citation-bench
           ref: ${{ steps.pin.outputs.ref }}
-          ssh-key: ${{ secrets.CITATION_BENCH_DEPLOY_KEY }}
           persist-credentials: false
           path: citation-bench
 
       # Python, uv and Rust at the versions citation-bench's .mise/config.toml pins.
       - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
-        if: env.HAS_BENCH_KEY == 'true'
         with:
           working_directory: citation-bench
 
       - name: Cache cargo
-        if: env.HAS_BENCH_KEY == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -250,7 +232,6 @@ jobs:
       # The stare.pub sample's downloads, so each run doesn't fetch 1,000 cases again.
       # The key is the pinned sample's manifest, which pins every case by sha256.
       - name: Cache the stare.pub sample
-        if: env.HAS_BENCH_KEY == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: citation-bench/.cache/stare
@@ -260,7 +241,6 @@ jobs:
       # source even when CITARE_PATH patches it with this checkout. The job's own
       # read-only token covers the fetch.
       - name: Run the conformance vectors
-        if: env.HAS_BENCH_KEY == 'true'
         id: vectors
         working-directory: citation-bench
         env:
@@ -299,7 +279,6 @@ jobs:
 
       # The divergence set, where the expected output is citare's rather than eyecite's.
       - name: Run the divergence vectors
-        if: env.HAS_BENCH_KEY == 'true'
         id: divergences
         working-directory: citation-bench
         env:
@@ -338,7 +317,6 @@ jobs:
 
       # The last release's saved runs, which the release benchmark attaches as assets.
       - name: Fetch the last release's runs
-        if: env.HAS_BENCH_KEY == 'true'
         id: previous
         continue-on-error: true
         env:
@@ -364,7 +342,6 @@ jobs:
           fi
 
       - name: Benchmark report
-        if: env.HAS_BENCH_KEY == 'true'
         id: report
         continue-on-error: true
         working-directory: citation-bench
@@ -403,7 +380,6 @@ jobs:
           retention-days: 3
 
       - name: Fail on regressions
-        if: env.HAS_BENCH_KEY == 'true'
         env:
           STATUS: ${{ steps.vectors.outputs.status }}
           DIVERGENCES_STATUS: ${{ steps.divergences.outputs.status }}

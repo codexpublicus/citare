@@ -288,9 +288,8 @@ CITARE_PATH=../citare mise run bench:citare
 citation-bench is pinned by commit (`.github/citation-bench-ref`), so new vectors, a
 rebaselined known-failures file or a changed report reach citare only through a PR here.
 To bump it, run both commands in this section in citation-bench at the new commit, then put that
-commit's full SHA in the file in its own PR. The job checks citation-bench out with the
-`CITATION_BENCH_DEPLOY_KEY` repository secret, and skips with a notice while that
-secret is missing.
+commit's full SHA in the file in its own PR. The job checks the public citation-bench out
+anonymously, so it needs no secret and runs on a fork's PR too.
 
 Where citare differs from eyecite on purpose ([docs/divergences.md](docs/divergences.md)),
 the expected output is citare's, in citation-bench's separate `vectors/divergences/` set.
@@ -333,9 +332,8 @@ gh workflow run bench-release.yml -f tag=v0.4.1 -f publish=false  # report only
 
 CI (`ci.yml`), the PR title check and the release workflow run on GitHub-hosted
 `ubuntu-latest` runners. A `pull_request` workflow runs the PR's own copy of its file, so
-nothing a PR can start runs on a self-hosted runner. A fork's PR gets no secrets, so the
-parity job skips there with a notice; `CITATION_BENCH_DEPLOY_KEY` and the yeet App's key
-must never reach a job a fork can start.
+nothing a PR can start runs on a self-hosted runner. A fork's PR gets no secrets; the
+parity job needs none, and the yeet App's key must never reach a job a fork can start.
 
 The release benchmark's `bench` job (`bench-release.yml`) is the one job on the org's
 self-hosted homelab runners (`runs-on: homelab-public`): one ephemeral pod per job, on an
