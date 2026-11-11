@@ -45,8 +45,7 @@ jobs:
   # Runs on the self-hosted homelab runners, so release speeds compare with eyecite's
   # stored runs, which were timed there. Its only triggers are a manual dispatch, which
   # needs write access, and release-plz.yml's call on a push to main; the guard keeps it
-  # to those in this repository, so no fork or fork PR reaches the runner or the
-  # CITATION_BENCH_DEPLOY_KEY secret.
+  # to those in this repository, so no fork or fork PR reaches the runner.
   bench:
     name: Benchmark ${{ inputs.tag }}
     if: >-
@@ -101,7 +100,6 @@ jobs:
         with:
           repository: codexpublicus/citation-bench
           ref: ${{ steps.pin.outputs.ref }}
-          ssh-key: ${{ secrets.CITATION_BENCH_DEPLOY_KEY }}
           persist-credentials: false
           path: citation-bench
 
