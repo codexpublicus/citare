@@ -275,6 +275,80 @@ fn every_supplement_example_is_recognized() {
     "23-4-2"
 )]
 #[case("WIS. STAT. § 847.07", "Wisconsin", "Wis. Stat.", None, "847.07")]
+// The section spelled out, a comma, or the code's year (#117)
+#[case(
+    "Welfare and Institutions Code section 19050",
+    "California",
+    "Cal. Welfare and Institutions Code",
+    None,
+    "19050"
+)]
+#[case(
+    "Labor Code section 3602",
+    "California",
+    "Cal. Labor Code",
+    None,
+    "3602"
+)]
+#[case(
+    "Code of Civil Procedure section 437c",
+    "California",
+    "Cal. Civil Procedure Code",
+    None,
+    "437c"
+)]
+#[case("Idaho Code section 41-1839", "Idaho", "Idaho Code", None, "41-1839")]
+#[case("Utah Code section 77-13-6", "Utah", "Utah Code Ann.", None, "77-13-6")]
+#[case(
+    "Indiana Code Section 35-34-1-8",
+    "Indiana",
+    "Ind. Code",
+    None,
+    "35-34-1-8"
+)]
+#[case(
+    "Indiana Code Section 31-15-7-9.1",
+    "Indiana",
+    "Ind. Code",
+    None,
+    "31-15-7-9.1"
+)]
+#[case("Iowa Code section 321J.2", "Iowa", "Iowa Code", None, "321J.2")]
+#[case(
+    "W. Va. Code, 49-5-10(c) (1978)",
+    "West Virginia",
+    "W. Va. Code",
+    None,
+    "49-5-10"
+)]
+#[case(
+    "W.Va.Code, 11-12A-2 [1971]",
+    "West Virginia",
+    "W. Va. Code",
+    None,
+    "11-12A-2"
+)]
+#[case(
+    "D.C. Code 1967, § 16-501",
+    "District of Columbia",
+    "D.C. Code",
+    None,
+    "16-501"
+)]
+#[case(
+    "Ala. Code 1940, Tit. 7, § 123",
+    "Alabama",
+    "Ala. Code",
+    Some("7"),
+    "123"
+)]
+#[case(
+    "Va.Code § 38.1-327.2",
+    "Virginia",
+    "Va. Code Ann.",
+    None,
+    "38.1-327.2"
+)]
 // reporters-db forms keep working
 #[case("42 U.S.C. § 1983", "United States", "U.S.C.", Some("42"), "1983")]
 #[case(
@@ -335,6 +409,19 @@ fn new_york_code_split() {
     // to pick up.
     let r = c.resource_common().unwrap();
     assert!(r.all_editions.iter().all(|e| e.harvard_slug.is_none()));
+}
+
+/// #117: other states' codes cited by subject, which must not become
+/// California's, and West Virginia's code, which must not become Virginia's.
+#[rstest]
+#[case("Florida Evidence Code section 90.803", "Florida")]
+#[case("V.T.C.A., Penal Code Section 19.02", "Texas")]
+#[case("Texas Penal Code section 22.01", "Texas")]
+#[case("W. Va. Code § 23-4-2", "West Virginia")]
+#[case("W.Va.Code § 61-2-1", "West Virginia")]
+fn subject_code_of_another_state(#[case] text: &str, #[case] jurisdiction: &str) {
+    let f = fields(text);
+    assert_eq!(f.jurisdiction.as_deref(), Some(jurisdiction), "{text:?}");
 }
 
 /// Look-alikes that must not become one of the supplement's codes.

@@ -103,6 +103,75 @@ reads any hyphenated number.
 Still unrecognized after the supplement: the families left out above, and in Massachusetts
 the `§`s after other `c. N,` forms (`St. 2002, c. 10, §`, session laws).
 
+<a id="section-spelled-out"></a>
+## Code citations with the section spelled out, a comma or a year (#117)
+
+citare read a code citation only as `<code> § <section>`. Courts in several states write
+`section` instead, name the code by its subject, put a comma between the code and the section,
+or give the code's year
+([#117](https://github.com/codexpublicus/citare/issues/117)). `data/laws-local.json` now has:
+
+| Code | Forms | Added as |
+|---|---|---|
+| California | `Welfare and Institutions Code section 19050`, `Labor Code section 3602`, `Code of Civil Procedure section 437c` | `Cal. Code`, the subject spelled out (28 codes) |
+| Idaho | `Idaho Code section 41-1839` | `Idaho Code` |
+| Utah | `Utah Code section 77-13-6`, `Utah Code § 76-5-203` | `Utah Code Ann.`, variation `Utah Code` |
+| Indiana | `Indiana Code Section 35-34-1-8`, `Indiana Code Section 31-15-7-9.1` | `Ind. Code`, variation `Indiana Code` |
+| Iowa | `Iowa Code section 321J.2` | `Iowa Code` |
+| West Virginia | `W. Va. Code, 49-5-10(c) (1978)`, `W.Va.Code, 11-12A-2 [1971]`, `W. Va. Code, 1931, 61-2-1` | `W. Va. Code` |
+| District of Columbia | `D.C. Code 1967, § 16-501` | `D.C. Code` |
+| Alabama | `Ala. Code 1940, Tit. 7, § 123` | `Ala. Code` (the 1975 code's form was there) |
+| Virginia | `Va.Code § 38.1-327.2` | `Va. Code Ann.`, variation `Va. Code` |
+
+Two entries are there to keep the California forms from reading other states' codes, which
+start earlier in the text and so win: `Texas Penal Code section 22.01` and `V.T.C.A., Penal Code
+Section 19.02` under `Tex. Code Ann.`, and `Florida Evidence Code section 90.803` under `Fla.
+Stat.` (the Evidence Code is chapter 90). `W. Va. Code § 23-4-2` stays West Virginia's beside
+the new `Va. Code` the same way. The West Virginia form asks for hyphens in the section (chapter,
+article and section), so a bare year after the comma isn't a section. The Indiana entry has a
+section pattern of its own: an Indiana section is title, article, chapter and section, any of
+them with a decimal part, one more part than `$law_section` takes. That also completes the
+section of reporters-db's own `Ind. Code § 35-44.1-3-1`, which came out as `35-44.1-3`.
+
+`Code 1923, § 7311`, with no state in front, is left out. The text doesn't say whose code it
+is: Alabama, Virginia, Georgia, Mississippi, Iowa and the District of Columbia all had codes
+known by year, and some years are more than one state's (1873 is Virginia's, Georgia's and
+Iowa's).
+
+I measured with citare at `2acf651` (v0.7.5 plus CI changes) against this branch, on a CAP
+statute sample of 12,337 opinions (the 47 volumes the examples in #115 to #118 come from, and
+one more volume, drawn at random with seed 222, of each of their 29 reporters; 75 volumes from
+stare.pub's volume zips) and citation-bench's stare.pub sample (`stare-pub-v2026.10.22`, 1,000
+opinions):
+
+| Code | CAP | Opinions | stare.pub | Opinions |
+|---|---:|---:|---:|---:|
+| `W. Va. Code` | 1,149 | 150 | 0 | 0 |
+| California, 19 codes | 601 | 80 | 28 | 4 |
+| `Ind. Code` | 248 new, 73 completed | 66 | 0 | 0 |
+| `Idaho Code` | 126 | 58 | 22 | 3 |
+| `Utah Code Ann.` | 110 | 39 | 14 | 4 |
+| `D.C. Code` | 22 | 9 | 0 | 0 |
+| `Va. Code Ann.` | 17 | 11 | 0 | 0 |
+| `Fla. Stat.` (Evidence Code) | 4 | 3 | 0 | 0 |
+| `Ala. Code` | 2 | 2 | 0 | 0 |
+| All | 2,279 new, 73 completed | 415 | 64 | 11 |
+
+Statute citations go from 15,262 to 17,541 and from 1,174 to 1,238, and none is lost. The new
+citations take in 78 bare-`§` unknowns on the CAP sample. Of the 22 citations with a changed
+field there, five short cites and supras lose a statute as their antecedent guess (`W.Va.Code,
+48-2-21.\n. Patterson` before `167 W.Va. 10`), one West Virginia statute gets the year from its
+parenthetical, and the rest are the diff pairing repeated citations of one statute differently.
+Two existing weaknesses now show up on more statutes: a short cite right after a statute has no
+antecedent guess (`Florida Evidence Code section 90.803(18)(e). Morales, 460 So.2d at 413`; main
+does the same after `Fla. Stat. § 90.803(18)(e).`), and a subsection with a space before it is
+read as a day (`W. Va. Code, 1931, 29-6-10 (11)` gives day `11`). Speed is unchanged.
+
+I read 40 of the new citations, drawn at random, in context:
+[`evidence/code-section-spelled-out.md`](evidence/code-section-spelled-out.md). All 40 have the
+right jurisdiction and code, and 39 the right section; the 40th is CAP's OCR of `23-5-1c` as
+`23-5-lc`, and stops at `23-5`.
+
 ## What a law citation gives
 
 `Citation::law()` returns the parts of a statute citation in fields of their own, and the CLI
