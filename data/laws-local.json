@@ -44,6 +44,14 @@
         "notes": "California Style Manual's `Code Civ. Proc.`; the code is Cal. Civ. Proc. Code."
       }
     ],
+    "Colo. Rev. Stat.": [
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter(?: ?\\d{4})?"],
+        "variations": ["C.R.S."],
+        "examples": ["§ 25-8-505, C.R.S. 1973", "§ 18-3-203(l)(c), C.R.S.1973 (1978 Repl.Vol. 8)", "section 13-21-102, C.R.S."],
+        "notes": "Colorado courts put the section first: `§ 25-8-505, C.R.S. 1973`. A subsection between the section and the code is the pin cite (#116)."
+      }
+    ],
     "Conn. Gen. Stat.": [
       {
         "regexes": [
@@ -66,6 +74,14 @@
         "notes": "The rules of Connecticut's courts. reporters-db has no court rules."
       }
     ],
+    "Fla. Stat.": [
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? (?P<reporter>Fla\\. ?Stat\\.?|Florida Statutes)(?: ?\\d{4})?(?:,? ?F\\.S\\.A\\.)?"],
+        "strings": ["Fla.Stat", "FloridaStatutes"],
+        "examples": ["Section 54.28, Fla.Stat., F.S.A.", "Section 687.07 Florida Statutes 1941", "section 922.07, Florida Statutes (1995)", "§ 95.23, Fla.Stat. F.S.A.", "§ 517.31, Fla.Stat, F.S.A."],
+        "notes": "Florida courts put the section first, before `Fla.Stat.` or `Florida Statutes`, often with the edition's year and West's `F.S.A.` (#116)."
+      }
+    ],
     "Ga. Code Ann.": [
       {
         "variations": ["O.C.G.A.", "OCGA"],
@@ -78,6 +94,13 @@
         "variations": ["HRS", "H.R.S."],
         "examples": ["HRS § 707-720(3)", "H.R.S. § 291E-61"],
         "notes": "Hawaii courts' abbreviation."
+      }
+    ],
+    "Idaho Code": [
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter"],
+        "examples": ["section 18-8004, Idaho Code", "Section 72-1366(j), Idaho Code"],
+        "notes": "Idaho courts put the section first: `section 18-8004, Idaho Code` (#116)."
       }
     ],
     "La. Stat. Ann.": [
@@ -110,6 +133,14 @@
         "notes": "Michigan courts' abbreviations."
       }
     ],
+    "Mo. Rev. Stat.": [
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter(?: Supp\\.)?(?: ?\\d{4})?(?:,? V\\.A\\.M\\.S\\.)?"],
+        "variations": ["RSMo", "R.S.Mo."],
+        "examples": ["Section 510.210 RSMo 1949, V.A.M.S.", "§ 546.510 RSMo 1949", "section 287.120, RSMo 2000"],
+        "notes": "Missouri courts put the section first, before `RSMo` and the revision's year, sometimes with Vernon's `V.A.M.S.` (#116)."
+      }
+    ],
     "N.C. Gen. Stat.": [
       {
         "variations": ["N.C.G.S.", "G.S."],
@@ -122,6 +153,12 @@
         "variations": ["N.D.C.C."],
         "examples": ["N.D.C.C. § 14-05-24"],
         "notes": "North Dakota courts' abbreviation."
+      },
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter"],
+        "variations": ["N.D.C.C.", "NDCC"],
+        "examples": ["Section 24-02-26, N.D.C.C.", "§ 12.1-32-07(4), N.D.C.C."],
+        "notes": "North Dakota courts put the section first: `Section 24-02-26, N.D.C.C.` (#116)."
       }
     ],
     "N.M. Stat. Ann.": [
@@ -146,6 +183,25 @@
         "strings": ["Law§", "Law,§"],
         "examples": ["Penal Law § 160.05", "Judiciary Law § 431", "Vehicle and Traffic Law § 1192 (3)", "Real Property Actions and Proceedings Law § 1304", "Town Law, § 198"],
         "notes": "New York's consolidated laws cited by name without `N.Y.`, as New York courts write them. The list is the consolidated laws' names, so `Family Law` or `Criminal Law` (Maryland articles) don't match."
+      }
+    ],
+    "Ohio Gen. Code": [
+      {
+        "name": "General Code of Ohio",
+        "cite_type": "leg_statute",
+        "jurisdiction": "Ohio",
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? (?:of the )?$reporter"],
+        "variations": ["General Code", "Gen. Code", "G.C."],
+        "examples": ["Section 4628, General Code", "section 12603, G. C.", "Section 1465-68 of the General Code"],
+        "notes": "Ohio's code from 1910 until the Revised Code of 1953, cited section first. reporters-db doesn't have it (#116)."
+      }
+    ],
+    "Ohio Rev. Code Ann.": [
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )(?P<section>\\d{1,4}\\.\\d{2,3}[A-Z]?)(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? (?:of the )?$reporter"],
+        "variations": ["Revised Code", "Ohio Revised Code"],
+        "examples": ["Section 4511.19, Revised Code", "section 2929.20 of the Revised Code", "Section 2305.10(A), Ohio Revised Code"],
+        "notes": "Ohio courts put the section first: `Section 4511.19, Revised Code`. The section must have a period in it, as every Ohio section does, which keeps Washington's `section 4.24.010 of the Revised Code of Washington` out (#116)."
       }
     ],
     "Okla. Stat.": [
@@ -223,6 +279,12 @@
         "variations": ["WIS. STAT."],
         "examples": ["WIS. STAT. § 847.07"],
         "notes": "Small capitals, as Wisconsin courts typeset it."
+      },
+      {
+        "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter"],
+        "variations": ["Stats.", "Wis. Stats."],
+        "examples": ["sec. 103.465, Stats.", "sec. 939.62(2), Stats.", "section 893.80, Wis. Stats."],
+        "notes": "Wisconsin courts put the section first and the code after it as `Stats.` (#116)."
       }
     ]
   }

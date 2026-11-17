@@ -43,3 +43,11 @@ lost. The entries citare uses, with examples and the forms' counts, are in
 [`data/laws-local.json`](../../data/laws-local.json) and [`laws-local.md`](../laws-local.md);
 they are in laws.json's schema and could move over as they are, apart from `strings`
 (prefilter strings for regexes without the reporter's name).
+
+Courts in Florida, Wisconsin, Colorado, Missouri, North Dakota, Ohio and Idaho also put the
+section before the code, which no laws.json pattern allows: `Section 54.28, Fla.Stat., F.S.A.`,
+`sec. 103.465, Stats.`, `§ 25-8-505, C.R.S. 1973`, `Section 510.210 RSMo 1949, V.A.M.S.`,
+`Section 24-02-26, N.D.C.C.`, `Section 4511.19, Revised Code` and `section 18-8004, Idaho Code`.
+Over 12,337 CAP opinions these are 3,241 statute citations; eyecite returns an unknown `§` for
+the `§` forms and nothing for the others. Ohio's General Code (`Section 4628, General Code`),
+in force from 1910 to 1953, has no entry at all.

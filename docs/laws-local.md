@@ -103,6 +103,69 @@ reads any hyphenated number.
 Still unrecognized after the supplement: the families left out above, and in Massachusetts
 the `§`s after other `c. N,` forms (`St. 2002, c. 10, §`, session laws).
 
+<a id="section-first"></a>
+## Statutes cited section first (#116)
+
+Many state courts write the section before the code: `Section 54.28, Fla.Stat., F.S.A.`,
+`sec. 103.465, Stats.`, `§ 25-8-505, C.R.S. 1973`, `Section 4511.19, Revised Code`. Every
+reporters-db pattern puts the code first, and neither engine found any of these. The forms
+came from the same 10,000-decision export as #115
+([#116](https://github.com/codexpublicus/citare/issues/116)), and `data/laws-local.json` now
+has a cluster for each:
+
+| Code | Forms | Added as |
+|---|---|---|
+| Wisconsin | `sec. 103.465, Stats.`, `section 893.80, Wis. Stats.` | `Wis. Stat.`, variations `Stats.`, `Wis. Stats.` |
+| Colorado | `§ 25-8-505, C.R.S. 1973`, `Section 18-3-402(2), C.R.S. 1973 (1978 Repl.Vol. 8)` | `Colo. Rev. Stat.`, variation `C.R.S.` |
+| Florida | `Section 54.28, Fla.Stat., F.S.A.`, `section 922.07, Florida Statutes (1995)` | `Fla. Stat.` |
+| Missouri | `Section 510.210 RSMo 1949, V.A.M.S.`, `§ 546.510 RSMo 1949` | `Mo. Rev. Stat.`, variations `RSMo`, `R.S.Mo.` |
+| North Dakota | `Section 24-02-26, N.D.C.C.` | `N.D. Cent. Code` |
+| Ohio | `Section 4511.19, Revised Code`, `section 2929.20 of the Revised Code` | `Ohio Rev. Code Ann.`, variations `Revised Code`, `Ohio Revised Code` |
+| Ohio, before 1953 | `Section 4628, General Code`, `section 12603, G. C.` | `Ohio Gen. Code` (new: the General Code of Ohio) |
+| Idaho | `section 18-8004, Idaho Code` | `Idaho Code` |
+
+Each regex takes `section`, `sec.` or `§`, the section, any subsections, an optional comma and
+the code, and for Colorado, Florida and Missouri the edition's year and West's or Vernon's
+annotations after it (`F.S.A.`, `V.A.M.S.`). The subsections are the pin cite
+(`section 922.07(1), Florida Statutes` has pin cite `(1)`); `add_law_metadata` takes them from
+the match when no pin cite follows it. The Ohio Revised Code entry asks for a period in the
+section, as every Ohio section has one, so Washington's `section 4.24.010 of the Revised Code
+of Washington` stays out. A citation whose code comes last also no longer takes the space after
+the code into its span: the reporter pattern ends in `\s*`, and with the space inside the token,
+a year in parentheses after the code (`§ 8-4-122, C.R.S. (2017)`) read as the pin cite. That
+only applies where the `reporter` group ends the match, so reporters-db's forms keep eyecite's
+spans.
+
+I measured with citare at `2acf651` (v0.7.5 plus CI changes) against this branch, on a CAP
+statute sample of 12,337 opinions (the 47 volumes the examples in #115 to #118 come from, and
+one more volume, drawn at random with seed 222, of each of their 29 reporters; 75 volumes from
+stare.pub's volume zips) and citation-bench's stare.pub sample (`stare-pub-v2026.10.22`, 1,000
+opinions):
+
+| Code | CAP | Opinions | stare.pub | Opinions |
+|---|---:|---:|---:|---:|
+| `Fla. Stat.` | 892 | 411 | 22 | 6 |
+| `Wis. Stat.` | 889 | 95 | 17 | 2 |
+| `Ohio Gen. Code` | 395 | 111 | 0 | 0 |
+| `Ohio Rev. Code Ann.` | 383 | 89 | 10 | 4 |
+| `Colo. Rev. Stat.` | 339 | 70 | 10 | 1 |
+| `Mo. Rev. Stat.` | 158 | 76 | 3 | 2 |
+| `N.D. Cent. Code` | 125 | 27 | 3 | 1 |
+| `Idaho Code` | 60 | 35 | 0 | 0 |
+| All | 3,241 | 905 | 65 | 16 |
+
+Statute citations go from 15,262 to 18,503 and from 1,174 to 1,239, and none is lost. The new
+citations take in 465 and 19 bare-`§` unknowns (`§ 546.510 RSMo 1949` was an unknown `§`), and
+nothing else is lost. Six case names lose the statute that had been read into them (`Section
+510.210 RSMo 1949, V.A.M.S., Holmes v. Simon` had plaintiff `V.A.M.S., Holmes`), 14 short cites
+and supras lose a statute as their antecedent guess (`§804.08, Stats., 67 Wis.2d at 677` had
+`Stats.`), and a case's full span no longer starts inside the statute. The other field changes
+are the diff pairing the repeated citations of one statute differently. Speed is unchanged.
+
+I read 40 of the new citations, drawn at random, in context:
+[`evidence/section-first-statutes.md`](evidence/section-first-statutes.md). All 40 have the
+right jurisdiction, code, section and pin cite.
+
 ## What a law citation gives
 
 `Citation::law()` returns the parts of a statute citation in fields of their own, and the CLI
@@ -140,7 +203,7 @@ and WASM output carry them as `law` (absent on other citations):
 
 A link to statute text needs the jurisdiction, the code (and its subject, title or chapter)
 and the section, and these fields are those. The jurisdiction and code names are reporters-db's
-laws keys and jurisdictions, plus the two new keys `Pa. Stat. Ann.` and `Conn. Practice Book`.
+laws keys and jurisdictions, plus the new keys `Pa. Stat. Ann.`, `Conn. Practice Book` and `Ohio Gen. Code`.
 
 ## The file
 

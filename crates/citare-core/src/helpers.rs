@@ -874,6 +874,16 @@ pub fn add_law_metadata(citation: &mut FullLawCitationData, words: &Tokens) {
         .span_end
         .unwrap_or_else(|| citation.resource.common.token.end());
 
+    // A form that cites the section before the code has the subsection
+    // between them, inside the match: `section 922.07(1), Florida Statutes`
+    // (data/laws-local.json, #116). It is the pin cite unless one follows.
+    let inner_pin = citation
+        .resource
+        .common
+        .groups
+        .get("pin_cite")
+        .and_then(|p| clean_pin_cite(p.as_deref()));
+
     let m = match_on_tokens(
         words,
         (index + 1) as i64,
@@ -885,11 +895,14 @@ pub fn add_law_metadata(citation: &mut FullLawCitationData, words: &Tokens) {
 
     let m = match m {
         Some(m) => m,
-        None => return,
+        None => {
+            citation.metadata.pin_cite = inner_pin;
+            return;
+        }
     };
 
     citation.resource.common.full_span_end = Some(span_end + m.end);
-    citation.metadata.pin_cite = clean_pin_cite(m.get("pin_cite"));
+    citation.metadata.pin_cite = clean_pin_cite(m.get("pin_cite")).or(inner_pin);
     citation.metadata.publisher = m.get("publisher").map(|s| s.to_string());
     citation.metadata.day = m.get("day").map(|s| s.to_string());
     citation.metadata.month = m.get("month").map(|s| s.to_string());
