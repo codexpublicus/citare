@@ -275,6 +275,74 @@ fn every_supplement_example_is_recognized() {
     "23-4-2"
 )]
 #[case("WIS. STAT. § 847.07", "Wisconsin", "Wis. Stat.", None, "847.07")]
+// Session laws, the Illinois Revised Statutes, Louisiana's codes by article,
+// Michigan's Compiled Laws by year (#118)
+#[case("Or Laws 1985, ch 734, § 5", "Oregon", "Or. Laws", None, "5")]
+#[case(
+    "Oregon Laws 1937, chapter 123, section 4",
+    "Oregon",
+    "Or. Laws",
+    None,
+    "4"
+)]
+#[case(
+    "Colo. Sess. Laws 1985, ch. 12, sec. 3",
+    "Colorado",
+    "Colo. Sess. Laws",
+    None,
+    "3"
+)]
+#[case(
+    "Ill. Rev. Stat. 1987, ch. 121, par. 4-501",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "4-501"
+)]
+#[case(
+    "Ill. Rev. Stat. 1965, ch. 38, par. 104-1(a)",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "104-1"
+)]
+#[case(
+    "Ill. Rev. Stat., 1965 Supp., ch. 95½, par. 6-205",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "6-205"
+)]
+#[case("La. C.C. art. 1931", "Louisiana", "La. Civ. Code Ann.", None, "1931")]
+#[case("LSA-C.C. Art. 2315", "Louisiana", "La. Civ. Code Ann.", None, "2315")]
+#[case(
+    "La.C.C.P. Art. 3601",
+    "Louisiana",
+    "La. Code Civ. Proc. Ann.",
+    None,
+    "3601"
+)]
+#[case(
+    "La.C.Cr.P. art. 894.1",
+    "Louisiana",
+    "La. Code Crim. Proc. Ann.",
+    None,
+    "894.1"
+)]
+#[case(
+    "3 Comp. Laws 1915, § 12802",
+    "Michigan",
+    "Mich. Comp. Laws",
+    None,
+    "12802"
+)]
+#[case(
+    "2 Comp. Laws 1871, §§ 4692, 4693",
+    "Michigan",
+    "Mich. Comp. Laws",
+    None,
+    "4692"
+)]
 // reporters-db forms keep working
 #[case("42 U.S.C. § 1983", "United States", "U.S.C.", Some("42"), "1983")]
 #[case(
@@ -335,6 +403,40 @@ fn new_york_code_split() {
     // to pick up.
     let r = c.resource_common().unwrap();
     assert!(r.all_editions.iter().all(|e| e.harvard_slug.is_none()));
+}
+
+/// #118: CAP's Illinois text has a spaced U+2014 for the hyphen in a
+/// paragraph number; the section is the paragraph as written.
+#[test]
+fn illinois_paragraph_with_em_dash() {
+    let f = fields("Ill. Rev. Stat. 1987, ch. 121, par. 4 \u{2014} 501.");
+    assert_eq!(f.chapter.as_deref(), Some("121"));
+    assert_eq!(f.section.as_deref(), Some("4 \u{2014} 501"));
+}
+
+/// #118: a session law's chapter and year.
+#[test]
+fn session_law_chapter_and_year() {
+    let c = law("Or Laws 1985, ch 734, § 5");
+    assert_eq!(c.law().unwrap().chapter.as_deref(), Some("734"));
+    assert_eq!(c.common().groups["year"].as_deref(), Some("1985"));
+}
+
+/// #118: Michigan's Compiled Laws only in its own editions' years, with a
+/// volume in front; other states had Compiled Laws too.
+#[rstest]
+#[case("Comp. Laws 1929, § 1234")]
+#[case("1 Comp. Laws 1887, § 5302")]
+fn not_michigan_compiled_laws(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert_ne!(
+                f.jurisdiction.as_deref(),
+                Some("Michigan"),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
 }
 
 /// Look-alikes that must not become one of the supplement's codes.

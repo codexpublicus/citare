@@ -103,6 +103,65 @@ reads any hyphenated number.
 Still unrecognized after the supplement: the families left out above, and in Massachusetts
 the `§`s after other `c. N,` forms (`St. 2002, c. 10, §`, session laws).
 
+<a id="session-laws-and-older-codes"></a>
+## Session laws, the Illinois Revised Statutes, Louisiana's codes and Michigan's Compiled Laws (#118)
+
+Older and non-code statute forms came through as nothing or a bare `§`
+([#118](https://github.com/codexpublicus/citare/issues/118)). `data/laws-local.json` now has:
+
+| Code | Forms | Added as |
+|---|---|---|
+| Illinois Revised Statutes | `Ill. Rev. Stat. 1987, ch. 121, par. 4-501`, `Ill. Rev. Stat., 1965 Supp., ch. 95½, par. 6-205`, `Ill.Rev.Stat. ch. 110, ¶ 2-619` | `Ill. Rev. Stat.` (new) |
+| Louisiana Civil Code | `La. C.C. art. 1931`, `LSA-C.C. Art. 2315`, `La.Civ.Code art. 435` | `La. Civ. Code Ann.` |
+| Louisiana Code of Civil Procedure | `La.C.C.P. Art. 3601`, `LSA-C.C.P. art. 1871` | `La. Code Civ. Proc. Ann.` |
+| Louisiana Code of Criminal Procedure | `La.C.Cr.P. art. 894.1`, `LSA-C.Cr.P. Article 894.1` | `La. Code Crim. Proc. Ann.` |
+| Oregon session laws | `Or Laws 1985, ch 734, § 5`, `Oregon Laws 1937, chapter 123` | `Or. Laws` |
+| Colorado session laws | `Colo. Sess. Laws 1975, ch. 154, § 13-22-214(1)(b)` | `Colo. Sess. Laws` |
+| Michigan Compiled Laws by edition | `3 Comp. Laws 1915, § 12802`, `section 9063, 2 Comp. Laws 1915` | `Mich. Comp. Laws` |
+
+The Illinois Revised Statutes, which the Compiled Statutes replaced in 1993, have no reporters-db
+entry and get a new key. A chapter can be fractional (`95½`, which CAP's OCR also gives as
+`95V2` and `95%`). CAP's Illinois text often has U+2014 for the hyphen in a paragraph number,
+spaced or not (`par. 4 — 501`, `par. 702—7`); the regex takes it, and the section keeps it as
+written, as citare keeps U+2010 and U+2011 ([#48](divergences.md#law-section)). A Louisiana
+article is in `section`, since a law citation has no article field. Michigan's Compiled Laws
+need a volume in front and one of Michigan's edition years (1857, 1871, 1897, 1915, 1929, 1948,
+1970), because Nevada, Utah, Dakota and New Mexico had Compiled Laws too. A session law's year
+is in `groups.year`.
+
+Left out, because the text doesn't say whose law it is: session laws with no state (`Laws of
+1981, ch. 136, § 12` in Washington, `Laws 1976, Ch. 130, Sec. 1` in Arizona and Wyoming),
+`Comp. Laws 1929, §` with no volume, and `Rev. Stat. 1899, sec. 1287` (Wyoming's and Missouri's
+revisions of 1899 share the year).
+
+I measured with citare at `2acf651` (v0.7.5 plus CI changes) against this branch, on a CAP
+statute sample of 12,337 opinions (the 47 volumes the examples in #115 to #118 come from, and
+one more volume, drawn at random with seed 222, of each of their 29 reporters; 75 volumes from
+stare.pub's volume zips) and citation-bench's stare.pub sample (`stare-pub-v2026.10.22`, 1,000
+opinions):
+
+| Code | CAP | Opinions | stare.pub | Opinions |
+|---|---:|---:|---:|---:|
+| `Ill. Rev. Stat.` | 580 | 124 | 3 | 2 |
+| `La. Civ. Code Ann.` | 398 | 127 | 1 | 1 |
+| `La. Code Crim. Proc. Ann.` | 236 | 69 | 0 | 0 |
+| `La. Code Civ. Proc. Ann.` | 189 | 80 | 0 | 0 |
+| `Or. Laws` | 81 | 48 | 4 | 2 |
+| `Mich. Comp. Laws` | 72 | 40 | 1 | 1 |
+| `Colo. Sess. Laws` | 14 | 6 | 0 | 0 |
+| All | 1,570 | 467 | 9 | 6 |
+
+Statute citations go from 15,262 to 16,832 and from 1,174 to 1,183, and none is lost. The new
+citations take in 131 and 5 bare-`§` unknowns, and nothing else is lost. Two cases' names lose a
+statute that had been read into them (`LSA-C.C. Arts. 1519, 1639. Succession of Marion` is now
+`Succession of Marion`), and one gains the statute's last subsection, `3), Von Bechman`; citare
+does that after any statute with a subsection in front of a case name today. Speed is unchanged.
+
+I read 40 of the new citations, drawn at random, in context:
+[`evidence/session-laws-and-older-codes.md`](evidence/session-laws-and-older-codes.md). All 40
+have the right jurisdiction and code, and 39 the right chapter and section; the 40th is CAP's
+OCR of `ch. 56½` as `ch. 5614`.
+
 ## What a law citation gives
 
 `Citation::law()` returns the parts of a statute citation in fields of their own, and the CLI
@@ -140,7 +199,7 @@ and WASM output carry them as `law` (absent on other citations):
 
 A link to statute text needs the jurisdiction, the code (and its subject, title or chapter)
 and the section, and these fields are those. The jurisdiction and code names are reporters-db's
-laws keys and jurisdictions, plus the two new keys `Pa. Stat. Ann.` and `Conn. Practice Book`.
+laws keys and jurisdictions, plus the new keys `Pa. Stat. Ann.`, `Conn. Practice Book` and `Ill. Rev. Stat.`.
 
 ## The file
 

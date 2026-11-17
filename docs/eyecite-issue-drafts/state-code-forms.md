@@ -43,3 +43,11 @@ lost. The entries citare uses, with examples and the forms' counts, are in
 [`data/laws-local.json`](../../data/laws-local.json) and [`laws-local.md`](../laws-local.md);
 they are in laws.json's schema and could move over as they are, apart from `strings`
 (prefilter strings for regexes without the reporter's name).
+
+Older statute forms are missing too. laws.json has no Illinois Revised Statutes (`Ill. Rev. Stat.
+1987, ch. 121, par. 4-501`, the form Illinois courts used until 1993), and its Louisiana codes
+have only `La. Civ. Code Ann. art N`, not the abbreviations Louisiana courts write (`La. C.C. art.
+1931`, `LSA-C.C.P. Art. 2591`, `La.C.Cr.P. art. 894.1`). Session laws are there only as `<year>
+<name> <page>`, while Oregon's courts write `Or Laws 1985, ch 734, § 5`. Over 12,337 CAP opinions
+these and Michigan's `3 Comp. Laws 1915, § 12802` are 1,570 statute citations eyecite doesn't
+find.

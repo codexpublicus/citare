@@ -44,6 +44,13 @@
         "notes": "California Style Manual's `Code Civ. Proc.`; the code is Cal. Civ. Proc. Code."
       }
     ],
+    "Colo. Sess. Laws": [
+      {
+        "regexes": ["$reporter,? $law_year,? [Cc]h(?:apter|\\.)? ?(?P<chapter>\\d+)(?:,? (?:§§?|[Ss]ecs?\\.|[Ss]ections?) ?$law_section)?"],
+        "examples": ["Colo. Sess. Laws 1985, ch. 12, sec. 3"],
+        "notes": "Colorado's session laws with the year after the name and the chapter (#118); reporters-db's form puts the year first and a page after."
+      }
+    ],
     "Conn. Gen. Stat.": [
       {
         "regexes": [
@@ -80,6 +87,41 @@
         "notes": "Hawaii courts' abbreviation."
       }
     ],
+    "Ill. Rev. Stat.": [
+      {
+        "name": "Illinois Revised Statutes",
+        "cite_type": "leg_statute",
+        "jurisdiction": "Illinois",
+        "regexes": ["$reporter,? (?:(?:18|19)\\d{2},? )?(?:(?:18|19)\\d{2} Supp\\.,? )?(?:ch\\.|[Cc]hap\\.) ?(?P<chapter>\\d+(?:[A-Z]|½| ?1/2|V2|%)?),? (?:pars?\\.|¶¶?|§§?|[Ss]ections?) ?(?P<section>\\d+(?:[.:]\\d+)*[a-z]?(?:(?:-| ?— ?| ?– ?)\\d+(?:\\.\\d+)*[a-z]?)*)"],
+        "variations": ["Ill. Rev. Stat", "Ill. Rev. Stats."],
+        "examples": ["Ill. Rev. Stat. 1987, ch. 121, par. 4-501", "Ill. Rev. Stat. 1965, ch. 38, par. 104-1(a)", "Ill. Rev. Stat., 1965 Supp., ch. 95½, par. 6-205", "Ill.Rev.Stat. ch. 110, ¶ 2-619", "Ill.Rev.Stat. Chap. 127, Sections 63b-1"],
+        "notes": "The Illinois Revised Statutes, cited by year, chapter and paragraph until the Compiled Statutes replaced them in 1993. reporters-db doesn't have them. Chapters can be fractional (`95½`, which CAP's OCR also gives as `95V2` and `95%`), and CAP's text often has a spaced U+2014 or U+2013 for the hyphen in a paragraph number (#118)."
+      }
+    ],
+    "La. Civ. Code Ann.": [
+      {
+        "regexes": ["$reporter,? [Aa]rt(?:icle)?s?\\.? (?P<section>\\d+(?:\\.\\d+)?)"],
+        "variations": ["La. C.C.", "LSA-C.C.", "LSA C.C.", "La. Civ. Code"],
+        "examples": ["La. C.C. art. 1931", "LSA-C.C. Art. 2315", "La. Civ. Code art. 2317.1", "LSA-C.C. Article 2315"],
+        "notes": "The Louisiana Civil Code by article, in the abbreviations Louisiana courts use (#118). The article is in `section`."
+      }
+    ],
+    "La. Code Civ. Proc. Ann.": [
+      {
+        "regexes": ["$reporter,? [Aa]rt(?:icle)?s?\\.? (?P<section>\\d+(?:\\.\\d+)?)"],
+        "variations": ["La. C.C.P.", "LSA-C.C.P.", "LSA C.C.P."],
+        "examples": ["La.C.C.P. Art. 3601", "LSA-C.C.P. art. 1871"],
+        "notes": "The Louisiana Code of Civil Procedure by article (#118)."
+      }
+    ],
+    "La. Code Crim. Proc. Ann.": [
+      {
+        "regexes": ["$reporter,? [Aa]rt(?:icle)?s?\\.? (?P<section>\\d+(?:\\.\\d+)?)"],
+        "variations": ["La. C.Cr.P.", "LSA-C.Cr.P.", "LSA C.Cr.P."],
+        "examples": ["La.C.Cr.P. art. 894.1", "LSA-C.Cr.P. Art. 701", "La.C. Cr.P. art. 920"],
+        "notes": "The Louisiana Code of Criminal Procedure by article (#118)."
+      }
+    ],
     "La. Stat. Ann.": [
       {
         "variations": ["La. R.S.", "La. Rev. Stat.", "La. Rev. Stat. Ann."],
@@ -108,6 +150,17 @@
         "variations": ["MCL", "M.C.L.", "MCLA", "M.C.L.A."],
         "examples": ["MCL § 500.3101", "MCLA § 750.316"],
         "notes": "Michigan courts' abbreviations."
+      },
+      {
+        "regexes": ["(?P<volume>\\d) $reporter (?:1857|1871|1897|1915|1929|1948|1970),? § $law_section", "(?:[Ss]ection |§ )$law_section(?: et seq\\.)?,? (?P<volume>\\d) $reporter (?:1857|1871|1897|1915|1929|1948|1970)"],
+        "variations": ["Comp. Laws", "Compiled Laws"],
+        "examples": ["3 Comp. Laws 1915, § 12802", "2 Comp. Laws 1871, §§ 4692, 4693", "3 Comp. Laws 1929, § 14580", "section 9063, 2 Comp. Laws 1915"],
+        "notes": "Michigan's Compiled Laws by volume and edition, `3 Comp. Laws 1915, § 12802`, or with the section first, `section 9063, 2 Comp. Laws 1915` (#118). Other states had Compiled Laws too, so the form takes only a volume in front and one of Michigan's edition years (1857, 1871, 1897, 1915, 1929, 1948, 1970)."
+      },
+      {
+        "regexes": ["$reporter (?:1857|1871|1897|1915|1929|1948|1970),? § $law_section"],
+        "examples": ["Mich. Comp. Laws 1948, § 750.110"],
+        "notes": "Michigan's Compiled Laws named in full, with an edition's year (#118)."
       }
     ],
     "N.C. Gen. Stat.": [
@@ -154,6 +207,14 @@
         "variations": ["O.S."],
         "examples": ["12 O.S.2011 § 1141.5", "22 O.S.2001, § 1089", "21 O.S. § 701.7"],
         "notes": "Oklahoma courts put the title first and the code's year after `O.S.`."
+      }
+    ],
+    "Or. Laws": [
+      {
+        "regexes": ["$reporter,? $law_year,? [Cc]h(?:apter|\\.)? ?(?P<chapter>\\d+)(?:,? (?:§§?|[Ss]ecs?\\.|[Ss]ections?) ?$law_section)?"],
+        "variations": ["Or Laws", "Oregon Laws"],
+        "examples": ["Or Laws 1985, ch 734, § 5", "Oregon Laws 1937, chapter 123, section 4", "Or. Laws 1999, ch. 1051, § 1"],
+        "notes": "Oregon's session laws as Oregon courts cite them: the year after the name, then the chapter and section (#118)."
       }
     ],
     "Pa. Cons. Stat.": [
