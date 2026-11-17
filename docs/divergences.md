@@ -37,6 +37,7 @@ on purpose, and how to list a new one, are under
 | [A year outside every exact edition picks a variation's](#year-rules-out-exact) | #102 | drafted in [`year-rules-out-exact.md`](eyecite-issue-drafts/year-rules-out-exact.md) |
 | [Inline markup doesn't split a word](#html-inline-join) | #121 | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
 | [A supra's case name decides between cases its last word matches](#supra-case-name) | #127 | drafted in [`supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md) |
+| [`69 id. 76`: "id." standing for the reporter](#reporter-id) | #129 | drafted in [`reporter-id.md`](eyecite-issue-drafts/reporter-id.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -1139,6 +1140,86 @@ puts after the opinion.
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md).
+
+<a id="reporter-id"></a>
+## `69 id. 76`: "id." standing for the reporter
+
+Opinions into the twentieth century cite a run of cases in one reporter by writing `id.` for the
+reporter after the first: `Langdon v. The Mayor, 92 N. Y. 427; Thomas v. Thomas, 18 id. 481`
+is 18 N.Y. 481. A second case in the same volume is `id.` and the page after its name: `Smith
+v. Edwards, 88 id. 92; Delaney v. McCormack, id. 174` is 88 N.Y. 174. eyecite reads each `id.`
+as an id. citation with the page as its pin cite, and resolves it to the citation before it, a
+different decision.
+
+citare reads a volume, `id.` and a page as a full case citation in the reporter of the case
+citation before it, and `id.` and a page after a case name (`v.`, `In re`, `Matter of`, `ex
+rel.` in the same clause) as one in that citation's volume too. The citation's `reporter` group
+is the earlier citation's reporter, and its editions are that citation's, so
+`reporter_normalized`, the CAP slug and resolution work as they do for the citation written
+out. After a parallel group, `id.` is the group's first reporter (`74 W. Va. 569, 82 S. E. 614;
+Cook v. Raleigh Lumber Co., Id. 503` is 74 W. Va. 503).
+
+It leaves an id. citation where the reporter is a statute's or journal's (`42 U.S.C. § 1983; 2
+id. 5`), where no case citation comes before it, and for `Id. 102` with no case name in front.
+After a citation the tokenizer doesn't recognize (`Biggs v. Lawrence, (3 Durnford & East, 454,)
+... Waymell v. Reed, (5 Id. 599,)`, `3 How. Pr. R. 297. Daws v. Green, Id. 377`) the reporter
+the `id.` stands for is unknown, and the `id.` is plain text: neither a citation nor an id.
+citation that resolves to the wrong case. A citation with no volume (the nominative reporter
+`Thompson`, which a party named Thompson also matches) is never the reporter.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Langdon v. The Mayor, 92 N.Y. 427; Thomas v. Thomas, 18 id. 481.` | id. citation, pin cite `481`, resolved to `92 N.Y. 427` | full case citation `18 N.Y. 481`, plaintiff `Thomas` |
+| `Smith v. Edwards, 88 N.Y. 92; Delaney v. McCormack, id. 174.` | id. citation, pin cite `174`, resolved to `88 N.Y. 92` | full case citation `88 N.Y. 174`, plaintiff `Delaney` |
+| `Spaulding v. Spaulding, 3 How. Pr. R. 297. Daws v. Green, Id. 377.` | id. citation resolved to the citation before `3 How. Pr. R.` | no citation for `Id. 377` |
+| `Smith v. Jones, 50 Ill. 100. Id. 102.` | id. citation | id. citation (unchanged) |
+
+### Evidence
+
+The form is common in older opinions and rare in modern ones. Over 35,755 CAP opinions from
+older New York and Illinois reports (Misc. 1-40, App. Div. 1-40, N.Y.S. 1-20 and Barbour 1-20,
+and 30 volumes of Ill. and 20 of N.Y. drawn at random from their first 150, seed 129), id.
+citations go from 17,629 to 1,319: 15,447 become full case citations, most of them
+(about 94%) the volume form and the rest the same-volume form, and 863 become plain text after
+an unrecognized citation. 3,135 of them had resolved, every one to a citation of a different
+decision. Over citation-bench's stare.pub sample (1,000 opinions) 21 id. citations become full
+case citations, and over the 12,337-opinion CAP statute sample of #115 to #118, 4.
+
+The new citations change what other citations resolve to. On the older CAP sample 481 more
+supras resolve, to cases whose full citation was an `id.` before (`Kaare v. T. S. & I. Co.
+(supra)` to `Kaare v. T. S. & I. Co., 139 id. 369`); 33 move, and the 7 I checked against the
+text all move to the case they name (`Parmenter v. State, supra` from `140 N. Y. 480` to
+`Parmenter v. State, 135 id. 163`); 34 no longer resolve. Of 5 of those I checked, 2 were wrong
+before (`Eldridge v. Pierce et al. supra` to `43 Ill. 231`, where the opinion cites `90 Ill.
+474`), 2 are cases the opinion cites twice with different pages, now both found (`Stokes v.
+Stickney, 96 N. Y. 326` and `96 id. 323`), and one, `Crane v. Gruenewald (supra)`, resolved
+right before and doesn't now. Of the id. citations left, 21 more resolve, because the citation
+before them is now a full citation instead of an unresolved id. citation; I read all 21, and 4
+resolve to the right case. The rest are OCR (`72 id. .424`), treatises (`2 id. secs. 1259`)
+and same-volume cites without a comma (`Kelderhouse v. Hall et al. id. 150`), which resolve to
+the citation before them, as eyecite resolves every id. citation.
+
+I read 40 of the new citations, drawn at random from both samples, in context, and 20 of the
+newly resolved supras. All 40 citations have the volume, reporter and page the opinion means
+(`Kelly v. Mayor, 11 id. 432` after `8 N. Y. 222` is 11 N.Y. 432; `Hurd v. Beeman, Id. 254`
+after `8 How. Pr. 377` is 8 How. Pr. 254), and all 20 supras resolve to the case they name.
+Before the unrecognized-citation and no-volume rules, 2 of a first 40 were wrong (`Waymell v.
+Reed, (5 Id. 599,)` after `3 Durnford & East` read as Hill's, and `Daws v. Green, Id. 377` as
+Denio's), and party names `Thompson` gave a run of citations the reporter `Thompson`.
+
+### Tests
+
+- `crates/citare-core/tests/reporter_id.rs`: both forms, the #129 example's shape, parentheses
+  and a capital `Id.`, a short cite before it, a parallel group, a chain of same-volume cites,
+  an id. citation after the new citation, the clause rule (`ibid. 72, 280` in a journal
+  citation), an unrecognized citation and a nominative reporter before it, and the forms left as
+  id. citations.
+- citation-bench: none yet; the table's rows can become `find` and `resolve` vectors in
+  `vectors/divergences/`.
+
+### Upstream
+
+Not filed; a draft is in [`eyecite-issue-drafts/reporter-id.md`](eyecite-issue-drafts/reporter-id.md).
 
 <a id="eyecite-suite"></a>
 ## eyecite's test suite against the Python API

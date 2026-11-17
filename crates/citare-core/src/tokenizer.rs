@@ -739,7 +739,264 @@ fn tokenize_impl(raw_tokens: &[Token], text: &str) -> (Tokens, Vec<(usize, Token
         append_text(&mut all_tokens, &text[offset..]);
     }
 
-    (all_tokens, citation_tokens)
+    reporter_ids(all_tokens, citation_tokens)
+}
+
+/// `69 id. 76`: "id." standing for the reporter of the case citation before
+/// it (#129). Older opinions cite a run of cases in one reporter as `Langdon
+/// v. The Mayor, 92 N.Y. 427; Thomas v. Thomas, 18 id. 481`, and a second
+/// case in the same volume as `Smith v. Edwards, 88 id. 92; Delaney v.
+/// McCormack, id. 174`. eyecite takes each `id.` for an id. citation. Here a
+/// volume, `id.` and a page become one full citation token with the editions
+/// and reporter of the citation token before it, so the rest of the pipeline
+/// reads `18 N.Y. 481`; and `id.` and a page after a case name (`Delaney v.
+/// McCormack, id. 174`) become one with that citation's volume too, `88
+/// N.Y. 174`.
+///
+/// It applies only when the citation token before the `id.` is a case
+/// reporter's (a full or short case citation). After a statute or a journal
+/// the `id.` stands for that, and stays an id. citation, as it does with no
+/// citation before it. Without a volume, it applies only after a case name
+/// (`v.`, `In re`, `Matter of`, `ex rel.`), so `Id. 174` after a citation is
+/// still that citation's id. citation.
+fn reporter_ids(
+    all_tokens: Tokens,
+    citation_tokens: Vec<(usize, Token)>,
+) -> (Tokens, Vec<(usize, Token)>) {
+    fn word(tokens: &Tokens, i: usize) -> Option<&str> {
+        match tokens.get(i)? {
+            TokenOrStr::Str(s) => Some(s),
+            TokenOrStr::Token(_) => None,
+        }
+    }
+    fn is_case(ct: &CitationTokenData) -> bool {
+        let mut eds = ct
+            .exact_editions
+            .iter()
+            .chain(&ct.variation_editions)
+            .peekable();
+        eds.peek().is_some() && eds.all(|e| e.reporter.source == ReporterSource::Reporters)
+    }
+    // A volume: up to four digits, after an optional opening bracket.
+    fn volume(w: &str) -> Option<(&str, &str)> {
+        let digits = w.trim_start_matches(['(', '[']);
+        let ok = (1..=4).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit());
+        ok.then(|| (&w[..w.len() - digits.len()], digits))
+    }
+    // A page: up to five digits at the start of the word.
+    fn page(w: &str) -> Option<(&str, &str)> {
+        let n = w.bytes().take_while(u8::is_ascii_digit).count();
+        let next = w[n..].chars().next();
+        ((1..=5).contains(&n) && !next.is_some_and(char::is_alphanumeric)).then(|| w.split_at(n))
+    }
+    // A case name in the clause before word `to`: `v.`, `In re`, `Matter
+    // of`, `ex rel.` within the 15 words before it, back to `from` (the
+    // citation before it), a `;` or a closing parenthesis. `v.`, `vs.` and
+    // `re` are stop word tokens.
+    fn case_name_before(tokens: &Tokens, from: usize, to: usize) -> bool {
+        for j in (from.max(to.saturating_sub(30))..to).rev() {
+            let w = match tokens.get(j) {
+                Some(TokenOrStr::Str(s)) => s.as_str(),
+                Some(TokenOrStr::Token(Token::StopWord(t))) => t.data.as_str(),
+                _ => return false,
+            };
+            let key = w
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_ascii_lowercase();
+            // `In re` is one stop word token.
+            let last = key.rsplit(' ').next().unwrap_or_default();
+            if matches!(last, "v" | "vs" | "re" | "matter" | "rel") {
+                return true;
+            }
+            if j + 2 < to && (w.ends_with(';') || w.ends_with(')') || w.ends_with(":")) {
+                return false;
+            }
+        }
+        false
+    }
+    // Pin cites and commas between the citations of a parallel group.
+    fn only_pins(tokens: &Tokens, from: usize, to: usize) -> bool {
+        (from..to).all(|j| match tokens.get(j) {
+            Some(TokenOrStr::Str(s)) => s
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, ' ' | ',' | '-' | '\u{2013}')),
+            _ => false,
+        })
+    }
+    // A citation the tokenizer didn't recognize between two word indexes:
+    // a bare volume and a capitalized word after it (`3 Durnford & East,
+    // 454`, `3 How. Pr. R. 297`). The `id.` after it stands for that
+    // reporter, not the recognized one before it.
+    fn unrecognized_cite_between(tokens: &Tokens, from: usize, to: usize) -> bool {
+        (from..to.saturating_sub(2)).any(|j| {
+            word(tokens, j).and_then(volume).is_some()
+                && word(tokens, j + 1) == Some(" ")
+                && word(tokens, j + 2)
+                    .is_some_and(|w| w.chars().next().is_some_and(char::is_uppercase))
+        })
+    }
+    fn group(ct: &CitationTokenData, name: &str) -> Option<String> {
+        ct.token_data.groups.get(name).cloned().flatten()
+    }
+
+    if !citation_tokens
+        .iter()
+        .any(|(_, t)| matches!(t, Token::Id(_)))
+    {
+        return (all_tokens, citation_tokens);
+    }
+
+    // The id. tokens that become citations, by the index of their first
+    // word: the index of their last word, the id. token's index, the new
+    // token, and the text left over before and after it.
+    struct Merge {
+        last: usize,
+        id: usize,
+        token: Token,
+        before: String,
+        after: String,
+    }
+    let mut merges: BTreeMap<usize, Merge> = BTreeMap::new();
+    let mut drops: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    // The citation token before each id. token: a merged one counts, so
+    // `90 id. 5; Delaney v. Roe, id. 174` is 90 N.Y. 174.
+    let mut previous: Option<(usize, CitationTokenData)> = None;
+    for (i, token) in &citation_tokens {
+        let id = match token {
+            // A citation with no volume (a nominative reporter's,
+            // `Thompson, 86`, which is as often a party's name) can't be
+            // what a volume and `id.` stand for.
+            Token::Citation(ct) if group(ct, "volume").is_none_or(|v| v.is_empty()) => continue,
+            Token::Citation(ct) => {
+                // In a parallel group, "id." stands for the first
+                // reporter: `74 W. Va. 569, 82 S. E. 614; Cook v. Raleigh
+                // Lumber Co., Id. 503, 82 S. E. 327` is 74 W. Va. 503.
+                let parallel = previous.as_ref().is_some_and(|(p, prev)| {
+                    is_case(prev) && is_case(ct) && only_pins(&all_tokens, p + 1, *i)
+                });
+                if parallel {
+                    let (_, first) = previous.take().unwrap();
+                    previous = Some((*i, first));
+                } else {
+                    previous = Some((*i, ct.clone()));
+                }
+                continue;
+            }
+            Token::Id(id) => id,
+            _ => continue,
+        };
+        let i = *i;
+        let Some((prev_index, prev)) = previous.as_ref().filter(|(_, ct)| is_case(ct)) else {
+            continue;
+        };
+        let prev_index = *prev_index;
+        if word(&all_tokens, i + 1) != Some(" ") || i < 2 || word(&all_tokens, i - 1) != Some(" ") {
+            continue;
+        }
+        let Some((pg, after)) = word(&all_tokens, i + 2).and_then(page) else {
+            continue;
+        };
+        let before_word = word(&all_tokens, i - 2);
+        // After a citation the tokenizer didn't recognize, the reporter the
+        // `id.` stands for is unknown. It still isn't an id. citation, so it
+        // goes back to plain text rather than resolve to the wrong case.
+        if unrecognized_cite_between(&all_tokens, prev_index + 1, i - 1) {
+            let shape = before_word.and_then(volume).is_some()
+                || (before_word.is_some_and(|w| w.ends_with(','))
+                    && case_name_before(&all_tokens, prev_index + 1, i - 2));
+            if shape {
+                drops.insert(i);
+            }
+            continue;
+        }
+        let (first, start, vol, before) = match before_word.and_then(volume) {
+            Some((before, vol)) => (i - 2, id.start - 1 - vol.len(), vol.to_string(), before),
+            None if before_word.is_some_and(|w| w.ends_with(','))
+                && case_name_before(&all_tokens, prev_index + 1, i - 2) =>
+            {
+                let Some(vol) = group(prev, "volume") else {
+                    continue;
+                };
+                (i, id.start, vol, "")
+            }
+            None => continue,
+        };
+        let data = if first == i {
+            format!("{} {pg}", id.data)
+        } else {
+            format!("{vol} {} {pg}", id.data)
+        };
+        let groups = HashMap::from([
+            ("volume".to_string(), Some(vol)),
+            ("reporter".to_string(), group(prev, "reporter")),
+            ("page".to_string(), Some(pg.to_string())),
+        ]);
+        let ct = CitationTokenData {
+            token_data: TokenData {
+                data,
+                start,
+                end: id.end + 1 + pg.len(),
+                groups,
+            },
+            exact_editions: prev.exact_editions.clone(),
+            variation_editions: prev.variation_editions.clone(),
+            short: false,
+        };
+        let token = Token::Citation(ct.clone());
+        merges.insert(
+            first,
+            Merge {
+                last: i + 2,
+                id: i,
+                token,
+                before: before.to_string(),
+                after: after.to_string(),
+            },
+        );
+        previous = Some((i, ct));
+    }
+    if merges.is_empty() && drops.is_empty() {
+        return (all_tokens, citation_tokens);
+    }
+
+    // Rebuild the word list with each merge's words replaced by its token,
+    // and renumber the citation tokens.
+    let mut words: Tokens = Vec::with_capacity(all_tokens.len());
+    let mut new_index: HashMap<usize, usize> = HashMap::new();
+    let mut tokens_by_id: HashMap<usize, Token> = HashMap::new();
+    let mut old = all_tokens.into_iter().enumerate();
+    while let Some((j, t)) = old.next() {
+        let Some(m) = merges.remove(&j) else {
+            match t {
+                TokenOrStr::Token(Token::Id(id)) if drops.contains(&j) => {
+                    words.push(TokenOrStr::Str(id.data));
+                }
+                t => {
+                    new_index.insert(j, words.len());
+                    words.push(t);
+                }
+            }
+            continue;
+        };
+        if m.last > j {
+            old.nth(m.last - j - 1);
+        }
+        if !m.before.is_empty() {
+            words.push(TokenOrStr::Str(m.before));
+        }
+        new_index.insert(m.id, words.len());
+        words.push(TokenOrStr::Token(m.token.clone()));
+        tokens_by_id.insert(m.id, m.token);
+        if !m.after.is_empty() {
+            words.push(TokenOrStr::Str(m.after));
+        }
+    }
+    let citations = citation_tokens
+        .into_iter()
+        .filter(|(i, _)| !drops.contains(i))
+        .map(|(i, t)| (new_index[&i], tokens_by_id.remove(&i).unwrap_or(t)))
+        .collect();
+    (words, citations)
 }
 
 /// Split text into words (separated by spaces), treating whitespace as
