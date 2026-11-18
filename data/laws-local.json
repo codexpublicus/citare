@@ -103,11 +103,41 @@
         "notes": "Idaho courts put the section first: `section 18-8004, Idaho Code` (#116)."
       }
     ],
+    "Ill. Comp. Stat.": [
+      {
+        "regexes": ["(?P<chapter>\\d+) $reporter (?P<act>\\d+) ?/ ?$law_section"],
+        "variations": ["ILCS"],
+        "examples": ["735 ILCS 5/13-206", "720 ILCS 5/12-3.05(a)", "625 ILCS 5 / 11-501"],
+        "notes": "Illinois courts write the act and section with no spaces around the slash, `735 ILCS 5/13-206`; reporters-db's pattern has `ILCS` only as `Ill. Comp. Stat.` and wants ` / ` (#115)."
+      }
+    ],
+    "Kan. Stat. Ann.": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter (?:(?:18|19|20)\\d{2} Supp\\. ?)?(?P<section>\\d+-\\d+[a-z]?(?:\\d+[a-z]?)?(?:,\\d+)?)"],
+        "variations": ["K.S.A."],
+        "examples": ["K.S.A. 79-5a01", "K.S.A. 1989 Supp. 21-4603(2)", "K.S.A. 12-16,102", "K.S.A. 60-1507"],
+        "notes": "Kansas courts cite `K.S.A.` and the section with no `§`, sometimes with a supplement's year. A section can have a letter inside it (`79-5a01`) or a comma before its last part (`12-16,102`), which `$law_section` doesn't allow (#115)."
+      }
+    ],
+    "Ky. Rev. Stat. Ann.": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter $law_section"],
+        "variations": ["KRS"],
+        "examples": ["KRS 95.450", "KRS § 342.610"],
+        "notes": "Kentucky courts' abbreviation, usually with no `§` (#115)."
+      }
+    ],
     "La. Stat. Ann.": [
       {
         "variations": ["La. R.S.", "La. Rev. Stat.", "La. Rev. Stat. Ann."],
         "examples": ["La.Rev.Stat. § 13:841.3", "La. R.S. § 15:574.4"],
         "notes": "Louisiana Revised Statutes, the form before the Bluebook's `La. Stat. Ann.`."
+      },
+      {
+        "regexes": ["$reporter $law_section"],
+        "variations": ["La. R.S.", "La. Rev. Stat.", "LSA-R.S.", "LSA R.S."],
+        "examples": ["La. R.S. 13:5101", "LSA-R.S. 22:655", "La.R.S. 9:2800"],
+        "notes": "Louisiana Revised Statutes with no `§`, as Louisiana courts write them. Plain `R.S.` is left out: it is also the federal Revised Statutes (#115)."
       }
     ],
     "Mass. Gen. Laws": [
@@ -131,6 +161,12 @@
         "variations": ["MCL", "M.C.L.", "MCLA", "M.C.L.A."],
         "examples": ["MCL § 500.3101", "MCLA § 750.316"],
         "notes": "Michigan courts' abbreviations."
+      },
+      {
+        "regexes": ["$reporter $law_section"],
+        "variations": ["MCL", "M.C.L.", "MCLA", "M.C.L.A."],
+        "examples": ["MCL 750.110", "MCLA 600.2912a", "M.C.L. 257.625(1)"],
+        "notes": "Michigan courts' abbreviations with no `§` (#115)."
       }
     ],
     "Mo. Rev. Stat.": [
@@ -146,6 +182,12 @@
         "variations": ["N.C.G.S.", "G.S."],
         "examples": ["N.C.G.S. § 143-291", "G.S. § 14-17"],
         "notes": "North Carolina courts' abbreviations."
+      },
+      {
+        "regexes": ["$reporter (?P<section>\\d+[A-Z]{0,2}-\\d+(?:\\.\\d+)*[a-z]?)"],
+        "variations": ["N.C.G.S.", "G.S."],
+        "examples": ["G.S. 163-140", "N.C.G.S. 15A-1340.16", "G.S. 20-138.1"],
+        "notes": "North Carolina courts' abbreviations with no `§`. A North Carolina section is chapter-hyphen-section (`163-140`), and the form asks for the hyphen: Kansas's `G.S. 1949, 79-1702` is the General Statutes of Kansas (#115)."
       }
     ],
     "N.D. Cent. Code": [
@@ -185,6 +227,14 @@
         "notes": "New York's consolidated laws cited by name without `N.Y.`, as New York courts write them. The list is the consolidated laws' names, so `Family Law` or `Criminal Law` (Maryland articles) don't match."
       }
     ],
+    "Nev. Rev. Stat.": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter $law_section"],
+        "variations": ["NRS", "N.R.S."],
+        "examples": ["NRS 284.383", "NRS 200.481(2)(e)", "N.R.S. § 41.141"],
+        "notes": "Nevada courts' abbreviation, usually with no `§` (#115)."
+      }
+    ],
     "Ohio Gen. Code": [
       {
         "name": "General Code of Ohio",
@@ -198,6 +248,12 @@
     ],
     "Ohio Rev. Code Ann.": [
       {
+        "regexes": ["$reporter (?:§ )?(?P<section>\\d{1,4}\\.\\d{2,3}[A-Z]?)"],
+        "variations": ["R.C.", "O.R.C."],
+        "examples": ["R.C. 2929.20(J)", "R.C. 4511.19", "O.R.C. § 2744.02", "R. C. 2929.22"],
+        "notes": "Ohio courts' abbreviation, usually with no `§`. Every section of the Revised Code has a period in it (`2929.20`), and the form asks for one: `R. C. § 2951` in nineteenth-century Alabama is the Revised Code of Alabama, and `I.R.C. § 514` the Internal Revenue Code (#115)."
+      },
+      {
         "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )(?P<section>\\d{1,4}\\.\\d{2,3}[A-Z]?)(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? (?:of the )?$reporter"],
         "variations": ["Revised Code", "Ohio Revised Code"],
         "examples": ["Section 4511.19, Revised Code", "section 2929.20 of the Revised Code", "Section 2305.10(A), Ohio Revised Code"],
@@ -210,6 +266,14 @@
         "variations": ["O.S."],
         "examples": ["12 O.S.2011 § 1141.5", "22 O.S.2001, § 1089", "21 O.S. § 701.7"],
         "notes": "Oklahoma courts put the title first and the code's year after `O.S.`."
+      }
+    ],
+    "Or. Rev. Stat.": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter $law_section"],
+        "variations": ["ORS", "O.R.S."],
+        "examples": ["ORS 163.375", "ORS 137.700(2)(a)", "ORS § 30.265"],
+        "notes": "Oregon courts' abbreviation, usually with no `§` (#115)."
       }
     ],
     "Pa. Cons. Stat.": [
@@ -239,6 +303,14 @@
         "variations": ["G.L.", "R.I.G.L."],
         "examples": ["G.L. 1956 § 11-23-1", "G.L. 1956, § 24-10-1"],
         "notes": "Rhode Island courts' `G.L. 1956`."
+      }
+    ],
+    "S.D. Codified Laws": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter $law_section"],
+        "variations": ["SDCL"],
+        "examples": ["SDCL 22-16-21", "SDCL 15-6-56(c)", "SDCL § 23A-27-1"],
+        "notes": "South Dakota courts' abbreviation, usually with no `§` (#115)."
       }
     ],
     "Tenn. Code Ann.": [
@@ -272,6 +344,14 @@
         "variations": ["West Virginia Code"],
         "examples": ["West Virginia Code § 23-4-2(c)(2)"],
         "notes": "The code's name spelled out, as West Virginia courts often write it."
+      }
+    ],
+    "Wash. Rev. Code": [
+      {
+        "regexes": ["$reporter § $law_section", "$reporter $law_section"],
+        "variations": ["RCW"],
+        "examples": ["RCW 5.60.060(2)(a)", "RCW 9A.36.021", "RCW § 4.84.185"],
+        "notes": "Washington courts' abbreviation, usually with no `§` (#115)."
       }
     ],
     "Wis. Stat.": [

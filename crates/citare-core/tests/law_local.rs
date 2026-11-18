@@ -275,6 +275,39 @@ fn every_supplement_example_is_recognized() {
     "23-4-2"
 )]
 #[case("WIS. STAT. § 847.07", "Wisconsin", "Wis. Stat.", None, "847.07")]
+// A code's own abbreviation and the section, with no `§` (#115)
+#[case("NRS 284.383", "Nevada", "Nev. Rev. Stat.", None, "284.383")]
+#[case("ORS 163.375", "Oregon", "Or. Rev. Stat.", None, "163.375")]
+#[case("R.C. 2929.20(J)", "Ohio", "Ohio Rev. Code Ann.", None, "2929.20")]
+#[case(
+    "SDCL 22-16-21",
+    "South Dakota",
+    "S.D. Codified Laws",
+    None,
+    "22-16-21"
+)]
+#[case(
+    "RCW 5.60.060(2)(a)",
+    "Washington",
+    "Wash. Rev. Code",
+    None,
+    "5.60.060"
+)]
+#[case("K.S.A. 79-5a01", "Kansas", "Kan. Stat. Ann.", None, "79-5a01")]
+#[case(
+    "K.S.A. 1989 Supp. 21-4603(2)",
+    "Kansas",
+    "Kan. Stat. Ann.",
+    None,
+    "21-4603"
+)]
+#[case("K.S.A. 12-16,102", "Kansas", "Kan. Stat. Ann.", None, "12-16,102")]
+#[case("KRS 95.450", "Kentucky", "Ky. Rev. Stat. Ann.", None, "95.450")]
+#[case("La. R.S. 13:5101", "Louisiana", "La. Stat. Ann.", None, "13:5101")]
+#[case("LSA-R.S. 22:655", "Louisiana", "La. Stat. Ann.", None, "22:655")]
+#[case("735 ILCS 5/13-206", "Illinois", "Ill. Comp. Stat.", None, "13-206")]
+#[case("G.S. 163-140", "North Carolina", "N.C. Gen. Stat.", None, "163-140")]
+#[case("MCL 750.110", "Michigan", "Mich. Comp. Laws", None, "750.110")]
 // The section before the code (#116)
 #[case("sec. 103.465, Stats.", "Wisconsin", "Wis. Stat.", None, "103.465")]
 #[case(
@@ -406,6 +439,22 @@ fn new_york_code_split() {
     assert!(r.all_editions.iter().all(|e| e.harvard_slug.is_none()));
 }
 
+/// #115: look-alikes of the abbreviations cited with no `§`, from other
+/// codes, that must not become Ohio's or North Carolina's.
+#[rstest]
+#[case("under I.R.C. § 514 except for government plans")] // Internal Revenue Code
+#[case("Holley v. Younge, 27 Ala. 603 ; R. C. § 2642.")] // Revised Code of Alabama
+#[case("the court held G.S. 1949, 79-1702 was available")] // General Statutes of Kansas
+fn not_ohio_or_north_carolina(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert!(
+                !["Ohio", "North Carolina"].contains(&f.jurisdiction.as_deref().unwrap_or("")),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
+}
 /// #116: a subsection between the section and the code is the pin cite.
 #[rstest]
 #[case("section 922.07(1), Florida Statutes", "922.07", "(1)")]
