@@ -275,6 +275,108 @@ fn every_supplement_example_is_recognized() {
     "23-4-2"
 )]
 #[case("WIS. STAT. § 847.07", "Wisconsin", "Wis. Stat.", None, "847.07")]
+// A code's own abbreviation and the section, with no `§` (#115)
+#[case("NRS 284.383", "Nevada", "Nev. Rev. Stat.", None, "284.383")]
+#[case("ORS 163.375", "Oregon", "Or. Rev. Stat.", None, "163.375")]
+#[case("R.C. 2929.20(J)", "Ohio", "Ohio Rev. Code Ann.", None, "2929.20")]
+#[case(
+    "SDCL 22-16-21",
+    "South Dakota",
+    "S.D. Codified Laws",
+    None,
+    "22-16-21"
+)]
+#[case(
+    "RCW 5.60.060(2)(a)",
+    "Washington",
+    "Wash. Rev. Code",
+    None,
+    "5.60.060"
+)]
+#[case("K.S.A. 79-5a01", "Kansas", "Kan. Stat. Ann.", None, "79-5a01")]
+#[case(
+    "K.S.A. 1989 Supp. 21-4603(2)",
+    "Kansas",
+    "Kan. Stat. Ann.",
+    None,
+    "21-4603"
+)]
+#[case("K.S.A. 12-16,102", "Kansas", "Kan. Stat. Ann.", None, "12-16,102")]
+#[case("KRS 95.450", "Kentucky", "Ky. Rev. Stat. Ann.", None, "95.450")]
+#[case("La. R.S. 13:5101", "Louisiana", "La. Stat. Ann.", None, "13:5101")]
+#[case("LSA-R.S. 22:655", "Louisiana", "La. Stat. Ann.", None, "22:655")]
+#[case("735 ILCS 5/13-206", "Illinois", "Ill. Comp. Stat.", None, "13-206")]
+#[case("G.S. 163-140", "North Carolina", "N.C. Gen. Stat.", None, "163-140")]
+#[case("MCL 750.110", "Michigan", "Mich. Comp. Laws", None, "750.110")]
+// The section before the code (#116)
+#[case("sec. 103.465, Stats.", "Wisconsin", "Wis. Stat.", None, "103.465")]
+#[case(
+    "§ 25-8-505, C.R.S. 1973",
+    "Colorado",
+    "Colo. Rev. Stat.",
+    None,
+    "25-8-505"
+)]
+#[case(
+    "§ 18-3-203(l)(c), C.R.S.1973 (1978 Repl.Vol. 8)",
+    "Colorado",
+    "Colo. Rev. Stat.",
+    None,
+    "18-3-203"
+)]
+#[case(
+    "Section 54.28, Fla.Stat., F.S.A.",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "54.28"
+)]
+#[case(
+    "Section 687.07 Florida Statutes 1941",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "687.07"
+)]
+#[case(
+    "section 922.07, Florida Statutes (1995)",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "922.07"
+)]
+#[case("§ 517.31, Fla.Stat, F.S.A.", "Florida", "Fla. Stat.", None, "517.31")]
+#[case(
+    "Section 510.210 RSMo 1949, V.A.M.S.",
+    "Missouri",
+    "Mo. Rev. Stat.",
+    None,
+    "510.210"
+)]
+#[case("§ 546.510 RSMo 1949", "Missouri", "Mo. Rev. Stat.", None, "546.510")]
+#[case(
+    "Section 24-02-26, N.D.C.C.",
+    "North Dakota",
+    "N.D. Cent. Code",
+    None,
+    "24-02-26"
+)]
+#[case(
+    "Section 4511.19, Revised Code",
+    "Ohio",
+    "Ohio Rev. Code Ann.",
+    None,
+    "4511.19"
+)]
+#[case(
+    "section 2929.20 of the Revised Code",
+    "Ohio",
+    "Ohio Rev. Code Ann.",
+    None,
+    "2929.20"
+)]
+#[case("Section 4628, General Code", "Ohio", "Ohio Gen. Code", None, "4628")]
+#[case("section 18-8004, Idaho Code", "Idaho", "Idaho Code", None, "18-8004")]
 // The section spelled out, a comma, or the code's year (#117)
 #[case(
     "Welfare and Institutions Code section 19050",
@@ -409,6 +511,70 @@ fn new_york_code_split() {
     // to pick up.
     let r = c.resource_common().unwrap();
     assert!(r.all_editions.iter().all(|e| e.harvard_slug.is_none()));
+}
+
+/// #115: look-alikes of the abbreviations cited with no `§`, from other
+/// codes, that must not become Ohio's or North Carolina's.
+#[rstest]
+#[case("under I.R.C. § 514 except for government plans")] // Internal Revenue Code
+#[case("Holley v. Younge, 27 Ala. 603 ; R. C. § 2642.")] // Revised Code of Alabama
+#[case("the court held G.S. 1949, 79-1702 was available")] // General Statutes of Kansas
+fn not_ohio_or_north_carolina(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert!(
+                !["Ohio", "North Carolina"].contains(&f.jurisdiction.as_deref().unwrap_or("")),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
+}
+
+/// #116: a subsection between the section and the code is the pin cite.
+#[rstest]
+#[case("section 922.07(1), Florida Statutes", "922.07", "(1)")]
+#[case("§ 18-3-203(l)(c), C.R.S.1973", "18-3-203", "(l)(c)")]
+#[case("Section 4511.19(A)(1), Revised Code", "4511.19", "(A)(1)")]
+fn section_first_pin_cite(#[case] text: &str, #[case] section: &str, #[case] pin: &str) {
+    let c = law(text);
+    assert_eq!(
+        c.law().unwrap().section.as_deref(),
+        Some(section),
+        "{text:?}"
+    );
+    let Citation::FullLaw(d) = &c else {
+        unreachable!()
+    };
+    assert_eq!(d.metadata.pin_cite.as_deref(), Some(pin), "{text:?}");
+}
+
+/// #116: a year in parentheses after the code is the year, not a pin cite.
+#[test]
+fn section_first_year_after_code() {
+    let c = law("and not after that time. § 8-4-122, C.R.S. (2017). The");
+    let Citation::FullLaw(d) = &c else {
+        unreachable!()
+    };
+    assert_eq!(d.metadata.pin_cite, None);
+    assert_eq!(d.metadata.year.as_deref(), Some("2017"));
+}
+
+/// #116: Washington's and Montana's revised codes, cited section first, are
+/// not Ohio's.
+#[rstest]
+#[case("section 4.24.010 of the Revised Code of Washington")]
+#[case("section 9.94A.120, Revised Code of Washington")]
+#[case("section 93-2702, Revised Codes of Montana")]
+fn not_ohio_revised_code(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert_ne!(
+                f.jurisdiction.as_deref(),
+                Some("Ohio"),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
 }
 
 /// #117: other states' codes cited by subject, which must not become
