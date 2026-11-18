@@ -424,6 +424,9 @@ citare adds the most common forms from its own supplement to reporters-db's laws
 | `Labor Code section 3602` | nothing | California, `Cal. Labor Code`, section `3602` (#117) |
 | `W. Va. Code, 49-5-10(c) (1978)` | nothing | West Virginia, `W. Va. Code`, section `49-5-10`, pin cite `(c)` (#117) |
 | `Va.Code § 38.1-327.2` | unknown citation `§` | Virginia, `Va. Code Ann.`, section `38.1-327.2` (#117) |
+| `Ill. Rev. Stat. 1987, ch. 121, par. 4-501` | nothing | Illinois, `Ill. Rev. Stat.`, chapter `121`, section `4-501` (#118) |
+| `La. C.C. art. 1931` | nothing | Louisiana, `La. Civ. Code Ann.`, section (the article) `1931` (#118) |
+| `Or Laws 1985, ch 734, § 5` | unknown citation `§` | Oregon, `Or. Laws`, chapter `734`, section `5`, `groups.year` `1985` (#118) |
 
 The rest of the forms are in `data/laws-local.json`: `A.R.S.`, `HRS`, `N.C.G.S.` and `G.S.`,
 `N.D.C.C.`, `T.C.A.`, `40 P.S.`, `19-A M.R.S.`, `24 V.S.A.`, `Family Ct Act`, `Code Civ.
@@ -443,7 +446,12 @@ Code section 19050`, `Code of Civil Procedure section 437c`), `Idaho Code sectio
 section`, `Indiana Code Section`, `Iowa Code section`, `W. Va. Code, N`, `D.C. Code 1967, §`,
 `Ala. Code 1940, Tit. 7, §` and `Va. Code §`, with Texas's `V.T.C.A., Penal Code Section` and
 `Florida Evidence Code section` so they don't read as California's
-([`laws-local.md`](laws-local.md#section-spelled-out)). A statute's `reporter` group also no
+([`laws-local.md`](laws-local.md#section-spelled-out)). From #118: the Illinois Revised
+Statutes by year, chapter and paragraph (a new `Ill. Rev. Stat.` key), Louisiana's three codes
+by article (`La. C.C.`, `LSA-C.C.P.`, `La.C.Cr.P.`), Oregon's and Colorado's session laws by
+year and chapter, and Michigan's Compiled Laws by volume and edition (`3 Comp. Laws 1915, §
+12802`) ([`laws-local.md`](laws-local.md#session-laws-and-older-codes)). A statute's `reporter`
+group also no
 longer ends in whitespace: eyecite's `28 U.S.C.` and a line break before the `§` gives reporter
 `U.S.C.` plus the line break, and citare's gives `U.S.C.`.
 
@@ -473,6 +481,12 @@ The #117 forms, over a 12,337-opinion CAP sample and citation-bench's 1,000-opin
 sample, add 2,279 and 64 statute citations and lose none. 40 of the new citations, read in
 context, all have the right jurisdiction and code, and 39 the right section; the 40th is an
 OCR error in the section ([`evidence/code-section-spelled-out.md`](evidence/code-section-spelled-out.md)).
+
+The #118 forms, over a 12,337-opinion CAP sample and citation-bench's 1,000-opinion stare.pub
+sample, add 1,570 and 9 statute citations and lose none. 40 of the new citations, read in
+context, all have the right jurisdiction and code, and 39 the right chapter and section; the
+40th is an OCR error in the chapter
+([`evidence/session-laws-and-older-codes.md`](evidence/session-laws-and-older-codes.md)).
 
 ### Tests
 

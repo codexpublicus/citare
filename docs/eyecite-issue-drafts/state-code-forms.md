@@ -72,3 +72,11 @@ section (`W. Va. Code, 49-5-10(c)`), the District of Columbia's give the code's 
 12,337 CAP opinions they are 2,279 statute citations. Indiana's sections also have one part more
 than `law_section` takes when any part has a decimal: `Ind. Code § 35-44.1-3-1` gives section
 `35-44.1-3`.
+
+Older statute forms are missing too. laws.json has no Illinois Revised Statutes (`Ill. Rev. Stat.
+1987, ch. 121, par. 4-501`, the form Illinois courts used until 1993), and its Louisiana codes
+have only `La. Civ. Code Ann. art N`, not the abbreviations Louisiana courts write (`La. C.C. art.
+1931`, `LSA-C.C.P. Art. 2591`, `La.C.Cr.P. art. 894.1`). Session laws are there only as `<year>
+<name> <page>`, while Oregon's courts write `Or Laws 1985, ch 734, § 5`. Over 12,337 CAP opinions
+these and Michigan's `3 Comp. Laws 1915, § 12802` are 1,570 statute citations eyecite doesn't
+find.
