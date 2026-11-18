@@ -173,6 +173,8 @@ impl TokenExtractor {
             (m.start(), m.end(), match_str.to_string())
         };
 
+        let reporter_end = caps.name("reporter").map(|r| m.start() + r.end());
+
         // Skip empty tokens (can occur from corrupted/complex PDF data)
         if data.is_empty() {
             return None;
@@ -200,6 +202,15 @@ impl TokenExtractor {
             if let Some(Some(r)) = token_data.groups.get_mut("reporter") {
                 let trimmed = r.trim_end().len();
                 r.truncate(trimmed);
+            }
+            // The same `\s*` ends the token when the reporter comes last, as
+            // it does where the section is cited first (`§ 8-4-122, C.R.S.`,
+            // #116). The whitespace isn't part of the citation, and a
+            // parenthesis right after it would read as a pin cite.
+            if reporter_end == Some(inner_end) {
+                let kept = token_data.data.trim_end().len();
+                token_data.end -= token_data.data.len() - kept;
+                token_data.data.truncate(kept);
             }
         }
 

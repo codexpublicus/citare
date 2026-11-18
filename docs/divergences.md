@@ -411,13 +411,23 @@ citare adds the most common forms from its own supplement to reporters-db's laws
 | `22 O.S. 1951, § 1066` | case citation `22 O.S. 1951` (Ohio State Reports, page 1951) and unknown citation `§` | Oklahoma, `Okla. Stat.`, title `22`, section `1066` |
 | `NRS 284.383`, `ORS 163.375`, `R.C. 2929.20(J)` | nothing | Nevada, `Nev. Rev. Stat.`, section `284.383`; Oregon, `Or. Rev. Stat.`; Ohio, `Ohio Rev. Code Ann.`, section `2929.20`, pin cite `(J)` (#115) |
 | `735 ILCS 5/13-206` | nothing | Illinois, `Ill. Comp. Stat.`, chapter `735`, section `13-206` (#115) |
+| `Section 54.28, Fla.Stat., F.S.A.` | unknown citation `§` for `§` forms, nothing for `Section` | Florida, `Fla. Stat.`, section `54.28` (#116) |
+| `section 922.07(1), Florida Statutes (1995)` | nothing | Florida, `Fla. Stat.`, section `922.07`, pin cite `(1)`, year `1995` (#116) |
 
 The rest of the forms are in `data/laws-local.json`: `A.R.S.`, `HRS`, `N.C.G.S.` and `G.S.`,
 `N.D.C.C.`, `T.C.A.`, `40 P.S.`, `19-A M.R.S.`, `24 V.S.A.`, `Family Ct Act`, `Code Civ.
 Proc.,`, `Tex. Fam.Code`, `MCL`, `NMSA 1978,`, `Ala. Code 1975,`, `A.C.A.`, `La.Rev.Stat.`,
 `G.L. 1956`, `West Virginia Code` and `WIS. STAT.`. From #115, codes cited by their own
 abbreviation and the section with no `§`: `NRS`, `ORS`, `R.C.`, `SDCL`, `RCW`, `K.S.A.`, `KRS`,
-`La. R.S.` and `LSA-R.S.`, `ILCS`, `G.S.` and `MCL` ([`laws-local.md`](laws-local.md#no-section-sign)). A statute's `reporter` group also no
+`La. R.S.` and `LSA-R.S.`, `ILCS`, `G.S.` and `MCL` ([`laws-local.md`](laws-local.md#no-section-sign)).
+From #116, the section cited before the code: `sec. N, Stats.` (Wisconsin), `§ N, C.R.S.`
+(Colorado), `Section N, Fla.Stat.` and `Florida Statutes`, `Section N RSMo` (Missouri), `Section
+N, N.D.C.C.`, `Section N, Revised Code` and `Section N, General Code` (Ohio, the second a new
+`Ohio Gen. Code` key) and `section N, Idaho Code` ([`laws-local.md`](laws-local.md#section-first)).
+A subsection between the section and the code is the pin cite, and where the code ends the
+citation its span stops at the code: eyecite's span would take the space after it too, and does
+for the one reporters-db pattern that ends in the reporter (`N.Y. Consol. Laws Adv.`). A
+statute's `reporter` group also no
 longer ends in whitespace: eyecite's `28 U.S.C.` and a line break before the `§` gives reporter
 `U.S.C.` plus the line break, and citare's gives `U.S.C.`.
 
@@ -436,6 +446,12 @@ sample, add 14,094 and 714 statute citations and lose none; the three case citat
 references they take away were all wrong (`NRS 41 A. 100` read as volume 41 of the Atlantic
 Reporter). 40 of the new citations, read in context, all have the right jurisdiction, code and
 section ([`evidence/codes-without-section-sign.md`](evidence/codes-without-section-sign.md)).
+
+The #116 forms, over a 12,337-opinion CAP sample and citation-bench's 1,000-opinion stare.pub
+sample, add 3,241 and 65 statute citations and lose none, and take six statutes out of case
+names they had been read into. 40 of the new citations, read in context, all have the right
+jurisdiction, code, section and pin cite
+([`evidence/section-first-statutes.md`](evidence/section-first-statutes.md)).
 
 ### Tests
 
