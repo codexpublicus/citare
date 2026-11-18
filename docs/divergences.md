@@ -232,6 +232,14 @@ separate parts like a hyphen.
 | `See Utah Code Ann. § 76‐9‐101.` (U+2010) | `Utah Code Ann. § 76`, section `76` | `Utah Code Ann. § 76‐9‐101`, section `76‐9‐101` |
 | `See N.Y. Gen. Bus. Law § 394-ccc(1).` | `N.Y. Gen. Bus. Law § 394`, section `394` | `N.Y. Gen. Bus. Law § 394-ccc`, section `394-ccc`, pin cite `(1)` |
 
+| `See Ind. Code § 35-44.1-3-1.` | `Ind. Code § 35-44.1-3`, section `35-44.1-3` | `Ind. Code § 35-44.1-3-1`, section `35-44.1-3-1` (#117) |
+
+Indiana's sections have four parts, any of them with a decimal (`31-15-7-9.1`), and
+`$law_section` takes at most four numbers joined by separators, so a decimal anywhere in an
+Indiana section cuts off its last part. citare's `Ind. Code` entry in `data/laws-local.json`
+has its own section pattern; over the CAP statute sample of #117 it completes the section of
+73 `Ind. Code §` citations ([`laws-local.md`](laws-local.md#section-spelled-out)).
+
 Unchanged: sections without letters or Unicode hyphens (`§ 76-9-101`, `§ 1170.12`,
 `§ 161.001(b)(1)(D)`), and reporters-db's second form, a number with parenthesized parts
 (`81(a)(2)`).
@@ -413,6 +421,9 @@ citare adds the most common forms from its own supplement to reporters-db's laws
 | `735 ILCS 5/13-206` | nothing | Illinois, `Ill. Comp. Stat.`, chapter `735`, section `13-206` (#115) |
 | `Section 54.28, Fla.Stat., F.S.A.` | unknown citation `§` for `§` forms, nothing for `Section` | Florida, `Fla. Stat.`, section `54.28` (#116) |
 | `section 922.07(1), Florida Statutes (1995)` | nothing | Florida, `Fla. Stat.`, section `922.07`, pin cite `(1)`, year `1995` (#116) |
+| `Labor Code section 3602` | nothing | California, `Cal. Labor Code`, section `3602` (#117) |
+| `W. Va. Code, 49-5-10(c) (1978)` | nothing | West Virginia, `W. Va. Code`, section `49-5-10`, pin cite `(c)` (#117) |
+| `Va.Code § 38.1-327.2` | unknown citation `§` | Virginia, `Va. Code Ann.`, section `38.1-327.2` (#117) |
 
 The rest of the forms are in `data/laws-local.json`: `A.R.S.`, `HRS`, `N.C.G.S.` and `G.S.`,
 `N.D.C.C.`, `T.C.A.`, `40 P.S.`, `19-A M.R.S.`, `24 V.S.A.`, `Family Ct Act`, `Code Civ.
@@ -426,8 +437,13 @@ N, N.D.C.C.`, `Section N, Revised Code` and `Section N, General Code` (Ohio, the
 `Ohio Gen. Code` key) and `section N, Idaho Code` ([`laws-local.md`](laws-local.md#section-first)).
 A subsection between the section and the code is the pin cite, and where the code ends the
 citation its span stops at the code: eyecite's span would take the space after it too, and does
-for the one reporters-db pattern that ends in the reporter (`N.Y. Consol. Laws Adv.`). A
-statute's `reporter` group also no
+for the one reporters-db pattern that ends in the reporter (`N.Y. Consol. Laws Adv.`). From
+#117: California's codes by their subject spelled out with `section` (`Welfare and Institutions
+Code section 19050`, `Code of Civil Procedure section 437c`), `Idaho Code section`, `Utah Code
+section`, `Indiana Code Section`, `Iowa Code section`, `W. Va. Code, N`, `D.C. Code 1967, §`,
+`Ala. Code 1940, Tit. 7, §` and `Va. Code §`, with Texas's `V.T.C.A., Penal Code Section` and
+`Florida Evidence Code section` so they don't read as California's
+([`laws-local.md`](laws-local.md#section-spelled-out)). A statute's `reporter` group also no
 longer ends in whitespace: eyecite's `28 U.S.C.` and a line break before the `§` gives reporter
 `U.S.C.` plus the line break, and citare's gives `U.S.C.`.
 
@@ -452,6 +468,11 @@ sample, add 3,241 and 65 statute citations and lose none, and take six statutes 
 names they had been read into. 40 of the new citations, read in context, all have the right
 jurisdiction, code, section and pin cite
 ([`evidence/section-first-statutes.md`](evidence/section-first-statutes.md)).
+
+The #117 forms, over a 12,337-opinion CAP sample and citation-bench's 1,000-opinion stare.pub
+sample, add 2,279 and 64 statute citations and lose none. 40 of the new citations, read in
+context, all have the right jurisdiction and code, and 39 the right section; the 40th is an
+OCR error in the section ([`evidence/code-section-spelled-out.md`](evidence/code-section-spelled-out.md)).
 
 ### Tests
 

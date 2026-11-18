@@ -62,3 +62,13 @@ section before the code, which no laws.json pattern allows: `Section 54.28, Fla.
 Over 12,337 CAP opinions these are 3,241 statute citations; eyecite returns an unknown `§` for
 the `§` forms and nothing for the others. Ohio's General Code (`Section 4628, General Code`),
 in force from 1910 to 1953, has no entry at all.
+
+Many courts also spell out `section` (`Idaho Code section 41-1839`, `Utah Code section
+77-13-6`, `Indiana Code Section 35-34-1-8`, `Iowa Code section 321J.2`), and California's
+courts name the code by subject in full (`Welfare and Institutions Code section 19050`, `Code
+of Civil Procedure section 437c`). West Virginia's put a comma between the code and the
+section (`W. Va. Code, 49-5-10(c)`), the District of Columbia's give the code's year (`D.C. Code
+1967, § 16-501`), and `Va. Code § 38.1-327.2` has no `Ann.`. eyecite finds none of these; over
+12,337 CAP opinions they are 2,279 statute citations. Indiana's sections also have one part more
+than `law_section` takes when any part has a decimal: `Ind. Code § 35-44.1-3-1` gives section
+`35-44.1-3`.

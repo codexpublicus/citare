@@ -12,6 +12,11 @@
         "regexes": ["$reporter 1975,? § $law_section"],
         "examples": ["Ala. Code 1975, § 12-15-65(m)", "Ala.Code 1975, § 13A-5-40"],
         "notes": "Alabama's own style, with the code's year."
+      },
+      {
+        "regexes": ["$reporter (?:18|19)\\d{2},? (?:[Tt]it\\. (?P<title>\\d+[A-Z]?),? )?§ $law_section"],
+        "examples": ["Ala. Code 1940, Tit. 7, § 123", "Ala. Code 1923, § 7311"],
+        "notes": "Alabama's earlier codes by year, and the 1940 code's titles (#117). The 1975 code's form is the entry above."
       }
     ],
     "Ariz. Rev. Stat.": [
@@ -42,6 +47,12 @@
         "strings": ["CodeCiv.Proc.,§"],
         "examples": ["(Code Civ. Proc., § 472c.)"],
         "notes": "California Style Manual's `Code Civ. Proc.`; the code is Cal. Civ. Proc. Code."
+      },
+      {
+        "regexes": ["(?P<reporter>(?:Cal\\. |California )?(?P<subject>Penal|Civil|Evidence|Vehicle|Government|Family|Labor|Insurance|Probate|Corporations|Commercial|Elections|Education|Financial|Water|Business and Professions|Welfare and Institutions|Health and Safety|Revenue and Taxation|Public Resources|Public Utilities|Public Contract|Fish and Game|Food and Agricultural|Harbors and Navigation|Streets and Highways|Unemployment Insurance|Military and Veterans) Code),? [Ss]ections? $law_section", "(?P<reporter>(?:California )?Code of (?P<subject>Civil Procedure)),? [Ss]ections? $law_section"],
+        "strings": ["Codesection", "CodeSection", "Code,section", "Code,Section", "Proceduresection", "ProcedureSection", "Procedure,section", "Procedure,Section"],
+        "examples": ["Welfare and Institutions Code section 19050", "Labor Code section 3602", "Penal Code section 187, subdivision (a)", "California Labor Code section 2802", "Code of Civil Procedure section 437c"],
+        "notes": "California courts' code by its subject spelled out, and `section` spelled out (#117). `Texas Penal Code section` and `Florida Evidence Code section` are read under their own states, whose matches start earlier."
       }
     ],
     "Colo. Rev. Stat.": [
@@ -74,12 +85,25 @@
         "notes": "The rules of Connecticut's courts. reporters-db has no court rules."
       }
     ],
+    "D.C. Code": [
+      {
+        "regexes": ["$reporter (?:18|19|20)\\d{2},? § $law_section"],
+        "examples": ["D.C. Code 1967, § 16-501", "D.C.Code 1973, § 22-2901"],
+        "notes": "The District of Columbia Code with its edition's year (#117)."
+      }
+    ],
     "Fla. Stat.": [
       {
         "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? (?P<reporter>Fla\\. ?Stat\\.?|Florida Statutes)(?: ?\\d{4})?(?:,? ?F\\.S\\.A\\.)?"],
         "strings": ["Fla.Stat", "FloridaStatutes"],
         "examples": ["Section 54.28, Fla.Stat., F.S.A.", "Section 687.07 Florida Statutes 1941", "section 922.07, Florida Statutes (1995)", "§ 95.23, Fla.Stat. F.S.A.", "§ 517.31, Fla.Stat, F.S.A."],
         "notes": "Florida courts put the section first, before `Fla.Stat.` or `Florida Statutes`, often with the edition's year and West's `F.S.A.` (#116)."
+      },
+      {
+        "regexes": ["(?P<reporter>Florida Evidence Code),? [Ss]ections? $law_section"],
+        "strings": ["FloridaEvidenceCode"],
+        "examples": ["Florida Evidence Code section 90.803"],
+        "notes": "The Florida Evidence Code is chapter 90 of the Florida Statutes. The entry keeps `Evidence Code section` from reading as California's (#117)."
       }
     ],
     "Ga. Code Ann.": [
@@ -101,6 +125,11 @@
         "regexes": ["(?:[Ss]ection |[Ss]ec\\. |§ )$law_section(?P<pin_cite>(?: ?\\((?:[a-zA-Z]{1,4}|\\d{1,3})\\))+)?,? $reporter"],
         "examples": ["section 18-8004, Idaho Code", "Section 72-1366(j), Idaho Code"],
         "notes": "Idaho courts put the section first: `section 18-8004, Idaho Code` (#116)."
+      },
+      {
+        "regexes": ["$reporter,? [Ss]ections? $law_section"],
+        "examples": ["Idaho Code section 41-1839", "Idaho Code Section 19-2719"],
+        "notes": "Idaho courts spell out `section` (#117)."
       }
     ],
     "Ill. Comp. Stat.": [
@@ -109,6 +138,21 @@
         "variations": ["ILCS"],
         "examples": ["735 ILCS 5/13-206", "720 ILCS 5/12-3.05(a)", "625 ILCS 5 / 11-501"],
         "notes": "Illinois courts write the act and section with no spaces around the slash, `735 ILCS 5/13-206`; reporters-db's pattern has `ILCS` only as `Ill. Comp. Stat.` and wants ` / ` (#115)."
+      }
+    ],
+    "Ind. Code": [
+      {
+        "regexes": ["$reporter,? (?:[Ss]ections? |§ )(?P<section>\\d+(?:\\.\\d+)?(?:-\\d+(?:\\.\\d+)?){3}[a-z]?)"],
+        "variations": ["Indiana Code"],
+        "examples": ["Indiana Code Section 35-34-1-8", "Indiana Code § 35-42-1-1", "Ind. Code section 34-11-2-4", "Indiana Code Section 31-15-7-9.1"],
+        "notes": "Indiana courts write the code's name out and often `section`. An Indiana section is title, article, chapter and section, any of which can have a decimal part (`31-15-7-9.1`), one more part than `$law_section` takes (#117)."
+      }
+    ],
+    "Iowa Code": [
+      {
+        "regexes": ["$reporter,? [Ss]ections? $law_section"],
+        "examples": ["Iowa Code section 321J.2", "Iowa Code section 232.116(1)"],
+        "notes": "Iowa courts spell out `section` (#117)."
       }
     ],
     "Kan. Stat. Ann.": [
@@ -329,6 +373,27 @@
         "strings": ["Tex.", "TEX."],
         "examples": ["Tex. Prop.Code Ann. § 204.010(a)(16)", "Tex. Fam.Code § 54.02(f)", "TEX. PENAL CODE ANN. § 1.03(a)", "TEX. CIV. PRAC. & REM. CODE ANN. § 16.026(a)"],
         "notes": "Texas codes typeset in small capitals (all capitals in text), without `Ann.`, or without a space before `Code`."
+      },
+      {
+        "regexes": ["(?P<reporter>(?:V\\.T\\.C\\.A\\.,? |Texas )$law_subject Code(?: Annotated| Ann\\.)?),? (?:[Ss]ection |§ )$law_section"],
+        "strings": ["V.T.C.A.", "Texas"],
+        "examples": ["V.T.C.A., Penal Code Section 19.02", "Texas Penal Code section 22.01", "Texas Family Code § 153.002"],
+        "notes": "Texas codes by subject after `V.T.C.A.` (Vernon's) or `Texas`; the match starts before the California form's would, so `Penal Code Section` stays Texas's (#117)."
+      }
+    ],
+    "Utah Code Ann.": [
+      {
+        "regexes": ["$reporter,? (?:[Ss]ections? |§ )$law_section"],
+        "variations": ["Utah Code"],
+        "examples": ["Utah Code section 77-13-6", "Utah Code Ann. section 78B-2-307", "Utah Code § 76-5-203"],
+        "notes": "Utah courts write `Utah Code` without `Ann.`, and often `section` (#117)."
+      }
+    ],
+    "Va. Code Ann.": [
+      {
+        "variations": ["Va. Code"],
+        "examples": ["Va.Code § 38.1-327.2", "Va. Code §§ 18.2-344, 18.2-345"],
+        "notes": "`Va. Code` without `Ann.`, as federal courts cite it. `W. Va. Code` starts earlier and stays West Virginia's (#117)."
       }
     ],
     "Vt. Stat. Ann.": [
@@ -344,6 +409,12 @@
         "variations": ["West Virginia Code"],
         "examples": ["West Virginia Code § 23-4-2(c)(2)"],
         "notes": "The code's name spelled out, as West Virginia courts often write it."
+      },
+      {
+        "regexes": ["$reporter,? (?:(?:18|19)\\d{2},? )?(?:§ )?(?P<section>\\d+[A-Z]?-\\d+[A-Za-z]{0,2}(?:-\\d+[a-zA-Z]{0,2})*(?:\\.\\d+)?)"],
+        "variations": ["West Virginia Code"],
+        "examples": ["W. Va. Code, 49-5-10(c) (1978)", "W.Va.Code, 11-12A-2 [1971]", "W. Va. Code, 1931, 61-2-1"],
+        "notes": "West Virginia courts put a comma between the code and the section, which is chapter, article and section with hyphens (#117)."
       }
     ],
     "Wash. Rev. Code": [
