@@ -275,6 +275,250 @@ fn every_supplement_example_is_recognized() {
     "23-4-2"
 )]
 #[case("WIS. STAT. § 847.07", "Wisconsin", "Wis. Stat.", None, "847.07")]
+// A code's own abbreviation and the section, with no `§` (#115)
+#[case("NRS 284.383", "Nevada", "Nev. Rev. Stat.", None, "284.383")]
+#[case("ORS 163.375", "Oregon", "Or. Rev. Stat.", None, "163.375")]
+#[case("R.C. 2929.20(J)", "Ohio", "Ohio Rev. Code Ann.", None, "2929.20")]
+#[case(
+    "SDCL 22-16-21",
+    "South Dakota",
+    "S.D. Codified Laws",
+    None,
+    "22-16-21"
+)]
+#[case(
+    "RCW 5.60.060(2)(a)",
+    "Washington",
+    "Wash. Rev. Code",
+    None,
+    "5.60.060"
+)]
+#[case("K.S.A. 79-5a01", "Kansas", "Kan. Stat. Ann.", None, "79-5a01")]
+#[case(
+    "K.S.A. 1989 Supp. 21-4603(2)",
+    "Kansas",
+    "Kan. Stat. Ann.",
+    None,
+    "21-4603"
+)]
+#[case("K.S.A. 12-16,102", "Kansas", "Kan. Stat. Ann.", None, "12-16,102")]
+#[case("KRS 95.450", "Kentucky", "Ky. Rev. Stat. Ann.", None, "95.450")]
+#[case("La. R.S. 13:5101", "Louisiana", "La. Stat. Ann.", None, "13:5101")]
+#[case("LSA-R.S. 22:655", "Louisiana", "La. Stat. Ann.", None, "22:655")]
+#[case("735 ILCS 5/13-206", "Illinois", "Ill. Comp. Stat.", None, "13-206")]
+#[case("G.S. 163-140", "North Carolina", "N.C. Gen. Stat.", None, "163-140")]
+#[case("MCL 750.110", "Michigan", "Mich. Comp. Laws", None, "750.110")]
+// The section before the code (#116)
+#[case("sec. 103.465, Stats.", "Wisconsin", "Wis. Stat.", None, "103.465")]
+#[case(
+    "§ 25-8-505, C.R.S. 1973",
+    "Colorado",
+    "Colo. Rev. Stat.",
+    None,
+    "25-8-505"
+)]
+#[case(
+    "§ 18-3-203(l)(c), C.R.S.1973 (1978 Repl.Vol. 8)",
+    "Colorado",
+    "Colo. Rev. Stat.",
+    None,
+    "18-3-203"
+)]
+#[case(
+    "Section 54.28, Fla.Stat., F.S.A.",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "54.28"
+)]
+#[case(
+    "Section 687.07 Florida Statutes 1941",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "687.07"
+)]
+#[case(
+    "section 922.07, Florida Statutes (1995)",
+    "Florida",
+    "Fla. Stat.",
+    None,
+    "922.07"
+)]
+#[case("§ 517.31, Fla.Stat, F.S.A.", "Florida", "Fla. Stat.", None, "517.31")]
+#[case(
+    "Section 510.210 RSMo 1949, V.A.M.S.",
+    "Missouri",
+    "Mo. Rev. Stat.",
+    None,
+    "510.210"
+)]
+#[case("§ 546.510 RSMo 1949", "Missouri", "Mo. Rev. Stat.", None, "546.510")]
+#[case(
+    "Section 24-02-26, N.D.C.C.",
+    "North Dakota",
+    "N.D. Cent. Code",
+    None,
+    "24-02-26"
+)]
+#[case(
+    "Section 4511.19, Revised Code",
+    "Ohio",
+    "Ohio Rev. Code Ann.",
+    None,
+    "4511.19"
+)]
+#[case(
+    "section 2929.20 of the Revised Code",
+    "Ohio",
+    "Ohio Rev. Code Ann.",
+    None,
+    "2929.20"
+)]
+#[case("Section 4628, General Code", "Ohio", "Ohio Gen. Code", None, "4628")]
+#[case("section 18-8004, Idaho Code", "Idaho", "Idaho Code", None, "18-8004")]
+// The section spelled out, a comma, or the code's year (#117)
+#[case(
+    "Welfare and Institutions Code section 19050",
+    "California",
+    "Cal. Welfare and Institutions Code",
+    None,
+    "19050"
+)]
+#[case(
+    "Labor Code section 3602",
+    "California",
+    "Cal. Labor Code",
+    None,
+    "3602"
+)]
+#[case(
+    "Code of Civil Procedure section 437c",
+    "California",
+    "Cal. Civil Procedure Code",
+    None,
+    "437c"
+)]
+#[case("Idaho Code section 41-1839", "Idaho", "Idaho Code", None, "41-1839")]
+#[case("Utah Code section 77-13-6", "Utah", "Utah Code Ann.", None, "77-13-6")]
+#[case(
+    "Indiana Code Section 35-34-1-8",
+    "Indiana",
+    "Ind. Code",
+    None,
+    "35-34-1-8"
+)]
+#[case(
+    "Indiana Code Section 31-15-7-9.1",
+    "Indiana",
+    "Ind. Code",
+    None,
+    "31-15-7-9.1"
+)]
+#[case("Iowa Code section 321J.2", "Iowa", "Iowa Code", None, "321J.2")]
+#[case(
+    "W. Va. Code, 49-5-10(c) (1978)",
+    "West Virginia",
+    "W. Va. Code",
+    None,
+    "49-5-10"
+)]
+#[case(
+    "W.Va.Code, 11-12A-2 [1971]",
+    "West Virginia",
+    "W. Va. Code",
+    None,
+    "11-12A-2"
+)]
+#[case(
+    "D.C. Code 1967, § 16-501",
+    "District of Columbia",
+    "D.C. Code",
+    None,
+    "16-501"
+)]
+#[case(
+    "Ala. Code 1940, Tit. 7, § 123",
+    "Alabama",
+    "Ala. Code",
+    Some("7"),
+    "123"
+)]
+#[case(
+    "Va.Code § 38.1-327.2",
+    "Virginia",
+    "Va. Code Ann.",
+    None,
+    "38.1-327.2"
+)]
+// Session laws, the Illinois Revised Statutes, Louisiana's codes by article,
+// Michigan's Compiled Laws by year (#118)
+#[case("Or Laws 1985, ch 734, § 5", "Oregon", "Or. Laws", None, "5")]
+#[case(
+    "Oregon Laws 1937, chapter 123, section 4",
+    "Oregon",
+    "Or. Laws",
+    None,
+    "4"
+)]
+#[case(
+    "Colo. Sess. Laws 1985, ch. 12, sec. 3",
+    "Colorado",
+    "Colo. Sess. Laws",
+    None,
+    "3"
+)]
+#[case(
+    "Ill. Rev. Stat. 1987, ch. 121, par. 4-501",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "4-501"
+)]
+#[case(
+    "Ill. Rev. Stat. 1965, ch. 38, par. 104-1(a)",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "104-1"
+)]
+#[case(
+    "Ill. Rev. Stat., 1965 Supp., ch. 95½, par. 6-205",
+    "Illinois",
+    "Ill. Rev. Stat.",
+    None,
+    "6-205"
+)]
+#[case("La. C.C. art. 1931", "Louisiana", "La. Civ. Code Ann.", None, "1931")]
+#[case("LSA-C.C. Art. 2315", "Louisiana", "La. Civ. Code Ann.", None, "2315")]
+#[case(
+    "La.C.C.P. Art. 3601",
+    "Louisiana",
+    "La. Code Civ. Proc. Ann.",
+    None,
+    "3601"
+)]
+#[case(
+    "La.C.Cr.P. art. 894.1",
+    "Louisiana",
+    "La. Code Crim. Proc. Ann.",
+    None,
+    "894.1"
+)]
+#[case(
+    "3 Comp. Laws 1915, § 12802",
+    "Michigan",
+    "Mich. Comp. Laws",
+    None,
+    "12802"
+)]
+#[case(
+    "2 Comp. Laws 1871, §§ 4692, 4693",
+    "Michigan",
+    "Mich. Comp. Laws",
+    None,
+    "4692"
+)]
 // reporters-db forms keep working
 #[case("42 U.S.C. § 1983", "United States", "U.S.C.", Some("42"), "1983")]
 #[case(
@@ -335,6 +579,117 @@ fn new_york_code_split() {
     // to pick up.
     let r = c.resource_common().unwrap();
     assert!(r.all_editions.iter().all(|e| e.harvard_slug.is_none()));
+}
+
+/// #115: look-alikes of the abbreviations cited with no `§`, from other
+/// codes, that must not become Ohio's or North Carolina's.
+#[rstest]
+#[case("under I.R.C. § 514 except for government plans")] // Internal Revenue Code
+#[case("Holley v. Younge, 27 Ala. 603 ; R. C. § 2642.")] // Revised Code of Alabama
+#[case("the court held G.S. 1949, 79-1702 was available")] // General Statutes of Kansas
+fn not_ohio_or_north_carolina(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert!(
+                !["Ohio", "North Carolina"].contains(&f.jurisdiction.as_deref().unwrap_or("")),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
+}
+
+/// #116: a subsection between the section and the code is the pin cite.
+#[rstest]
+#[case("section 922.07(1), Florida Statutes", "922.07", "(1)")]
+#[case("§ 18-3-203(l)(c), C.R.S.1973", "18-3-203", "(l)(c)")]
+#[case("Section 4511.19(A)(1), Revised Code", "4511.19", "(A)(1)")]
+fn section_first_pin_cite(#[case] text: &str, #[case] section: &str, #[case] pin: &str) {
+    let c = law(text);
+    assert_eq!(
+        c.law().unwrap().section.as_deref(),
+        Some(section),
+        "{text:?}"
+    );
+    let Citation::FullLaw(d) = &c else {
+        unreachable!()
+    };
+    assert_eq!(d.metadata.pin_cite.as_deref(), Some(pin), "{text:?}");
+}
+
+/// #116: a year in parentheses after the code is the year, not a pin cite.
+#[test]
+fn section_first_year_after_code() {
+    let c = law("and not after that time. § 8-4-122, C.R.S. (2017). The");
+    let Citation::FullLaw(d) = &c else {
+        unreachable!()
+    };
+    assert_eq!(d.metadata.pin_cite, None);
+    assert_eq!(d.metadata.year.as_deref(), Some("2017"));
+}
+
+/// #116: Washington's and Montana's revised codes, cited section first, are
+/// not Ohio's.
+#[rstest]
+#[case("section 4.24.010 of the Revised Code of Washington")]
+#[case("section 9.94A.120, Revised Code of Washington")]
+#[case("section 93-2702, Revised Codes of Montana")]
+fn not_ohio_revised_code(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert_ne!(
+                f.jurisdiction.as_deref(),
+                Some("Ohio"),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
+}
+
+/// #117: other states' codes cited by subject, which must not become
+/// California's, and West Virginia's code, which must not become Virginia's.
+#[rstest]
+#[case("Florida Evidence Code section 90.803", "Florida")]
+#[case("V.T.C.A., Penal Code Section 19.02", "Texas")]
+#[case("Texas Penal Code section 22.01", "Texas")]
+#[case("W. Va. Code § 23-4-2", "West Virginia")]
+#[case("W.Va.Code § 61-2-1", "West Virginia")]
+fn subject_code_of_another_state(#[case] text: &str, #[case] jurisdiction: &str) {
+    let f = fields(text);
+    assert_eq!(f.jurisdiction.as_deref(), Some(jurisdiction), "{text:?}");
+}
+
+/// #118: CAP's Illinois text has a spaced U+2014 for the hyphen in a
+/// paragraph number; the section is the paragraph as written.
+#[test]
+fn illinois_paragraph_with_em_dash() {
+    let f = fields("Ill. Rev. Stat. 1987, ch. 121, par. 4 \u{2014} 501.");
+    assert_eq!(f.chapter.as_deref(), Some("121"));
+    assert_eq!(f.section.as_deref(), Some("4 \u{2014} 501"));
+}
+
+/// #118: a session law's chapter and year.
+#[test]
+fn session_law_chapter_and_year() {
+    let c = law("Or Laws 1985, ch 734, § 5");
+    assert_eq!(c.law().unwrap().chapter.as_deref(), Some("734"));
+    assert_eq!(c.common().groups["year"].as_deref(), Some("1985"));
+}
+
+/// #118: Michigan's Compiled Laws only in its own editions' years, with a
+/// volume in front; other states had Compiled Laws too.
+#[rstest]
+#[case("Comp. Laws 1929, § 1234")]
+#[case("1 Comp. Laws 1887, § 5302")]
+fn not_michigan_compiled_laws(#[case] text: &str) {
+    for c in get_citations(text, false, "", &[]) {
+        if let Some(f) = c.law() {
+            assert_ne!(
+                f.jurisdiction.as_deref(),
+                Some("Michigan"),
+                "{text:?} became {f:?}"
+            );
+        }
+    }
 }
 
 /// Look-alikes that must not become one of the supplement's codes.
