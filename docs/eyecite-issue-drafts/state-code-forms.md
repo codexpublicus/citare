@@ -43,3 +43,14 @@ lost. The entries citare uses, with examples and the forms' counts, are in
 [`data/laws-local.json`](../../data/laws-local.json) and [`laws-local.md`](../laws-local.md);
 they are in laws.json's schema and could move over as they are, apart from `strings`
 (prefilter strings for regexes without the reporter's name).
+
+Several states' courts also cite their code by its own abbreviation with no `§` at all, and
+eyecite returns nothing for these: `NRS 284.383` (Nevada), `ORS 163.375` (Oregon), `R.C.
+2929.20` (Ohio), `SDCL 22-16-21` (South Dakota), `RCW 5.60.060` (Washington), `K.S.A. 60-1507`
+(Kansas), `KRS 95.450` (Kentucky), `LSA-R.S. 22:655` (Louisiana), `MCL 750.110` (Michigan) and
+`G.S. 163-140` (North Carolina). `735 ILCS 5/13-206` has a pattern under `Ill. Comp. Stat.`, but
+it wants spaces around the slash and doesn't list `ILCS`. Over 12,337 CAP opinions these forms
+are 14,094 statute citations. Three need the section's shape to stay apart from other codes:
+`R.C.` with a period in the section (`R. C. § 2951` is the Revised Code of Alabama), `G.S.` with
+a hyphen (`G.S. 1949, 79-1702` is Kansas), and Louisiana only as `La. R.S.` or `LSA-R.S.` (`R.S.`
+is the federal Revised Statutes).
