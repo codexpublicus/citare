@@ -4,6 +4,16 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.6 - 2026-11-18
+
+### Fixes
+
+- *(find)* Read `69 id. 76`, "id." for the reporter, as a full citation ([#139](https://github.com/codexpublicus/citare/pull/139))
+- *(laws)* Read the Illinois Revised Statutes, Louisiana's codes by article, session laws ([#138](https://github.com/codexpublicus/citare/pull/138))
+- *(laws)* Read code citations with section spelled out, a comma or a year ([#137](https://github.com/codexpublicus/citare/pull/137))
+- *(laws)* Read statutes cited section first (Section 54.28, Fla.Stat.) ([#136](https://github.com/codexpublicus/citare/pull/136))
+- *(laws)* Read codes cited by their own abbreviation with no § ([#135](https://github.com/codexpublicus/citare/pull/135))
+
 ## v0.7.5 - 2026-10-26
 
 ### Fixes
