@@ -57,6 +57,15 @@ pub struct FullCaseMetadata {
     pub antecedent_guess: Option<String>,
     pub resolved_case_name_short: Option<String>,
     pub resolved_case_name: Option<String>,
+    /// The plaintiff of the case this citation is subsequent history of,
+    /// when it has no case name of its own: `Daye` for `421 U.S. 1002` in
+    /// "Daye v. Bounds, 509 F.2d 66 (4th Cir.), cert. denied, 421 U.S. 1002
+    /// (1975)" (#114). citare-only; `plaintiff` stays unset, so resolution
+    /// and eyecite's metadata are unchanged.
+    pub history_plaintiff: Option<String>,
+    /// The defendant of the case this citation is subsequent history of
+    /// (see `history_plaintiff`).
+    pub history_defendant: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -431,6 +440,8 @@ impl Citation {
                         m.resolved_case_name_short.as_deref(),
                     ),
                     ("resolved_case_name", m.resolved_case_name.as_deref()),
+                    ("history_plaintiff", m.history_plaintiff.as_deref()),
+                    ("history_defendant", m.history_defendant.as_deref()),
                 ]);
                 fields
             }

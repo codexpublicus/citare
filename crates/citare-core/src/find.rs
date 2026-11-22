@@ -4,6 +4,7 @@
 //! The counterpart of eyecite's `find.py`.
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use crate::clean::CleanStep;
 use crate::helpers::{
@@ -251,11 +252,102 @@ pub fn get_citations_from_document_with(
     // 3. Filter and sort
     let mut citations = filter_citations(citations);
 
+    // 4. Subsequent history takes the case name it continues (#114).
+    name_subsequent_history(&mut citations, &document.plain_text);
+
     if remove_ambiguous {
         citations = disambiguate_reporters(citations);
     }
 
     citations
+}
+
+// ---------------------------------------------------------------------------
+// Subsequent history
+// ---------------------------------------------------------------------------
+
+/// Whether `gap`, the text between two full case citations, says the second
+/// is the first's subsequent history: pin cites and parentheticals at most,
+/// then `cert. denied`, `aff'd`, `rev'd` and the like, and nothing else.
+/// `aff'd sub nom.` names the case anew, so it isn't.
+fn is_subsequent_history(gap: &str) -> bool {
+    static HISTORY_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?ix)^[\s,;\[]*
+            (?:(?:at\s+)?\d+(?:[-\x{2013}]\d+)?(?:\s*nn?\.\s*\d+)?[\s,]*)*
+            (?:[(\[][^()\[\]]*[)\]][\s,;]*)*
+            (?:
+                cert(?:iorari|if(?:ication)?)?[.,]?\s+(?:denied|den\.|dismissed|granted)
+                | aff['\x{2019}]?d(?:\s+o\.b\.)? | affirmed | rev['\x{2019}]?d | reversed
+                | vacated | modified
+                | appeal\s+(?:denied|dismissed)
+                | review\s+denied
+                | petition\s+for\s+(?:review|certification|certiorari)\s+denied
+                | (?:reh(?:earin)?['\x{2019}]?g|reh\.|rehearing)\s+denied
+            )
+            (?:,?\s+(?:in\s+part|on\s+other\s+grounds|per\s+curiam|mem\.|(?:after|on)\s+remand))*
+            [\s,]*$",
+        )
+        .unwrap()
+    });
+    HISTORY_RE.is_match(gap)
+}
+
+/// Give each full case citation with no case name of its own that is
+/// another's subsequent history ("Daye v. Bounds, 509 F.2d 66 (4th Cir.),
+/// cert. denied, 421 U.S. 1002") that case's parties as
+/// `history_plaintiff` and `history_defendant` (#114). A nameless citation
+/// cited in parallel with the one before it takes that one's, and history
+/// of history takes the name the first history took.
+fn name_subsequent_history(citations: &mut [Citation], text: &str) {
+    for i in 1..citations.len() {
+        let (before, rest) = citations.split_at_mut(i);
+        let (Citation::FullCase(previous), Citation::FullCase(current)) =
+            (&before[i - 1], &mut rest[0])
+        else {
+            continue;
+        };
+        if current.metadata.plaintiff.is_some() || current.metadata.defendant.is_some() {
+            continue;
+        }
+        let previous_nameless =
+            previous.metadata.plaintiff.is_none() && previous.metadata.defendant.is_none();
+        let start = current.resource.common.full_span_start;
+        let parallel = previous_nameless
+            && start.is_some()
+            && start == previous.resource.common.full_span_start;
+        let names = if parallel {
+            (
+                previous.metadata.history_plaintiff.clone(),
+                previous.metadata.history_defendant.clone(),
+            )
+        } else {
+            let gap = text
+                .get(before[i - 1].span().1..rest[0].span().0)
+                .unwrap_or_default();
+            if !is_subsequent_history(gap) {
+                continue;
+            }
+            if previous_nameless {
+                (
+                    previous.metadata.history_plaintiff.clone(),
+                    previous.metadata.history_defendant.clone(),
+                )
+            } else {
+                (
+                    previous.metadata.plaintiff.clone(),
+                    previous.metadata.defendant.clone(),
+                )
+            }
+        };
+        let Citation::FullCase(current) = &mut citations[i] else {
+            unreachable!()
+        };
+        (
+            current.metadata.history_plaintiff,
+            current.metadata.history_defendant,
+        ) = names;
+    }
 }
 
 // ---------------------------------------------------------------------------

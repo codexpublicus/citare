@@ -57,6 +57,9 @@ other span overrides, `span()`, `full_span()`, `span_with_pincite()`, `matched_t
 `corrected_page()`. Supra and id citations have `formatted()`. Citations compare and hash by
 eyecite's rules (citare-core implements them). citare adds `is_ambiguous()` on every citation
 and `law()` (jurisdiction, code, subject, title, chapter, section) on `FullLawCitation`.
+`FullCaseCitation.metadata` also has `history_plaintiff` and `history_defendant`: on a citation
+with no case name of its own that is another's subsequent history (`Daye v. Bounds, 509 F.2d 66
+(4th Cir.), cert. denied, 421 U.S. 1002`), the parties of the case it continues.
 
 ### Resolving
 
