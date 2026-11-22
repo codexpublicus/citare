@@ -929,6 +929,13 @@ span start) would give it.
 | `Dr. Miles (1911). United States v. Arnold, Schwinn & Co., 388 U.S. 365 (1967).` | plaintiff **empty**, defendant **`Dr. Miles`** | `United States`, `Arnold, Schwinn & Co.` |
 | `Witherspoon v. Illinois, 391 U.S. 510 (1968). Whan v. Texas, 403 U.S. 946 (1971).` | `403 U.S. 946`: plaintiff **empty**, defendant **`Illinois`**, year **1968** | `Whan`, `Texas`, 1971 |
 | `Gudenau & Co. v. Sweeney Ins., Inc., 736 P.2d 763, 767 (Alaska 1987). [63] 736 P.2d 763 (Alaska 1987).` | second citation: defendant **`Alaska 1987). [63]`** | none |
+| `People v. Taylor, 219 Ill. App. 3d 47 (1991), and People v. Ceasar, 231 Ill. App. 3d 54 (1992).` | `231 Ill. App. 3d 54`: plaintiff **empty**, defendant **`Taylor`** | `People`, `Ceasar` |
+| `Jackson v. Virginia, 443 U.S. 307, 315-16 (1979), and People v. Siguenza-Brito, 235 Ill. 2d 213, 224 (2009).` | `235 Ill. 2d 213`: **no case name** | `People`, `Siguenza-Brito` |
+
+The same holds for an earlier citation's parenthetical that ends in a comma or semicolon rather
+than a sentence (#27): once the search has found the "v.", `(1991),` or `1993);` ends the
+earlier citation, and the case name starts at the first capitalized word after it. citare 0.7.6
+gave Ceasar the plaintiff `1991), and People`.
 
 ### Evidence
 
@@ -943,11 +950,22 @@ signal word, `Rule 12(c)(3) of the Massachusetts Rules of Criminal Procedure` is
 `Weaver v. State (Ala. App). 88 So. 362` the sentence end is inside the citation, which now has
 no name instead of `Ala. App).`. None is newly wrong.
 
+For the comma and semicolon form, on the same sample, 91 plaintiffs and 145 full span starts
+change, with no citation gained or lost and no defendant or year changed. I read 25 of the
+plaintiffs, drawn at random, in context, and all 25 lose the earlier parenthetical (`1984),
+Florida` is `Florida`, `Texas),  Vroman` is `Vroman`, `6th Cir.), N.L.R.B.` is `N.L.R.B.`). Three
+reference citations in one opinion stop resolving: `Davis v. United States, 160 U.S. 469 (1895),
+and Davis v. United States (II), 165 U.S. 373` now gives both decisions the plaintiff `Davis`, so
+a reference to `Davis` matches two cases. On the one-percent sample, citare's plaintiffs differ
+from eyecite's on 350 citations instead of 358.
+
 ### Tests
 
 - `crates/citare-core/src/find.rs`: `test_case_name_stops_at_sentence_end` (Dr. Miles with and
   without a `v.`, a court parenthetical, a closing quotation mark, a footnote number, and the
   years of nameless citations after a sentence).
+- `crates/citare-core/tests/name_after_parenthetical.rs`: the comma and semicolon form, the two
+  rows above, a court parenthetical, and a year before the volume, which stays the citation's.
 - citation-bench: none yet; the table's rows can become `vectors/divergences/` vectors.
 
 ### Upstream
