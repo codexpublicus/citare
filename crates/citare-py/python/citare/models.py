@@ -347,6 +347,8 @@ class ShortCaseCitation(CaseCitation):
     @dataclass(eq=True, unsafe_hash=True)
     class Metadata(CaseCitation.Metadata):
         antecedent_guess: str | None = None
+        # eyecite sets it on the object when the case name has a "v.".
+        plaintiff: str | None = None
 
     def corrected_citation_full(self) -> str:
         parts = []

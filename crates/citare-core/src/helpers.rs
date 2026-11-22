@@ -1068,142 +1068,40 @@ fn set_pre_cite_year(citation: &mut FullCaseCitationData, state: &SearchState) {
     }
 }
 
-/// Find case name for a short case citation.
+/// Find the case name before a short case citation, by the backward scan a
+/// full citation's takes ([`find_case_name`]), as eyecite 2.7.8 does. With
+/// a "v.", the defendant is the `antecedent_guess` and the plaintiff the
+/// `plaintiff` ("Walters v. Walters, 298 S.E.2d at 342" is `Walters` and
+/// `Walters`, #27); without one, the name is the antecedent guess.
 pub fn find_case_name_short(citation: &mut ShortCaseCitationData, words: &Tokens) {
     let index = citation.resource.common.index;
-    let span_start = citation
-        .resource
-        .common
-        .span_start
-        .unwrap_or_else(|| citation.resource.common.token.start());
-    let back_seek = index.saturating_sub(BACKWARD_SEEK);
-
-    let mut state = SearchState {
-        offset: 0,
-        v_token_found: false,
-        start_index: None,
-        candidate_case_name: None,
-        pre_cite_year: None,
-        title_starting_index: if index > 0 { index - 1 } else { 0 },
-        case_name_length: 0,
-        plaintiff_length: 0,
-        starts_sentence: false,
+    let mut state = initialize_search_state(index);
+    scan_for_case_boundaries(words, index, &mut state);
+    let Some(candidate) = state
+        .candidate_case_name
+        .as_deref()
+        .filter(|c| !c.is_empty())
+    else {
+        return;
     };
 
-    // Scan backward
-    if index > 0 {
-        let scan_start = index - 1;
-        for i in (back_seek..=scan_start).rev() {
-            let word = &words[i];
-            let word_str = token_to_str(word);
-            state.offset += word_str.len();
-
-            if word_str == "," {
-                continue;
-            }
-            state.case_name_length += 1;
-
-            if state.v_token_found && !word_str.trim().is_empty() {
-                state.plaintiff_length += 1;
-            }
-
-            // Handle citation tokens
-            if let TokenOrStr::Token(Token::Citation(_)) = word {
-                if i > 0 {
-                    state.title_starting_index = i - 1;
-                }
-                continue;
-            }
-
-            // Terminal punctuation
-            if word_str.ends_with(';') || word_str.ends_with('\u{201D}') || word_str.ends_with('"')
-            {
-                state.start_index = Some(i + 2);
-                state.candidate_case_name =
-                    Some(extract_text(words, i + 2, state.title_starting_index));
-                break;
-            }
-
-            // "v" stop word
-            if is_v_token(word) {
-                state.v_token_found = true;
-                state.start_index = Some(v_token_start_index(words, i));
-                state.candidate_case_name = Some(extract_text(
-                    words,
-                    state.start_index.unwrap(),
-                    state.title_starting_index,
-                ));
-                continue;
-            }
-
-            // Stop word (non-v)
-            if let TokenOrStr::Token(Token::StopWord(_)) = word {
-                state.start_index = Some(i + 2);
-                state.candidate_case_name =
-                    Some(extract_text(words, i + 2, state.title_starting_index));
-                break;
-            }
-
-            // Lowercase without v token
-            if !state.v_token_found
-                && !word_str.is_empty()
-                && word_str
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_lowercase() && c.is_alphabetic())
-                && !["of", "the", "an", "and"].contains(&word_str.as_str())
-            {
-                if let TokenOrStr::Token(Token::Supra(_)) = word {
-                    if i > 0 {
-                        state.title_starting_index = i - 1;
-                    }
-                    continue;
-                }
-                state.start_index = Some(i + 2);
-                let text = extract_text(words, i + 2, state.title_starting_index);
-                // Try to find a capitalized word
-                let cap_re = re_capitalized_word();
-                if let Some(m) = cap_re.find(&text) {
-                    state.candidate_case_name = Some(text[m.start()..].to_string());
-                } else {
-                    state.candidate_case_name = None;
-                }
-                break;
-            }
-
-            // Lowercase after v token
-            if state.v_token_found
-                && !word_str.is_empty()
-                && word_str.chars().next().is_some_and(|c| !c.is_uppercase())
-                && !word_str.trim().is_empty()
-                && !["of", "the", "an", "and"].contains(&word_str.as_str())
-            {
-                state.start_index = Some(i + 2);
-                let mut text = extract_text(words, i + 2, state.title_starting_index);
-                let prefix_re = re_leading_articles();
-                text = prefix_re.replace(&text, "").to_string();
-                state.candidate_case_name = Some(text);
-                break;
-            }
-
-            if i == 0 {
-                state.candidate_case_name =
-                    Some(extract_text(words, 0, state.title_starting_index));
-                state.start_index = Some(0);
-            }
-        }
-    }
-
-    // Process antecedent_guess
-    if let Some(ref candidate) = state.candidate_case_name {
-        let clean = strip_stop_words(candidate);
-        if !clean.is_empty() {
-            citation.metadata.antecedent_guess = Some(clean);
-            if let Some(start_idx) = state.start_index {
-                let offset = case_name_offset(words, start_idx, index);
-                let span_start_val = span_start.saturating_sub(offset);
-                citation.resource.common.full_span_start = Some(span_start_val);
-            }
+    let antecedent = if state.v_token_found {
+        let (plaintiff, defendant) = split_parties(candidate);
+        citation.metadata.plaintiff = Some(plaintiff).filter(|s| !s.is_empty());
+        defendant
+    } else {
+        strip_stop_words(candidate)
+    };
+    if !antecedent.is_empty() {
+        citation.metadata.antecedent_guess = Some(antecedent);
+        if let Some(start_idx) = state.start_index {
+            let span_start = citation
+                .resource
+                .common
+                .span_start
+                .unwrap_or_else(|| citation.resource.common.token.start());
+            let offset = case_name_offset(words, start_idx, index);
+            citation.resource.common.full_span_start = Some(span_start.saturating_sub(offset));
         }
     }
 
