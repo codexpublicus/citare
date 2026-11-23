@@ -320,6 +320,10 @@ class FullCaseCitation(CaseCitation, FullCitation):
         antecedent_guess: str | None = None
         resolved_case_name_short: str | None = None
         resolved_case_name: str | None = None
+        # citare's: the parties of the case a nameless citation is subsequent
+        # history of ("cert. denied, 421 U.S. 1002" after Daye v. Bounds).
+        history_plaintiff: str | None = None
+        history_defendant: str | None = None
 
     def corrected_citation_full(self) -> str:
         parts = []

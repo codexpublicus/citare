@@ -85,6 +85,18 @@ def test_metadata_is_a_dataclass():
     assert full.dump()["metadata"]["resolved_case_name"] == "Foo v. Bar"
 
 
+def test_subsequent_history_names():
+    # citare#114: the cert. denial has no parties of its own; the history
+    # fields give the case it continues.
+    full, history = get_citations(
+        "Daye v. Bounds, 509 F.2d 66 (4th Cir.), cert. denied, 421 U.S. 1002 (1975)."
+    )
+    assert full.metadata.history_plaintiff is None
+    assert history.metadata.plaintiff is None
+    assert history.metadata.history_plaintiff == "Daye"
+    assert history.metadata.history_defendant == "Bounds"
+
+
 def test_markup_text():
     markup = "<p>See <i>Foo v. Bar</i>, 1 U.S. 1 (1999). <i>Id.</i> at 2.</p>"
     citations = get_citations(
