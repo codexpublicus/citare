@@ -4,6 +4,20 @@ Releases of citare. Each release is an annotated `vMAJOR.MINOR.PATCH` tag on
 `main`; dependents pin it over git (`tag = "v0.4.0"`). Until 1.0, a minor
 bump may break the API, and the breaking changes are listed first.
 
+## v0.7.7 - 2026-11-23
+
+### Features
+
+- *(find)* Give subsequent history the case name it continues ([#142](https://github.com/codexpublicus/citare/pull/142))
+
+### Fixes
+
+- *(data)* Read Caines' Rep. and its spellings as Caines' Reports ([#147](https://github.com/codexpublicus/citare/pull/147))
+- *(data)* List EDITIONS_LOOKUP's editions in eyecite's order ([#146](https://github.com/codexpublicus/citare/pull/146))
+- *(find)* Start a case name after an earlier citation's parenthetical ([#144](https://github.com/codexpublicus/citare/pull/144))
+- *(find)* Read a short cite's case name as eyecite does, defendant and plaintiff ([#143](https://github.com/codexpublicus/citare/pull/143))
+- *(resolve)* Give an id. after a parallel run the printing its pin cite is in ([#141](https://github.com/codexpublicus/citare/pull/141))
+
 ## v0.7.6 - 2026-11-18
 
 ### Fixes
