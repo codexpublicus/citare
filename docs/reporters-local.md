@@ -182,6 +182,57 @@ all from `bradf` to `brad`: 130 in Redfield's Surrogate Reports, 55 in N.Y., 31 
 in Ga. (`2 Bradf. 107`). None is in an Iowa opinion. A `Bradf.` citation of volumes 1 to 3 without
 a year is now ambiguous between the two, as `172 Wash. 688` is, so `--remove-ambiguous` drops it.
 
+## `Caines' Rep.`
+
+reporters-db gives `Caines Rep.` and `Cain. Rep.` to Caines' Cases (`cai-cas`, the Court for the
+Trial of Impeachments and Correction of Errors, 1804-1805) as variations, and has no `Caines'
+Rep.` at all, though `Rep.` is Caines' Reports' word. `1 Caines' Rep. 5` was no citation, and
+`3 Caines Rep. 113` took Caines' Cases' slug (#104).
+
+I counted the `cites_to` entries in the CAP case metadata of 429 New York volumes: `cai`,
+`cai-cas`, Johns., Johns. Cas., Johns. Ch., Cow., Wend., Hill, Hill & Den., Denio, Barb., N.Y.
+1-100, How. Pr. (all but volume 27, which CAP doesn't serve), Abb. Pr., Edw. Ch., Sand. Ch.,
+Hopk. Ch., Lock. Rev. Cas., Redf., Brad., Abb. Ct. App., Keyes, Trans. App. and N.Y. Super. Ct.
+
+| Form | Citations | CAP resolves to `cai` | to `cai-cas` | to both | unresolved |
+|---|---:|---:|---:|---:|---:|
+| `Caines' Rep.` | 612 | 438 | 4 | 9 | 161 |
+| `Caines Rep.` | 26 | 17 | 0 | 0 | 9 |
+| `Cain. Rep.` | 25 | 18 | 2 | 0 | 5 |
+
+The same volumes' opinion text writes `Caines’ Rep.`, with a typographic apostrophe, 236 times
+and `Caines' Rep.` 61 times; `cites_to` has both as `Caines' Rep.`. A variation is matched
+character for character, so the two spellings are two variations, as reporters-db does it for
+`Dec. Comm’r Pat.`.
+
+The file adds all four as variations of reporters-db's `Cai. R.`, with its regexes, so they take
+Caines' Reports' three volumes and the `22a` page form. A variations entry can now name
+`moved_from`, a reporters-db reporter whose variation of the same spelling it replaces; the
+build removes `Caines Rep.` and `Cain. Rep.` from Caines' Cases, so each spelling is Caines'
+Reports' alone and a citation of it isn't ambiguous between the two. Caines' Cases keeps `Cai.
+Cas.` and its other variations. A volume above 3 is no longer a citation: Caines' Cases has two
+volumes and Caines' Reports three, so it was never either.
+
+Before and after over those volumes' opinion text (46,724 opinions, 181,605 citations before),
+citare gains 300 citations and loses 4, and 38 it found both times change:
+
+- 299 `Caines' Rep.` citations (239 with the typographic apostrophe, 60 without) and one
+  `2 Caines’Rep. 85`. Three of them were `<volume> id. <page>` after a `Caines' Rep.` citation
+  (`Neilson v. Columbian Ins. Co., 3 id., 108` after `1 Caines’ Rep., 196`, which is 3 Caines
+  108), so those three id. citations are gone; the fourth loss is `Thompson, 2`, the nominative
+  reporter `Thompson` read out of `Coles v. Thompson, 2 Caines’ Rep. 47`, which is now that
+  citation.
+- 22 citations change corrected reporter from `Cai. Cas.` to `Cai. R.`: 14 `Cain. Rep.` and 8
+  `Caines Rep.`.
+- 16 case names that had run into an unrecognized `Caines' Rep.` citation stop at it
+  (`Emerson, 1 Caines’ Rep. 487.` is no longer the defendant of `2 Johns. Rep. 101`). One goes
+  the other way: in a list of citations without names, `1 Johns. Rep. 297` now takes `Wils.. 18.
+  3 Esp. Cas. 119.` as its defendant, the text between it and the new citation.
+
+I read 30 of the new citations in context, drawn from across the volumes, and all 30 are
+Caines' Reports at a page of the volume they name (`Pease v. Barber, (3 Caines’ Rep. 266)`,
+`Petrie v. Woodworth, (3 Caines’ Rep. 219,)`).
+
 ## American Jurisprudence
 
 reporters-db's only `Am. Jur.` is the American Jurist and Law Magazine, a reporter in
@@ -327,6 +378,9 @@ both Caines' Reports); the two then share CAP's slug (`citare_data_build::slugs:
 add an abbreviation for an edition, named like an `editions` entry or a `reporters` entry's,
 that matches only through the entry's own regexes, unlike a reporters-db variation, which takes
 its edition's; the build fails if the edition is gone or reporters-db gains the same variation.
+A `variations` entry with `moved_from` (a reporters.json key and cluster name) also takes the
+spelling away from that reporter, which reporters-db gives it as a variation (`Caines Rep.`
+from Caines' Cases); the build fails once reporters-db no longer has it there.
 `journals` entries add a secondary source under its abbreviation, as journals.json would; the
 build fails if journals.json gains the abbreviation.
 An entry's `examples` must be recognized as its edition with the given volume, and its
