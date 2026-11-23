@@ -267,6 +267,49 @@ fn cap_reporters_without_an_edition_take_caps_slug(
     assert_eq!(harvard_slug_of(text).as_deref(), harvard, "{text}");
 }
 
+// Caines' Reports cited as `Caines' Rep.` and its spellings (#104).
+// reporters-db gives `Caines Rep.` and `Cain. Rep.` to Caines' Cases, but CAP
+// resolves them to Caines' Reports, and it lacks `Caines' Rep.`, the form
+// opinions use most. Each is a variation of reporters-db's `Cai. R.`, with
+// its three volumes; Caines' Cases keeps `Cai. Cas.` and its other forms.
+#[rstest]
+#[case("1 Caines' Rep. 5", "1")]
+#[case("1 Caines\u{2019} Rep. 171", "1")]
+#[case("3 Caines Rep. 113", "3")]
+#[case("2 Cain. Rep. 335", "2")]
+#[case("2 Caines' Rep. 22a", "2")]
+fn caines_rep_is_caines_reports(#[case] text: &str, #[case] volume: &str) {
+    let cites = get_citations(text, false, "", &[]);
+    assert_eq!(cites.len(), 1, "{text}: {cites:?}");
+    assert_eq!(
+        cites[0].corrected_reporter().as_deref(),
+        Some("Cai. R."),
+        "{text}"
+    );
+    let (s, v) = path_of(text);
+    assert_eq!(
+        (s.as_deref(), v.as_deref()),
+        (Some("cai"), Some(volume)),
+        "{text}"
+    );
+    assert_eq!(harvard_slug_of(text).as_deref(), Some("cai"), "{text}");
+}
+
+#[rstest]
+#[case("4 Caines Rep. 1")]
+#[case("4 Cain. Rep. 1")]
+#[case("4 Caines' Rep. 1")]
+fn caines_rep_takes_only_caines_reports_volumes(#[case] text: &str) {
+    assert!(get_citations(text, false, "", &[]).is_empty(), "{text}");
+}
+
+#[test]
+fn caines_cases_keeps_its_own_forms() {
+    for text in ["1 Cai. Cas. 1", "2 Caines Cas. 7", "1 Cai.Cas.Err. 5"] {
+        assert_eq!(path_of(text).0.as_deref(), Some("cai-cas"), "{text}");
+    }
+}
+
 // The Fiduciary Reporter (Pa.) has four series (D82). CAP's one volume,
 // `pa-fid`, which CAP and reporters-db call `Pa. Fid.`, is volume 1 of the
 // second series, so `Fid. Rep. 2d` and its variations share CAP's slug and

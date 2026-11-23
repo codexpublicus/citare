@@ -3,7 +3,7 @@
     "citare's supplement to reporters-db's reporters.json, applied by crates/citare-core/build.rs.",
     "Each editions entry names one edition by its reporters.json key (reporter), its cluster's name, and its edition name, and replaces that edition's regexes and, when it gives start or end, that date.",
     "Each reporters entry adds a reporter reporters-db doesn't have under its reporters.json key, as a cluster of its own with one edition; reporters-db may have the same books under another key, which then shares the slug (citare_data_build::slugs::SAME_BOOKS).",
-    "Each variations entry adds another abbreviation (variation) for one edition, named like an editions or reporters entry, that matches only through the entry's own regexes.",
+    "Each variations entry adds another abbreviation (variation) for one edition, named like an editions or reporters entry, that matches only through the entry's own regexes. With moved_from (a reporters.json key and cluster name), it also removes the same spelling from that reporter's reporters-db variations.",
     "Each journals entry adds a secondary source journals.json doesn't have, such as an encyclopedia, to the journals under its abbreviation (edition), so a citation of it is a journal citation even when a reporter has the same abbreviation.",
     "examples: citations the entry must recognize as that edition, with the volume each must have; rejects: citations it must no longer recognize as that edition. crates/citare-core/tests/reporters_local.rs checks both.",
     "Why each entry exists: docs/reporters-local.md."
@@ -547,6 +547,48 @@
       "regexes": ["$volume $reporter,? $page"],
       "examples": [{"cite": "5 N. Y. Civ. Proc. 224", "volume": "5"}],
       "notes": "`N.Y. Civ. Proc.` for the New York Civil Procedure Reports: 2 citations in the opinion text of CAP's Misc. 1-80, App. Div. 1-80, N.Y.S. 1-60 and Hun 1-40, among them `5 N. Y. Civ. Proc. 224` (nys/39, 0720-01). reporters-db has `Civ. Proc. R.` but not this form (docs/reporters-local.md#new-york-civil-procedure-reports)."
+    },
+    {
+      "reporter": "Cai. R.",
+      "name": "Caines' Reports",
+      "edition": "Cai. R.",
+      "variation": "Caines' Rep.",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
+      "examples": [{"cite": "1 Caines' Rep. 5", "volume": "1"}, {"cite": "2 Caines' Rep. 22a", "volume": "2"}],
+      "rejects": ["4 Caines' Rep. 1"],
+      "notes": "The form opinions cite Caines' Reports by most, which reporters-db doesn't have: 612 citations in the CAP case metadata measured, of which CAP resolves 438 to `cai`, 4 to `cai-cas` and 9 to both. Caines' Reports (CAP's `cai`, vols 1-3) cited by its name, `Rep.` for Reports; the regexes are `Cai. R.`'s, so it takes Caines' Reports' three volumes (#104, docs/reporters-local.md)."
+    },
+    {
+      "reporter": "Cai. R.",
+      "name": "Caines' Reports",
+      "edition": "Cai. R.",
+      "variation": "Caines’ Rep.",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
+      "examples": [{"cite": "1 Caines’ Rep. 171", "volume": "1"}],
+      "rejects": ["4 Caines’ Rep. 1"],
+      "notes": "`Caines' Rep.` with a typographic apostrophe, which opinion text has four times as often as the straight one (236 against 61 in the volumes measured). Caines' Reports (CAP's `cai`, vols 1-3) cited by its name, `Rep.` for Reports; the regexes are `Cai. R.`'s, so it takes Caines' Reports' three volumes (#104, docs/reporters-local.md)."
+    },
+    {
+      "reporter": "Cai. R.",
+      "name": "Caines' Reports",
+      "edition": "Cai. R.",
+      "variation": "Caines Rep.",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
+      "moved_from": {"reporter": "Cai. Cas.", "name": "Caines' Cases"},
+      "examples": [{"cite": "3 Caines Rep. 113", "volume": "3"}],
+      "rejects": ["4 Caines Rep. 1"],
+      "notes": "reporters-db gives `Caines Rep.` to Caines' Cases (`cai-cas`); CAP resolves 17 of the 26 in the case metadata measured to `cai` and none to `cai-cas`, so it moves to Caines' Reports. Caines' Reports (CAP's `cai`, vols 1-3) cited by its name, `Rep.` for Reports; the regexes are `Cai. R.`'s, so it takes Caines' Reports' three volumes (#104, docs/reporters-local.md)."
+    },
+    {
+      "reporter": "Cai. R.",
+      "name": "Caines' Reports",
+      "edition": "Cai. R.",
+      "variation": "Cain. Rep.",
+      "regexes": ["(?P<volume>[1-3]) $reporter,? $page", "(?P<volume>[1-3]) $reporter (?P<page>\\d{1,6}[ab])"],
+      "moved_from": {"reporter": "Cai. Cas.", "name": "Caines' Cases"},
+      "examples": [{"cite": "2 Cain. Rep. 335", "volume": "2"}],
+      "rejects": ["4 Cain. Rep. 1"],
+      "notes": "reporters-db gives `Cain. Rep.` to Caines' Cases (`cai-cas`); CAP resolves 18 of the 25 in the case metadata measured to `cai` and 2 to `cai-cas`, so it moves to Caines' Reports. Caines' Reports (CAP's `cai`, vols 1-3) cited by its name, `Rep.` for Reports; the regexes are `Cai. R.`'s, so it takes Caines' Reports' three volumes (#104, docs/reporters-local.md)."
     }
   ],
   "journals": [
