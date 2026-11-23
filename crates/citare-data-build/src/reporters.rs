@@ -276,6 +276,13 @@ pub struct LocalVariation {
     pub edition: String,
     pub variation: String,
     pub regexes: Vec<String>,
+    /// A reporter, named by reporters.json key and cluster name, whose
+    /// reporters-db variation of the same spelling this entry replaces: the
+    /// build removes it there, so the spelling is only this edition's
+    /// (`Caines Rep.`, which reporters-db gives Caines' Cases, is Caines'
+    /// Reports). The build fails once reporters-db no longer has it there.
+    #[serde(default)]
+    pub moved_from: Option<LocalCluster>,
     /// As [`LocalEdition::examples`].
     #[serde(default)]
     pub examples: Vec<LocalExample>,
@@ -284,6 +291,14 @@ pub struct LocalVariation {
     pub rejects: Vec<String>,
     /// Why the entry exists.
     pub notes: String,
+}
+
+/// A reporter in reporters.json, named by its key and its cluster's `name`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalCluster {
+    pub reporter: String,
+    pub name: String,
 }
 
 /// A secondary source in `data/reporters-local.json` that reporters-db's
@@ -337,7 +352,8 @@ pub fn parse_local_reporters(json_str: &str) -> Result<LocalReporters, serde_jso
 /// reporters-db already has a reporter or variation the supplement adds.
 /// A variation may name a supplement reporter's edition (`4 Bradf. 268` for
 /// Bradford's Surrogate Reports). The variations themselves are added by the
-/// build, with their own regexes.
+/// build, with their own regexes; a variation `moved_from` another reporter
+/// is removed from that reporter's here.
 pub fn apply_local_reporters(
     reporters: &mut ReportersMap,
     local: &LocalReporters,
@@ -372,7 +388,8 @@ pub fn apply_local_reporters(
             extra: HashMap::new(),
         });
     }
-    check_local_variations(reporters, local)
+    check_local_variations(reporters, local)?;
+    remove_moved_variations(reporters, local)
 }
 
 /// Add the supplement's secondary sources to `journals`. Fails when
@@ -478,6 +495,28 @@ fn check_local_variations(reporters: &ReportersMap, local: &LocalReporters) -> R
     Ok(())
 }
 
+fn remove_moved_variations(
+    reporters: &mut ReportersMap,
+    local: &LocalReporters,
+) -> Result<(), String> {
+    for v in &local.variations {
+        let Some(from) = &v.moved_from else { continue };
+        let cluster = reporters
+            .get_mut(&from.reporter)
+            .and_then(|clusters| clusters.iter_mut().find(|c| c.name == from.name))
+            .filter(|c| c.variations.contains_key(&v.variation))
+            .ok_or_else(|| {
+                format!(
+                    "reporters-local.json: reporters-db no longer has variation {:?} of {:?} under {:?}; drop moved_from",
+                    v.variation, from.name, from.reporter
+                )
+            })?;
+        // `retain` keeps the others in order.
+        cluster.variations.retain(|k, _| *k != v.variation);
+    }
+    Ok(())
+}
+
 /// Parse journals.json into a map of journal key → list of clusters.
 pub fn parse_journals(json_str: &str) -> Result<JournalsMap, serde_json::Error> {
     serde_json::from_str(json_str)
@@ -565,6 +604,41 @@ mod tests {
         .unwrap();
         apply_local_reporters(&mut reporters, &local).unwrap();
         assert!(reporters["Q."].iter().any(|c| c.name == "Q Reports"));
+    }
+
+    fn moved_variation(variation: &str, from: &str) -> LocalReporters {
+        parse_local_reporters(&format!(
+            r##"{{"#": [], "editions": [], "variations": [{{"reporter": "Cai. R.",
+               "name": "Caines' Reports", "edition": "Cai. R.", "variation": "{variation}",
+               "moved_from": {{"reporter": "{from}", "name": "Caines' Cases"}},
+               "regexes": ["$full_cite"], "notes": ""}}]}}"##
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn moved_variation_leaves_its_reporters_db_cluster() {
+        let data = include_str!("../../../data/reporters-db/reporters_db/data/reporters.json");
+        let mut reporters = parse_reporters(data).unwrap();
+        let cases = |r: &ReportersMap| r["Cai. Cas."][0].variations.contains_key("Caines Rep.");
+        assert!(cases(&reporters));
+        apply_local_reporters(&mut reporters, &moved_variation("Caines Rep.", "Cai. Cas."))
+            .unwrap();
+        assert!(!cases(&reporters));
+        assert!(reporters["Cai. Cas."][0]
+            .variations
+            .contains_key("Cain. Rep."));
+        // Once reporters-db no longer has it there, the entry has to change.
+        let mut reporters = parse_reporters(data).unwrap();
+        let err = apply_local_reporters(
+            &mut reporters,
+            &moved_variation("Caines' Rep.", "Cai. Cas."),
+        )
+        .unwrap_err();
+        assert!(err.contains("no longer has variation"), "{err}");
+        let err = apply_local_reporters(&mut reporters, &moved_variation("Caines Rep.", "Nope."))
+            .unwrap_err();
+        assert!(err.contains("no longer has variation"), "{err}");
     }
 
     #[test]
