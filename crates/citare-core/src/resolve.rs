@@ -72,6 +72,9 @@ struct ResolvedFullCites<R> {
     decisions_by_key: HashMap<u64, Vec<usize>>,
     /// The most resources in one of `decisions`.
     max_decision_len: usize,
+    /// The last full citation and those cited in parallel just before it,
+    /// as indexes into `cites`, in document order.
+    current_run: Vec<usize>,
 }
 
 impl<R> Default for ResolvedFullCites<R> {
@@ -85,6 +88,7 @@ impl<R> Default for ResolvedFullCites<R> {
             decision_ids: HashMap::new(),
             decisions_by_key: HashMap::new(),
             max_decision_len: 0,
+            current_run: Vec::new(),
         }
     }
 }
@@ -114,7 +118,9 @@ impl<R: Hash> ResolvedFullCites<R> {
 
         if !parallel {
             self.current_decision.clear();
+            self.current_run.clear();
         }
+        self.current_run.push(index);
         if let Err(at) = self.current_decision.binary_search(&key) {
             self.current_decision.insert(at, key);
         }
@@ -410,13 +416,21 @@ impl<'a, R: Clone + Eq + Hash> ResolveContext<'a, R> {
 
     /// citare's rule for an id. citation: the last citation's resource,
     /// unless its pin cite can't be in the first citation of that resource
-    /// (see `docs/divergences.md` for section pin cites). `None` for any
+    /// (see `docs/divergences.md` for section pin cites). When it can't and
+    /// that resource is one of the last parallel run's, the first of the
+    /// run's citations the pin cite can be in, as "Id. at 790" after "128
+    /// Neb. 783, 260 N.W. 287" is in 128 Neb. 783 (#103). `None` for any
     /// other kind of citation.
     pub fn resolve_id(&self, citation: &Citation) -> Option<R> {
         let Citation::Id(data) = citation else {
             return None;
         };
-        resolve_id_citation(data, self.last_resolution, self.resolutions)
+        resolve_id_citation(
+            data,
+            self.last_resolution,
+            self.resolutions,
+            self.resolved_full_cites,
+        )
     }
 }
 
@@ -677,6 +691,7 @@ fn resolve_id_citation<R: Clone + Eq + Hash>(
     data: &IdCitationData,
     last_resolution: Option<&R>,
     resolutions: &Resolutions<R>,
+    resolved_full_cites: &ResolvedFullCites<R>,
 ) -> Option<R> {
     let last = last_resolution?;
 
@@ -684,11 +699,24 @@ fn resolve_id_citation<R: Clone + Eq + Hash>(
     let full_cite_list = resolutions.get(last)?;
     let full_cite = full_cite_list.first()?;
 
-    if has_invalid_pin_cite(full_cite, data) {
-        return None;
+    if !has_invalid_pin_cite(full_cite, data) {
+        return Some(last.clone());
     }
 
-    Some(last.clone())
+    // The pin cite may be in another printing of the same decision, cited
+    // in parallel with it: "128 Neb. 783, 260 N.W. 287 (1935). Id. at 790"
+    // (#103). Only the last run, so an id. never reaches past a later
+    // decision to an earlier one.
+    let run = &resolved_full_cites.current_run;
+    let cite = |i: usize| &resolved_full_cites.cites[i];
+    if run.len() < 2 || !run.iter().any(|&i| cite(i).resource.as_ref() == Some(last)) {
+        return None;
+    }
+    run.iter().find_map(|&i| {
+        let cite = cite(i);
+        let resource = cite.resource.as_ref()?;
+        (!has_invalid_pin_cite(&cite.citation, data)).then(|| resource.clone())
+    })
 }
 
 fn resolve_reference_citation<R: Clone + Hash>(
@@ -1295,6 +1323,43 @@ mod tests {
             .map(|c| c.type_name())
             .collect();
         assert_eq!(hun, ["IdCitation", "FullCaseCitation"]);
+    }
+
+    // #103: an id. citation right after a parallel run whose pin cite is in
+    // the run's first printing, not its last (Ray v. Bruce, on stare.pub).
+    #[test]
+    fn test_id_after_parallel_run_pins_its_first_printing() {
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 790.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("128 Neb. 783")),
+                ("FullCaseCitation", to("260 N.W. 287")),
+                ("IdCitation", to("128 Neb. 783")),
+            ]
+        );
+        // The id. after it follows.
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 790. Id. at 791.";
+        assert_eq!(resolved(text)[3], ("IdCitation", to("128 Neb. 783")));
+    }
+
+    // A pin cite in the last printing still resolves to it, as in eyecite,
+    // and one in neither printing is unresolved.
+    #[test]
+    fn test_id_after_parallel_run_in_its_last_printing_or_neither() {
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 290.";
+        assert_eq!(id_resolution(text), to("260 N.W. 287"));
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 5000.";
+        assert_eq!(id_resolution(text), None);
+    }
+
+    // The pin cite is checked against the run the last resolution belongs
+    // to, not an earlier decision.
+    #[test]
+    fn test_id_after_single_cite_does_not_reach_an_earlier_run() {
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 \
+                    N.W. 1 (1940). Id. at 790.";
+        assert_eq!(id_resolution(text), None);
     }
 
     // #127: a supra whose last word matches two decisions ("States") resolves

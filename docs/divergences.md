@@ -38,6 +38,7 @@ on purpose, and how to list a new one, are under
 | [Inline markup doesn't split a word](#html-inline-join) | #121 | drafted in [`html-inline-join.md`](eyecite-issue-drafts/html-inline-join.md) |
 | [A supra's case name decides between cases its last word matches](#supra-case-name) | #127 | drafted in [`supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md) |
 | [`69 id. 76`: "id." standing for the reporter](#reporter-id) | #129 | drafted in [`reporter-id.md`](eyecite-issue-drafts/reporter-id.md) |
+| [An id. citation's pin cite in an earlier parallel printing](#id-after-parallel) | #103 | drafted in [`id-after-parallel.md`](eyecite-issue-drafts/id-after-parallel.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -1281,6 +1282,57 @@ Denio's), and party names `Thompson` gave a run of citations the reporter `Thomp
 ### Upstream
 
 Not filed; a draft is in [`eyecite-issue-drafts/reporter-id.md`](eyecite-issue-drafts/reporter-id.md).
+
+<a id="id-after-parallel"></a>
+## An id. citation's pin cite in an earlier parallel printing
+
+eyecite resolves an id. citation to the resource of the citation before it, and only when its
+pin cite can be in that citation: no lower than the first page and at most 150 pages past it.
+After a decision cited in parallel, the citation before it is the run's last printing, and a pin
+cite into the first is almost never in range of the second's pages. `Ray v. Bruce, 128 Neb. 783,
+260 N.W. 287 (1935). Id. at 790.` cites page 790 of 128 Neb., and eyecite checks 790 against
+260 N.W. 287 and leaves the id. citation unresolved, and every pinless `Id.` chained after it.
+
+citare checks the last citation's resource first, as eyecite does. When the pin cite can't be in
+it and that resource is one of the last parallel run's printings, the id. citation resolves to
+the first of the run's printings the pin cite can be in. Only the last run counts: after a later
+full citation, an id. citation never reaches back to an earlier decision's printings.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 790.` | **unresolved** | `128 Neb. 783` |
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 290.` | `260 N.W. 287` | `260 N.W. 287` |
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 5000.` | unresolved | unresolved |
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 N.W. 1 (1940). Id. at 790.` | unresolved | unresolved |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), the citare CLI's `resolve` resolves
+9,414 id. citations, up from 9,005 on `main`. No other citation's resolution changes, and no id.
+citation that resolved before resolves to something else. I read 20 of the 409 newly resolved,
+drawn at random (seed 103), in context. 19 resolve to the decision they cite: `Eichman v.
+Fotomat Corp., 147 Cal.App.3d 1170, 1175, 197 Cal.Rptr. 612 (1983). ... Id. at 1176`, `Rath v.
+City of Sutton, 267 Neb. 265, 673 N.W.2d 869 (2004). Id. at 274, 673 N.W.2d at 880`, `___ U.S.
+___, 129 S.Ct. 2527, 174 L.Ed.2d 314 (2009). Id. at 2530-2531`, where the pin cite is into the
+second printing, and pinless `Id.`s after a newly resolved one. The twentieth follows `Id. at
+701, 112 S.Ct. at 2213-14 (discussing Barber v. Barber, 62 U.S. (21 How.) 582, 16 L.Ed. 226
+(1858))`: the next `Id. at 704` means Ankenbrandt v. Richards, cited before the parenthetical, and
+citare resolves it to Barber, whose U.S. pages 704 happens to fall in. eyecite gives the same
+wrong answer whenever a case in a parenthetical is cited in one reporter.
+
+### Tests
+
+- `crates/citare-core/src/resolve.rs`: `test_id_after_parallel_run_pins_its_first_printing`
+  (#103's example, and an id. citation after it),
+  `test_id_after_parallel_run_in_its_last_printing_or_neither` and
+  `test_id_after_single_cite_does_not_reach_an_earlier_run` (the table's other rows).
+- citation-bench: none yet; the table's rows can become `resolve` vectors in
+  `vectors/divergences/`.
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/id-after-parallel.md`](eyecite-issue-drafts/id-after-parallel.md).
 
 <a id="eyecite-suite"></a>
 ## eyecite's test suite against the Python API
