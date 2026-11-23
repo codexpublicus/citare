@@ -1,13 +1,17 @@
 //! Serde structs and parse functions for reporters-db JSON files.
 //!
 //! Data files:
-//! - `reporters.json` — reporter clusters, each with `editions` (HashMap) and
-//!   `variations` (HashMap<String, String>)
+//! - `reporters.json` — reporter clusters, each with `editions` and
+//!   `variations` (variation → edition) maps
 //! - `laws.json` — law clusters, flat structure with `variations: Vec<String>`
 //! - `journals.json` — same schema as laws
+//!
+//! Maps keep the files' order ([`IndexMap`]), because eyecite walks them in
+//! that order and its `EDITIONS_LOOKUP` lists editions in that order (#125).
 
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::Deserialize;
 
 // ---------------------------------------------------------------------------
@@ -15,17 +19,23 @@ use serde::Deserialize;
 // ---------------------------------------------------------------------------
 
 /// One cluster entry in `reporters.json`.  The outer JSON is
-/// `HashMap<String, Vec<ReporterCluster>>` (reporter short-name → list of clusters).
+/// `IndexMap<String, Vec<ReporterCluster>>` (reporter short-name → list of clusters).
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReporterCluster {
     pub name: String,
     pub cite_type: String,
-    pub editions: HashMap<String, EditionData>,
+    pub editions: IndexMap<String, EditionData>,
     #[serde(default)]
-    pub variations: HashMap<String, String>,
+    pub variations: IndexMap<String, String>,
     #[serde(default)]
     pub mlz_jurisdiction: Vec<String>,
     pub cite_format: Option<String>,
+    /// Added by citare's supplement (`data/reporters-local.json`,
+    /// `data/laws-local.json`) rather than read from reporters-db. eyecite
+    /// has none of these, so citare's editions lookup lists their editions
+    /// after eyecite's.
+    #[serde(skip)]
+    pub local: bool,
     /// Absorb unknown fields (publisher, examples, notes, href, …)
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -45,9 +55,9 @@ pub struct EditionData {
 // ---------------------------------------------------------------------------
 
 /// One cluster entry in `laws.json`.  The outer JSON is
-/// `HashMap<String, Vec<LawCluster>>`.
+/// `IndexMap<String, Vec<LawCluster>>`.
 ///
-/// Note: `variations` is a `Vec<String>` here (not a HashMap like reporters).
+/// Note: `variations` is a `Vec<String>` here (not a map like reporters).
 #[derive(Debug, Clone, Deserialize)]
 pub struct LawCluster {
     pub name: String,
@@ -65,6 +75,12 @@ pub struct LawCluster {
     /// them such a regex runs on every document.
     #[serde(default)]
     pub strings: Vec<String>,
+    /// Added by citare's supplement (`data/reporters-local.json`,
+    /// `data/laws-local.json`) rather than read from reporters-db. eyecite
+    /// has none of these, so citare's editions lookup lists their editions
+    /// after eyecite's.
+    #[serde(skip)]
+    pub local: bool,
     /// Absorb unknown fields (examples, href, notes, …)
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -81,9 +97,9 @@ pub type JournalCluster = LawCluster;
 // Convenience type aliases for the top-level maps
 // ---------------------------------------------------------------------------
 
-pub type ReportersMap = HashMap<String, Vec<ReporterCluster>>;
-pub type LawsMap = HashMap<String, Vec<LawCluster>>;
-pub type JournalsMap = HashMap<String, Vec<JournalCluster>>;
+pub type ReportersMap = IndexMap<String, Vec<ReporterCluster>>;
+pub type LawsMap = IndexMap<String, Vec<LawCluster>>;
+pub type JournalsMap = IndexMap<String, Vec<JournalCluster>>;
 
 // ---------------------------------------------------------------------------
 // Parse functions
@@ -178,6 +194,7 @@ pub fn merge_local_laws(laws: &mut LawsMap, local: &LocalLaws) -> Result<(), Str
                 end: l.end.clone().or(base.as_ref().and_then(|b| b.end.clone())),
                 variations: l.variations.clone(),
                 strings: l.strings.clone(),
+                local: true,
                 extra: HashMap::new(),
             };
             laws.entry(key.clone()).or_default().push(cluster);
@@ -340,7 +357,7 @@ pub fn apply_local_reporters(
         clusters.push(ReporterCluster {
             name: l.name.clone(),
             cite_type: l.cite_type.clone(),
-            editions: HashMap::from([(
+            editions: IndexMap::from([(
                 l.edition.clone(),
                 EditionData {
                     start: l.start.clone(),
@@ -348,9 +365,10 @@ pub fn apply_local_reporters(
                     regexes: Some(l.regexes.clone()),
                 },
             )]),
-            variations: HashMap::new(),
+            variations: IndexMap::new(),
             mlz_jurisdiction: Vec::new(),
             cite_format: None,
+            local: true,
             extra: HashMap::new(),
         });
     }
@@ -384,6 +402,7 @@ pub fn merge_local_journals(
                 end: l.end.clone(),
                 variations: Vec::new(),
                 strings: Vec::new(),
+                local: true,
                 extra: HashMap::new(),
             }],
         );

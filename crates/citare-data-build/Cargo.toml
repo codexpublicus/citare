@@ -11,3 +11,5 @@ serde_json = { workspace = true }
 regex = { workspace = true }
 # For is_meta_character, matching regex::escape (bundle.rs).
 regex-syntax = { version = "0.8", default-features = false }
+# Keeps reporters-db's order, which eyecite's EDITIONS_LOOKUP follows (#125).
+indexmap = { version = "2", features = ["serde"] }

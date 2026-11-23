@@ -347,11 +347,26 @@ pub fn build_extractors() -> Vec<TokenExtractor> {
     extractors
 }
 
-/// Build the editions lookup from the loaded data bundle: each prefilter
-/// string mapped to the editions (exact, then variations) of every citation
-/// extractor that lists it, in registry order and without repeats.
+/// Build the editions lookup from the loaded data bundle: eyecite's
+/// `EDITIONS_LOOKUP`, each reporter string with its editions in eyecite's
+/// order, from the bundle's editions lookup section.
+///
+/// A bundle from before that section has no such table; for one, each
+/// prefilter string maps to the editions (exact, then variations) of every
+/// citation extractor that lists it, in registry order and without repeats.
 fn build_editions_lookup() -> HashMap<String, Vec<Edition>> {
     let data = crate::data::get();
+    if !data.bundle.editions_lookup.is_empty() {
+        return data
+            .bundle
+            .editions_lookup
+            .iter()
+            .map(|(k, eds)| {
+                let editions = eds.iter().map(|&i| data.editions[i as usize].clone());
+                (k.to_string(), editions.collect())
+            })
+            .collect();
+    }
     let mut lookup: HashMap<String, Vec<Edition>> = HashMap::new();
     for entry in &data.bundle.reporter_map {
         for s in &entry.strings {
@@ -1493,6 +1508,56 @@ mod tests {
             !lookup["U.S."].is_empty(),
             "U.S. should have at least one edition"
         );
+    }
+
+    /// eyecite's order (#125): the editions of each reporter string in the
+    /// order eyecite appends them, walking reporters-db's reporters, laws
+    /// and journals in file order, an edition's name before its variations.
+    #[test]
+    fn test_editions_lookup_order_matches_eyecite() {
+        let lookup = &*EDITIONS_LOOKUP;
+        // (reporter string, eyecite's first edition, its reporter's name)
+        let cases = [
+            ("Allen", "Allen", "Massachusetts Reports, Allen"),
+            ("Mon.", "B. Mon.", "Kentucky Reports, Monroe, Ben"),
+            ("Cai.", "Cai. Cas.", "Caines' Cases"),
+            ("Charlton Rep.", "Charlton", "R.M. Charlton Reports (Ga.)"),
+            ("Cust. Ct.", "Ct. Cust.", "Court of Customs Appeals Reports"),
+            ("Dec. Comm'r Pat.", "Dec. Com. Pat.", "Decisions of the Commissioner of Patents"),
+            ("Gilm.", "Gilm.", "Illinois Reports, Gilman"),
+            ("Harrington", "Harr. Ch.", "Harrington's Michigan Chancery Reports (1836-42)"),
+            ("Hay. & Haz.", "Hay. & Haz.", "District of Columbia Reports, Hayward & Hazelton"),
+            ("Mas.", "Mason C.C.", "Mason's United States (US) Circuit Court Reports"),
+            ("N.Y. Super. Ct.", "N.Y. Sup. Ct.", "Supreme Court Reports"),
+            ("O.S.", "Ohio St.", "Ohio State Reports"),
+            ("Rob.", "Rob.", "Louisiana Reports, Robinson"),
+            ("Rob. Rep.", "Rob.", "Louisiana Reports, Robinson"),
+            ("T.C.A.", "T.C.A.", "Decisiones del Tribunal de Circuito de Apelaciones de Puerto Rico (Decisions of the Circuit Court of Appeals of Puerto Rico)"),
+            ("T.C.M. (RIA)", "T.C.M.", "Tax Court Memorandum Decisions"),
+            ("Taylor", "Tay.", "North Carolina Reports, Taylor"),
+            ("Tex.", "Tex.", "Texas Reports"),
+            ("Walker", "Walk.", "Pennsylvania State Reports, Walker"),
+            ("Wash.", "Wash.", "Virginia Reports, Washington"),
+            ("Wash. Rep.", "Wash.", "Virginia Reports, Washington"),
+            ("W.2d", "Wash. 2d", "Washington Reports"),
+            ("Mass. Gen. Laws Ann.", "Mass. Gen. Laws Ann.", "Massachusetts General Laws Annotated (West)"),
+            // Keys whose regexes don't contain the string itself.
+            ("Cal. Code", "Cal. Code", "West's Annotated California Codes; Deering's California Codes, Annotated (LexisNexis)"),
+            ("N.Y. Law", "N.Y. Law", "McKinney's Consolidated Laws of New York Annotated (West); New York Consolidated Laws Service (LexisNexis); New York Consolidated Laws Unannotated (LexisNexis)"),
+            ("Tex. Code Ann.", "Tex. Code Ann.", "Vernon's Texas Codes Annotated (West)"),
+        ];
+        let wrong: Vec<String> = cases
+            .iter()
+            .filter_map(|&(key, edition, reporter)| {
+                let got = lookup
+                    .get(key)
+                    .and_then(|e| e.first())
+                    .map(|e| (e.short_name.as_str(), e.reporter.name.as_str()));
+                (got != Some((edition, reporter)))
+                    .then(|| format!("{key:?}: expected {edition:?} of {reporter:?}, got {got:?}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
     #[test]

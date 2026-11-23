@@ -54,6 +54,28 @@ struct EditionsByRegexEntry {
     short: bool,
 }
 
+/// eyecite's `EDITIONS_LOOKUP` as it is built: each reporter string (an
+/// edition's name or a variation) and the editions eyecite appends for it,
+/// in the order it appends them, without repeats.
+type EditionsLookup = HashMap<String, Vec<BuildEdition>>;
+
+/// Add `edition` under each of `names`, as eyecite's `_add_regex` does for
+/// each regex it builds: the edition's name, then its variations. Walking
+/// reporters, laws and journals in file order (the maps are `IndexMap`s)
+/// gives eyecite's order.
+fn add_to_lookup<'a>(
+    lookup: &mut EditionsLookup,
+    names: impl IntoIterator<Item = &'a str>,
+    edition: &BuildEdition,
+) {
+    for name in names {
+        let editions = lookup.entry(name.to_string()).or_default();
+        if !editions.contains(edition) {
+            editions.push(edition.clone());
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Token type constants (must match TokenType enum in tokenizer.rs)
 // ---------------------------------------------------------------------------
@@ -200,6 +222,10 @@ fn main() {
     // 3. Build editions_by_regex (same logic as tokenizer.rs build_extractors)
     // -----------------------------------------------------------------------
     let mut editions_by_regex: HashMap<String, EditionsByRegexEntry> = HashMap::new();
+    // eyecite's lookup, then the editions citare's supplement adds, which
+    // eyecite doesn't have and so are listed after its own (#125).
+    let mut editions_lookup: EditionsLookup = HashMap::new();
+    let mut local_lookup: EditionsLookup = HashMap::new();
 
     // Helper: substitute $edition in a template with escaped edition names,
     // relaxing inter-token whitespace so `N.Y.S.2d` also matches
@@ -264,12 +290,20 @@ fn main() {
 
     // Helper: expand regex templates for an edition
     let add_regexes = |editions_by_regex: &mut HashMap<String, EditionsByRegexEntry>,
+                       editions_lookup: &mut EditionsLookup,
                        regex_templates: &[String],
                        edition_name: &str,
                        edition: &BuildEdition,
                        variation_names: &[String],
                        explicit_strings: &[String],
                        regex_variables: &HashMap<String, String>| {
+        if !regex_templates.is_empty() {
+            add_to_lookup(
+                editions_lookup,
+                std::iter::once(edition_name).chain(variation_names.iter().map(String::as_str)),
+                edition,
+            );
+        }
         for template in regex_templates {
             let resolved =
                 citare_data_build::template::recursive_substitute(template, regex_variables, 100)
@@ -395,6 +429,11 @@ fn main() {
 
                 add_regexes(
                     &mut editions_by_regex,
+                    if source.local {
+                        &mut local_lookup
+                    } else {
+                        &mut editions_lookup
+                    },
                     &regex_templates,
                     edition_name,
                     &edition,
@@ -409,6 +448,7 @@ fn main() {
                 for v in local_reporters.variations.iter().filter(|v| {
                     v.reporter == *source_key && v.name == source.name && v.edition == *edition_name
                 }) {
+                    add_to_lookup(&mut local_lookup, [v.variation.as_str()], &edition);
                     for template in &v.regexes {
                         let resolved = citare_data_build::template::recursive_substitute(
                             template,
@@ -464,6 +504,11 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
+                if source.local {
+                    &mut local_lookup
+                } else {
+                    &mut editions_lookup
+                },
                 &regex_templates,
                 source_key,
                 &edition,
@@ -501,6 +546,11 @@ fn main() {
 
             add_regexes(
                 &mut editions_by_regex,
+                if source.local {
+                    &mut local_lookup
+                } else {
+                    &mut editions_lookup
+                },
                 &regex_templates,
                 source_key,
                 &edition,
@@ -841,6 +891,27 @@ fn main() {
             ))
     });
 
+    // eyecite's EDITIONS_LOOKUP, keys sorted and each key's editions in
+    // eyecite's order (#125). Every edition in it has a regex, so it is
+    // interned.
+    for (key, editions) in local_lookup {
+        for e in editions {
+            add_to_lookup(&mut editions_lookup, [key.as_str()], &e);
+        }
+    }
+    let mut lookup_keys: Vec<&String> = editions_lookup.keys().collect();
+    lookup_keys.sort();
+    let editions_lookup: Vec<(Str, Vec<u32>)> = lookup_keys
+        .into_iter()
+        .map(|k| {
+            let indices = editions_lookup[k]
+                .iter()
+                .map(|e| ed_new[edition_index_map[e]])
+                .collect();
+            (k.clone().into(), indices)
+        })
+        .collect();
+
     let court_keys: Vec<(Str, Str)> = courts
         .iter()
         .map(|court| {
@@ -903,6 +974,7 @@ fn main() {
             })
             .collect(),
         court_keys,
+        editions_lookup,
     };
     assert_eq!(
         REPORTER_PLACEHOLDER,
