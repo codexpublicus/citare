@@ -72,6 +72,10 @@ pub struct FullCaseMetadata {
 pub struct ShortCaseMetadata {
     pub case: CaseMetadata,
     pub antecedent_guess: Option<String>,
+    /// The plaintiff of the case name before the citation, when it has a
+    /// "v.": `Walters` in "Walters v. Walters, 298 S.E.2d at 342", whose
+    /// `antecedent_guess` is the defendant, as eyecite sets them.
+    pub plaintiff: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -449,6 +453,7 @@ impl Citation {
                 let m = &d.metadata;
                 let mut fields = case(&m.case).to_vec();
                 fields.push(("antecedent_guess", m.antecedent_guess.as_deref()));
+                fields.push(("plaintiff", m.plaintiff.as_deref()));
                 fields
             }
             Citation::FullLaw(d) => {

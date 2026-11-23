@@ -579,6 +579,7 @@ fn extract_shortform_citation(document: &Document, index: usize) -> Citation {
                 ..Default::default()
             },
             antecedent_guess: None,
+            plaintiff: None,
         },
     };
 
