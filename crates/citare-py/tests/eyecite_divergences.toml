@@ -87,10 +87,3 @@ test = "test_FindTest.py::FindTest::test_markup_plaintiff_and_antecedent_guesses
 subtest = { q = "this Court.\n  <em>\n   Holm; In Re Carroll’s Estate\n  </em>\n  (1921), 59 Mont. 403, 413." }
 reason = "citare takes the year printed between the case name and the volume, 1921; eyecite finds no year"
 doc = "docs/divergences.md#year-before-volume"
-
-[[divergence]]
-test = "test_FindTest.py::FindTest::test_disambiguate_citations"
-subtest = { q = "1 Wash. 1 (1890)" }
-reason = "citare finds Wash., as eyecite does, but citare's EDITIONS_LOOKUP lists Wash. Terr. first for 'Wash.', so eyecite's factory (EDITIONS_LOOKUP[reporter][0]) expects Wash. Terr."
-doc = "docs/divergences.md#eyecite-suite-bugs"
-issue = "https://github.com/codexpublicus/citare/issues/125"

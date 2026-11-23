@@ -48,6 +48,9 @@ const SEC_REPORTER_JURISDICTIONS: u64 = 10;
 /// Added after version 1 shipped; a reader that lacks it, or a bundle
 /// without it, has no edition slugs.
 const SEC_EDITION_SLUGS: u64 = 11;
+/// Added after version 1 shipped; a reader that lacks it, or a bundle
+/// without it, derives the editions lookup from the reporter map instead.
+const SEC_EDITIONS_LOOKUP: u64 = 12;
 
 /// A string borrowed from the bundle's bytes when decoded, or owned when
 /// built.
@@ -121,6 +124,11 @@ pub struct DataBundle<'a> {
     /// `(citation_string reduced to lowercase alphanumerics, court id)`, in
     /// courts-db order.
     pub court_keys: Vec<(Str<'a>, Str<'a>)>,
+    /// eyecite's `EDITIONS_LOOKUP`: each reporter string, sorted, with the
+    /// editions (indices into [`DataBundle::editions`]) eyecite lists for
+    /// it, in eyecite's order. Empty in a bundle from before section 12.
+    #[serde(default)]
+    pub editions_lookup: Vec<(Str<'a>, Vec<u32>)>,
 }
 
 /// The reporter regex citare builds for reporter string `s`: `s` escaped,
@@ -292,6 +300,7 @@ impl DataBundle<'_> {
                     .iter()
                     .flat_map(|(k, v)| [k.as_ref(), v.as_ref()]),
             )
+            .chain(self.editions_lookup.iter().map(|(k, _)| k.as_ref()))
     }
 
     /// Encode as a format-version-1 bundle. The output is deterministic: the
@@ -476,6 +485,22 @@ impl DataBundle<'_> {
                 put_varint(&mut s, strs.opt(&e.slug));
             }
             sections.push((SEC_EDITION_SLUGS, s));
+        }
+
+        // The editions lookup: the keys, then each key's editions.
+        if !self.editions_lookup.is_empty() {
+            let mut s = Vec::new();
+            put_varint(&mut s, self.editions_lookup.len() as u64);
+            for (k, _) in &self.editions_lookup {
+                put_varint(&mut s, strs.id(k));
+            }
+            for (_, eds) in &self.editions_lookup {
+                put_varint(&mut s, eds.len() as u64);
+                for &i in eds {
+                    put_varint(&mut s, i as u64);
+                }
+            }
+            sections.push((SEC_EDITIONS_LOOKUP, s));
         }
 
         let mut out = Vec::new();
@@ -822,6 +847,20 @@ impl<'a> DataBundle<'a> {
             .map(|_| Ok((strs.string(&mut r)?, strs.string(&mut r)?)))
             .collect::<Result<_, BundleError>>()?;
 
+        let editions_lookup = match secs.iter().find(|(i, _)| *i == SEC_EDITIONS_LOOKUP) {
+            Some((_, payload)) => {
+                let mut r = Reader::new(payload);
+                let n = r.count()?;
+                let keys: Vec<Str<'a>> = (0..n)
+                    .map(|_| strs.string(&mut r))
+                    .collect::<Result<_, _>>()?;
+                keys.into_iter()
+                    .map(|k| Ok((k, index_list(&mut r, editions.len(), "editions lookup")?)))
+                    .collect::<Result<_, BundleError>>()?
+            }
+            None => Vec::new(),
+        };
+
         Ok(DataBundle {
             meta,
             editions,
@@ -829,6 +868,7 @@ impl<'a> DataBundle<'a> {
             reporter_map,
             oneoffs,
             court_keys,
+            editions_lookup,
         })
     }
 }
@@ -877,6 +917,7 @@ mod tests {
                 strings: vec!["id.".into()],
             }],
             court_keys: vec![("pa".into(), "pa".into())],
+            editions_lookup: vec![("A.2d".into(), vec![1, 0])],
         }
     }
 
@@ -934,6 +975,23 @@ mod tests {
             .unwrap()
             .iter()
             .any(|(id, _)| *id == SEC_EDITION_SLUGS));
+        assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
+    }
+
+    #[test]
+    fn round_trips_without_editions_lookup() {
+        let mut b = sample();
+        assert!(sections(&b.encode())
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_EDITIONS_LOOKUP));
+        // A bundle from before section 12 decodes with an empty lookup.
+        b.editions_lookup.clear();
+        let bytes = b.encode();
+        assert!(!sections(&bytes)
+            .unwrap()
+            .iter()
+            .any(|(id, _)| *id == SEC_EDITIONS_LOOKUP));
         assert_eq!(DataBundle::decode(&bytes).unwrap(), b);
     }
 

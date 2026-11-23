@@ -1416,7 +1416,4 @@ guess, without `pin_cite_span_end`. eyecite's `test_dump_citations` expects eyec
 <a id="eyecite-suite-bugs"></a>
 ### Bugs
 
-- [citare#125](https://github.com/codexpublicus/citare/issues/125): `EDITIONS_LOOKUP` lists a
-  reporter string's editions in a different order from eyecite's for 23 strings. eyecite's test
-  factories expect `EDITIONS_LOOKUP[reporter][0]`, so `test_disambiguate_citations` expects
-  `Wash. Terr.` for `1 Wash. 1 (1890)`, where eyecite and citare both find `Wash.`.
+None open.
