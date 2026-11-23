@@ -217,11 +217,14 @@ Before and after over those volumes' opinion text (46,724 opinions, 181,605 cita
 citare gains 300 citations and loses 4, and 38 it found both times change:
 
 - 299 `Caines' Rep.` citations (239 with the typographic apostrophe, 60 without) and one
-  `2 Caines’Rep. 85`. Three of them were `<volume> id. <page>` after a `Caines' Rep.` citation
-  (`Neilson v. Columbian Ins. Co., 3 id., 108` after `1 Caines’ Rep., 196`, which is 3 Caines
-  108), so those three id. citations are gone; the fourth loss is `Thompson, 2`, the nominative
-  reporter `Thompson` read out of `Coles v. Thompson, 2 Caines’ Rep. 47`, which is now that
-  citation.
+  `2 Caines’Rep. 85`.
+- Three `<volume> id. <page>` citations go. `Neilson v. Columbian Ins. Co., 3 id., 108` after
+  `1 Caines’ Rep., 196` is now the full citation `3 Caines’ Rep. 108` (#139), which is 3 Caines
+  108. `Tappenden v. Randall, (2 id. 472.)` (2 B. & P.) and `Bowditch v. Salisbury, (9 id.
+  366;)` (9 John. R.) go back to plain text, since an unrecognized citation sits between the
+  `Caines' Rep.` citation before them and the `id.`. The fourth loss is `Thompson, 2`, the
+  nominative reporter `Thompson` read out of `Coles v. Thompson, 2 Caines’ Rep. 47`, which is
+  now that citation.
 - 22 citations change corrected reporter from `Cai. Cas.` to `Cai. R.`: 14 `Cain. Rep.` and 8
   `Caines Rep.`.
 - 16 case names that had run into an unrecognized `Caines' Rep.` citation stop at it
