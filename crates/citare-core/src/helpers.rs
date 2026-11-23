@@ -113,6 +113,13 @@ fn re_paren_sentence_end() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r#"[)\]][.?!]["'\u{201D}\u{2019}]*$"#).unwrap())
 }
 
+/// A word that closes a parenthetical or bracket with a comma or semicolon:
+/// "(1991),", "1993);", "Cir.],".
+fn re_paren_clause_end() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"[)\]][,;]$").unwrap())
+}
+
 fn re_v_split() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| regex::Regex::new(r"\s+v\.?\s+").unwrap())
@@ -1239,6 +1246,26 @@ fn scan_for_case_boundaries(words: &Tokens, index: usize, state: &mut SearchStat
             state.start_index = start;
             state.candidate_case_name = start.map(|j| extract_text(words, j, end));
             state.starts_sentence = start.is_none() && later_citation == index;
+            return;
+        }
+
+        // Once a "v." is found, a parenthetical closed with a comma or
+        // semicolon ends an earlier citation: "219 Ill. App. 3d 47 (1991),
+        // and People v. Ceasar" (#27). The case name starts at the first
+        // capitalized word after it, as after a sentence that ends in a
+        // parenthetical. eyecite stops at the parenthetical's "(" and takes
+        // "1991), and People" as the plaintiff.
+        if state.v_token_found && re_paren_clause_end().is_match(&word_str) {
+            let end = state.title_starting_index;
+            let start = (i + 1..end).find(|&j| {
+                token_to_str(&words[j])
+                    .trim_start()
+                    .chars()
+                    .next()
+                    .is_some_and(char::is_uppercase)
+            });
+            state.start_index = start;
+            state.candidate_case_name = start.map(|j| extract_text(words, j, end));
             return;
         }
 
