@@ -72,9 +72,9 @@ struct ResolvedFullCites<R> {
     decisions_by_key: HashMap<u64, Vec<usize>>,
     /// The most resources in one of `decisions`.
     max_decision_len: usize,
-    /// The last full citation and those cited in parallel just before it,
-    /// as indexes into `cites`, in document order.
-    current_run: Vec<usize>,
+    /// The first citation of each resource, by [`resource_key`], as an
+    /// index into `cites`.
+    first_by_key: HashMap<u64, usize>,
 }
 
 impl<R> Default for ResolvedFullCites<R> {
@@ -88,7 +88,7 @@ impl<R> Default for ResolvedFullCites<R> {
             decision_ids: HashMap::new(),
             decisions_by_key: HashMap::new(),
             max_decision_len: 0,
-            current_run: Vec::new(),
+            first_by_key: HashMap::new(),
         }
     }
 }
@@ -116,11 +116,10 @@ impl<R: Hash> ResolvedFullCites<R> {
             reporter,
         });
 
+        self.first_by_key.entry(key).or_insert(index);
         if !parallel {
             self.current_decision.clear();
-            self.current_run.clear();
         }
-        self.current_run.push(index);
         if let Err(at) = self.current_decision.binary_search(&key) {
             self.current_decision.insert(at, key);
         }
@@ -135,6 +134,28 @@ impl<R: Hash> ResolvedFullCites<R> {
             self.decision_ids.insert(self.current_decision.clone(), id);
             self.decisions.push(self.current_decision.clone());
         }
+    }
+
+    /// The first citation of each resource cited in parallel with the
+    /// resource `key` (the other printings of its decision), as indexes
+    /// into `cites`, in document order.
+    fn other_printings(&self, key: u64) -> Vec<usize> {
+        let mut keys: Vec<u64> = self
+            .decisions_by_key
+            .get(&key)
+            .into_iter()
+            .flatten()
+            .flat_map(|&id| self.decisions[id].iter().copied())
+            .filter(|&k| k != key)
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        let mut printings: Vec<usize> = keys
+            .iter()
+            .filter_map(|k| self.first_by_key.get(k).copied())
+            .collect();
+        printings.sort_unstable();
+        printings
     }
 
     /// Whether some parallel citation of the resource `key` also cited every
@@ -417,10 +438,11 @@ impl<'a, R: Clone + Eq + Hash> ResolveContext<'a, R> {
     /// citare's rule for an id. citation: the last citation's resource,
     /// unless its pin cite can't be in the first citation of that resource
     /// (see `docs/divergences.md` for section pin cites). When it can't and
-    /// that resource is one of the last parallel run's, the first of the
-    /// run's citations the pin cite can be in, as "Id. at 790" after "128
-    /// Neb. 783, 260 N.W. 287" is in 128 Neb. 783 (#103). `None` for any
-    /// other kind of citation.
+    /// that resource was cited in parallel with others, the first of those
+    /// printings the pin cite can be in, as "Id. at 790" after "128 Neb.
+    /// 783, 260 N.W. 287" is in 128 Neb. 783 (#103), also when the last
+    /// citation is a short cite or reference to that decision (#27). `None`
+    /// for any other kind of citation.
     pub fn resolve_id(&self, citation: &Citation) -> Option<R> {
         let Citation::Id(data) = citation else {
             return None;
@@ -705,18 +727,17 @@ fn resolve_id_citation<R: Clone + Eq + Hash>(
 
     // The pin cite may be in another printing of the same decision, cited
     // in parallel with it: "128 Neb. 783, 260 N.W. 287 (1935). Id. at 790"
-    // (#103). Only the last run, so an id. never reaches past a later
-    // decision to an earlier one.
-    let run = &resolved_full_cites.current_run;
-    let cite = |i: usize| &resolved_full_cites.cites[i];
-    if run.len() < 2 || !run.iter().any(|&i| cite(i).resource.as_ref() == Some(last)) {
-        return None;
-    }
-    run.iter().find_map(|&i| {
-        let cite = cite(i);
-        let resource = cite.resource.as_ref()?;
-        (!has_invalid_pin_cite(&cite.citation, data)).then(|| resource.clone())
-    })
+    // (#103), or "Davis, 478 U.S. at 129-30, 106 S.Ct. at 2809. Id. at 130"
+    // after short cites (#27). Only the last resolution's decision, so an
+    // id. never reaches past a later decision to an earlier one.
+    resolved_full_cites
+        .other_printings(resource_key(&Some(last)))
+        .into_iter()
+        .find_map(|i| {
+            let cite = &resolved_full_cites.cites[i];
+            let resource = cite.resource.as_ref()?;
+            (!has_invalid_pin_cite(&cite.citation, data)).then(|| resource.clone())
+        })
 }
 
 fn resolve_reference_citation<R: Clone + Hash>(
@@ -1359,6 +1380,65 @@ mod tests {
     fn test_id_after_single_cite_does_not_reach_an_earlier_run() {
         let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 \
                     N.W. 1 (1940). Id. at 790.";
+        assert_eq!(id_resolution(text), None);
+    }
+
+    // #27: an id. after short cites in parallel takes the printing its pin
+    // cite is in. The S.Ct. short cite is the last resolution, and 130 is a
+    // page of 478 U.S. 109 (CourtListener ten-percent sample).
+    #[test]
+    fn test_id_after_parallel_short_cites_pins_its_printing() {
+        let text = "Davis v. Bandemer, 478 U.S. 109, 106 S.Ct. 2797 (1986). Smith v. Jones, \
+                    300 N.W. 1 (1940). Davis, 478 U.S. at 129-30, 106 S.Ct. at 2809. Id. at \
+                    130.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("478 U.S. 109")),
+                ("FullCaseCitation", to("106 S.Ct. 2797")),
+                ("FullCaseCitation", to("300 N.W. 1")),
+                ("ShortCaseCitation", to("478 U.S. 109")),
+                ("ShortCaseCitation", to("106 S.Ct. 2797")),
+                ("IdCitation", to("478 U.S. 109")),
+            ]
+        );
+        // A pin cite in the last printing stays there.
+        let text = "Davis v. Bandemer, 478 U.S. 109, 106 S.Ct. 2797 (1986). Davis, 478 U.S. \
+                    at 129-30, 106 S.Ct. at 2809. Id. at 2810.";
+        assert_eq!(id_resolution(text), to("106 S.Ct. 2797"));
+    }
+
+    // The same after a single short cite in one printing of a decision cited
+    // in parallel earlier.
+    #[test]
+    fn test_id_after_short_cite_pins_another_printing() {
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 \
+                    N.W. 1 (1940). Ray, 260 N.W. at 288. Id. at 790.";
+        assert_eq!(id_resolution(text), to("128 Neb. 783"));
+    }
+
+    // And after a reference, which resolves to the decision's first printing.
+    #[test]
+    fn test_id_after_reference_pins_another_printing() {
+        let text = "Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 \
+                    N.W. 1 (1940). Ray at 785. Id. at 290.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("128 Neb. 783")),
+                ("FullCaseCitation", to("260 N.W. 287")),
+                ("FullCaseCitation", to("300 N.W. 1")),
+                ("ReferenceCitation", to("128 Neb. 783")),
+                ("IdCitation", to("260 N.W. 287")),
+            ]
+        );
+    }
+
+    // A decision cited in one reporter only has no other printing to take.
+    #[test]
+    fn test_id_after_short_cite_of_single_printing_stays_unresolved() {
+        let text = "Smith v. Jones, 300 N.W. 1 (1940). Ray v. Bruce, 128 Neb. 783 (1935). \
+                    Smith, 300 N.W. at 2. Id. at 790.";
         assert_eq!(id_resolution(text), None);
     }
 
