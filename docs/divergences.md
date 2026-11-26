@@ -39,6 +39,7 @@ on purpose, and how to list a new one, are under
 | [A supra's case name decides between cases its last word matches](#supra-case-name) | #127 | drafted in [`supra-case-name.md`](eyecite-issue-drafts/supra-case-name.md) |
 | [`69 id. 76`: "id." standing for the reporter](#reporter-id) | #129 | drafted in [`reporter-id.md`](eyecite-issue-drafts/reporter-id.md) |
 | [An id. citation's pin cite in an earlier parallel printing](#id-after-parallel) | #103 | drafted in [`id-after-parallel.md`](eyecite-issue-drafts/id-after-parallel.md) |
+| [Reference names: role words out, surnames in, shared names ambiguous](#reference-names) | #27 | drafted in [`reference-names.md`](eyecite-issue-drafts/reference-names.md) |
 
 <a id="id-section-pin"></a>
 ## `§` pin cites on `Id.` and `Ibid.`
@@ -660,14 +661,15 @@ resources, so the reference resolves to nothing, as a supra did before
 
 citare applies the supra rule: when every match is one decision cited in parallel (one
 [parallel group](#parallel-groups)), the reference resolves to the first match. Two decisions
-with one name still leave it unresolved, and two groups that share a citation aren't merged.
+with one name make it no reference at all ([reference-names](#reference-names)), and two groups
+that share a citation aren't merged.
 
 | Input | eyecite 2.7.8 | citare |
 |---|---|---|
 | `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … In Haynes at 312, the court held` | **unresolved** | `314 Conn. 303` |
 | `Ankenbrandt v. Richards, 504 U.S. 689, 112 S.Ct. 2206, 119 L.Ed.2d 468 (1992). … Under Ankenbrandt at 703` | **unresolved** | `504 U.S. 689` |
 | `<i>Haynes v. Middletown,</i> 314 Conn. 303, 101 A.3d 249 (2014). … In <i>Haynes,</i> the court held … <i>Id.</i> at 313.` | reference and `Id.` **unresolved** | both resolve to `314 Conn. 303` |
-| `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … See also Haynes v. Middletown, 320 Conn. 1, 120 A.3d 1 (2015). In Haynes at 312` | unresolved | unresolved (two decisions) |
+| `Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). … See also Haynes v. Middletown, 320 Conn. 1, 120 A.3d 1 (2015). In Haynes at 312` | unresolved | no reference (two decisions, [#27](#reference-names)) |
 
 ### Evidence
 
@@ -687,7 +689,7 @@ v. Puksar (597 Pa. 240 and 559 Pa. 358).
 
 - `crates/citare-core/src/resolve.rs`: a reference after Conn. and A.3d cites, after U.S.,
   S.Ct. and L.Ed.2d cites, an emphasized reference in markup, and two decisions with one name,
-  cited singly and in parallel, whose reference stays unresolved.
+  cited singly and in parallel, which now give no reference (#27).
 - citation-bench `vectors/divergences/`: the first three rows of the table as `resolve` vectors
   (`reference-after-parallel`). eyecite's misses are in `baselines/eyecite.known-differences`.
 
@@ -1367,13 +1369,89 @@ Id. at 130` (CourtListener 1907902), resolves to 478 U.S. 109 again.
   `test_id_after_short_cite_pins_another_printing`, `test_id_after_reference_pins_another_printing`
   and `test_id_after_short_cite_of_single_printing_stays_unresolved` (#27, after short cites and
   references).
-- citation-bench: none yet; the table's rows can become `resolve` vectors in
-  `vectors/divergences/`.
+- citation-bench `vectors/divergences/`: #103's example and the short-cite and reference rows as
+  `resolve` vectors (`id-after-parallel`).
 
 ### Upstream
 
 Not filed; a draft is in
 [`eyecite-issue-drafts/id-after-parallel.md`](eyecite-issue-drafts/id-after-parallel.md).
+
+<a id="reference-names"></a>
+## Reference names: role words out, surnames in, shared names ambiguous
+
+A reference citation is a party name of an earlier full citation used on its own (`In Rogers at
+5`, or `Under the <i>Miller</i> test` in markup). eyecite won't use a name in its
+`DISALLOWED_NAMES`: the generic party words (`state`, `united states`, `people`, `commonwealth`,
+`mass`, `commissioner`) and about a hundred United States Attorneys General's surnames. What it
+does differs from what the list says. `is_valid_name` compares the name lowercased with the list,
+whose surnames are capitalized, so no surname ever matches; and a missing comma joins
+`"commissioner"` and `"Akerman"` into one entry, so `Commissioner` gets through too. citare had
+copied the list and lowercased both sides, so it really excluded Johnson, Miller, Smith, Rogers,
+Williams, Jackson and the rest, and missed references like `In Rogers, …` and `Under the
+<i>Miller</i> test` (CourtListener 2303811) that eyecite finds.
+
+citare keeps only the generic party words, `mass` included (Massachusetts as a party), and drops
+every surname. In their place, a name is no reference when two or more different decisions cited
+in full before it have it as a plaintiff, defendant or case name (the values a reference is
+matched on). A decision cited again, or in parallel, is one decision. The name of a single
+decision resolves to it, as before.
+
+| Input | eyecite 2.7.8 | citare |
+|---|---|---|
+| `Rogers v. Missouri, 1 U.S. 12 (1999). … In Rogers at 15, we see that` | reference, `1 U.S. 12` | the same (before #27: no reference) |
+| `Weishan v. Commissioner, 97 T.C. 1 (1991). … In Commissioner at 5, we see that` | **reference**, `97 T.C. 1` | no reference |
+| `Haynes v. Middletown, 314 Conn. 303 (2014). … See also Haynes v. Middletown, 320 Conn. 1 (2015). In Haynes at 312` | **reference**, unresolved | no reference |
+| `Smith v. Jones, 1 U.S. 12 (1999). Smith v. Brown, 2 U.S. 20 (2000). In Smith at 15` | **reference**, `1 U.S. 12` | no reference |
+| `Smith v. Jones, 1 U.S. 12 (1999). In Smith at 15, we see that. Smith v. Brown, 2 U.S. 20 (2000).` | reference, `1 U.S. 12` | the same |
+
+### Evidence
+
+On the CourtListener ten-percent sample (7,632 opinions), against the same run with the old list,
+citare finds 313 more references and resolves all 313, and stops finding 211, none of which
+resolved before: each named two or more decisions, so resolution already left it ambiguous
+(`Montejo` after Montejo v. Louisiana and the Louisiana decision below it, `Guillen`, `Stevens`).
+No reference that resolved before is lost. On the one-percent sample, 58 more are found and
+resolved and 14 unresolved ones go. Against eyecite's stored 2.7.8 run, references both engines
+find go from 6,321 to 6,421 on the ten-percent sample (eyecite finds 6,709) and from 629 to 673
+on the one-percent sample (eyecite 707); overall agreement goes from 89.8% to 90.1% on the
+one-percent sample and stays 91.3% on the ten-percent.
+
+I read 25 of the 313 new references, drawn at random (seed 27), in context, and all 25 name the
+case they resolve to: `Ashcroft` (Ashcroft v. Free Speech Coalition, 535 U.S. 234), `the Miller
+court` (413 U.S. 15), `the Johnson factors` (Johnson v. Georgia Highway Express, 488 F.2d 714),
+`the Jackson standard` (Jackson v. Virginia, 443 U.S. 307), `In Clark, a case involving paint ball
+guns` (Clark v. Brass Eagle, 866 So.2d 456), `the Williams case` (Williams v. Rhodes, 393 U.S. 23),
+`As we noted in Smith (p. 685)` (State v. Smith, 165 Conn. 680).
+
+A reference is a resolution an id. citation can follow, so new references change some id.
+citations, with the [id-after-parallel](#id-after-parallel) check in place: 24 newly resolve, 3
+stop resolving and 16 move. 8 of the moves are to another printing of the same decision; in 4 the
+reference makes the id. right (`Clifford at 871. The Court found … Id.` now Clifford, not the case
+cited before it; three `See id. at 187-88` after `Jackson` now Jackson v. State, 575 So.2d 181).
+In the other 7 a name mentioned in passing sits between a citation and its id.: the 3 lost follow
+`as set forth in Cummings` inside a discussion of Schultz, and 3 moves (`This court further quoted
+from Bell: … Id., quoting from 136 N.E. at 110`; `similar to that which we set forth in Clark. …
+Id.`; `the Court found Jackson to be simply superfluous. Id.`) go from the right case to the one
+named; one goes from one wrong case to another.
+
+### Tests
+
+- `crates/citare-core/src/utils.rs`: `test_is_valid_name_disallowed` (the role words) and
+  `test_is_valid_name_surnames`.
+- `crates/citare-core/src/find.rs`: `test_reference_citation_by_surname` (plain text and
+  markup), `test_reference_name_of_two_decisions_is_no_reference`,
+  `test_reference_name_before_a_second_decision` and
+  `test_reference_name_of_one_decision_cited_twice` (the table's rows).
+- `crates/citare-core/src/resolve.rs`: `test_reference_by_surname_resolves`, and the two Haynes
+  tests, which now find no reference.
+- citation-bench `vectors/divergences/`: the Commissioner, Haynes and two-Smith rows as `resolve`
+  vectors (`reference-names`).
+
+### Upstream
+
+Not filed; a draft is in
+[`eyecite-issue-drafts/reference-names.md`](eyecite-issue-drafts/reference-names.md).
 
 <a id="eyecite-suite"></a>
 ## eyecite's test suite against the Python API

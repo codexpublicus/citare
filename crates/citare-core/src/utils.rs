@@ -9,104 +9,22 @@ use std::sync::OnceLock;
 /// Reporters whose page numbers sometimes require correction.
 pub static REPORTERS_THAT_NEED_PAGE_CORRECTION: &[&str] = &["NY Slip Op", "Misc. 3d"];
 
-/// Names not allowed to be used as reference citations.
+/// Party names that are never reference citations: the sovereign or office
+/// a party stands for, which many unrelated cases share.
+///
+/// eyecite's `DISALLOWED_NAMES` also lists United States Attorneys General's
+/// surnames, but compares them lowercased with a capitalized list, so only
+/// these lowercase entries ever match there (and a missing comma fuses
+/// "commissioner" with "Akerman"). citare drops the surnames: a name two
+/// decisions in the document share is ambiguous, which `find` decides per
+/// document instead (#27, `docs/divergences.md#reference-names`).
 pub static DISALLOWED_NAMES: &[&str] = &[
-    // Common options
     "state",
     "united states",
     "people",
     "commonwealth",
     "mass",
     "commissioner",
-    // AGs
-    "Akerman",
-    "Ashcroft",
-    "Barr",
-    "Bates",
-    "Bell",
-    "Berrien",
-    "Biddle",
-    "Black",
-    "Bonaparte",
-    "Bork",
-    "Bondi",
-    "Bradford",
-    "Breckinridge",
-    "Brewster",
-    "Brownell",
-    "Butler",
-    "Civiletti",
-    "Clark",
-    "Clement",
-    "Clifford",
-    "Crittenden",
-    "Cummings",
-    "Cushing",
-    "Daugherty",
-    "Devens",
-    "Evarts",
-    "Filip",
-    "Garland",
-    "Gerson",
-    "Gilpin",
-    "Gonzales",
-    "Gregory",
-    "Griggs",
-    "Grundy",
-    "Harmon",
-    "Hoar",
-    "Holder",
-    "Jackson",
-    "Johnson",
-    "Katzenbach",
-    "Keisler",
-    "Kennedy",
-    "Kleindienst",
-    "Knox",
-    "Lee",
-    "Legaré",
-    "Levi",
-    "Lincoln",
-    "Lynch",
-    "MacVeagh",
-    "Mason",
-    "McGranery",
-    "McGrath",
-    "McKenna",
-    "McReynolds",
-    "Meese",
-    "Miller",
-    "Mitchell",
-    "Moody",
-    "Mukasey",
-    "Murphy",
-    "Nelson",
-    "Olney",
-    "Palmer",
-    "Pierrepont",
-    "Pinkney",
-    "Randolph",
-    "Reno",
-    "Richardson",
-    "Rodney",
-    "Rogers",
-    "Rush",
-    "Sargent",
-    "Saxbe",
-    "Sessions",
-    "Smith",
-    "Speed",
-    "Stanbery",
-    "Stanton",
-    "Stone",
-    "Taft",
-    "Taney",
-    "Thornburgh",
-    "Toucey",
-    "Whitacker",
-    "Wickersham",
-    "Williams",
-    "Wirt",
 ];
 
 // ── Regex singletons ──────────────────────────────────────────────────────────
@@ -359,7 +277,7 @@ pub fn is_valid_name(name: &str) -> bool {
         return false;
     }
     let lower = name.to_lowercase();
-    !DISALLOWED_NAMES.iter().any(|&d| d.to_lowercase() == lower)
+    !DISALLOWED_NAMES.contains(&lower.as_str())
 }
 
 /// Hash a pre-serialized string with SHA-256 and return the first 8 bytes as
@@ -589,7 +507,22 @@ mod tests {
     fn test_is_valid_name_disallowed() {
         assert!(!is_valid_name("state"));
         assert!(!is_valid_name("State")); // case-insensitive
-        assert!(!is_valid_name("Garland"));
+        assert!(!is_valid_name("United States"));
+        assert!(!is_valid_name("People"));
+        assert!(!is_valid_name("Commonwealth"));
+        assert!(!is_valid_name("Mass"));
+        assert!(!is_valid_name("Commissioner"));
+    }
+
+    // #27: surnames are names; a name two decisions share is ambiguous,
+    // which `find` decides per document.
+    #[test]
+    fn test_is_valid_name_surnames() {
+        for name in [
+            "Garland", "Johnson", "Miller", "Smith", "Rogers", "Williams", "Akerman",
+        ] {
+            assert!(is_valid_name(name), "{name}");
+        }
     }
 
     #[test]

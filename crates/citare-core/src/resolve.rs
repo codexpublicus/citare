@@ -1201,21 +1201,45 @@ mod tests {
         );
     }
 
-    // Two decisions with the same name leave a reference ambiguous, cited
-    // singly or in parallel.
+    // Two decisions with the same name make it no reference at all (#27),
+    // cited singly or in parallel.
     #[test]
-    fn test_reference_after_two_parallel_cases_with_one_name_is_unresolved() {
+    fn test_reference_after_two_parallel_cases_with_one_name_is_no_reference() {
         let text = "Haynes v. Middletown, 314 Conn. 303, 101 A.3d 249 (2014). The court \
                     agreed. See also Haynes v. Middletown, 320 Conn. 1, 120 A.3d 1 (2015). \
                     In Haynes at 312, the court held.";
-        assert_eq!(resolved(text).last(), Some(&("ReferenceCitation", None)));
+        assert_eq!(
+            resolved(text).last(),
+            Some(&("FullCaseCitation", to("120 A.3d 1")))
+        );
     }
 
     #[test]
-    fn test_reference_after_two_cases_with_one_name_is_unresolved() {
+    fn test_reference_after_two_cases_with_one_name_is_no_reference() {
         let text = "Haynes v. Middletown, 314 Conn. 303 (2014). The court agreed. See also \
                     Haynes v. Middletown, 320 Conn. 1 (2015). In Haynes at 312, the court held.";
-        assert_eq!(resolved(text).last(), Some(&("ReferenceCitation", None)));
+        assert_eq!(
+            resolved(text).last(),
+            Some(&("FullCaseCitation", to("320 Conn. 1")))
+        );
+    }
+
+    // A reference to the one decision with its name resolves to it,
+    // surnames included (#27).
+    #[test]
+    fn test_reference_by_surname_resolves() {
+        let text = "Rogers v. Missouri, 400 U.S. 1, 90 S.Ct. 5 (1970). Smith v. Jones, 300 \
+                    N.W. 1 (1940). In Rogers at 3, the Court held. Id. at 7.";
+        assert_eq!(
+            resolved(text),
+            [
+                ("FullCaseCitation", to("400 U.S. 1")),
+                ("FullCaseCitation", to("90 S.Ct. 5")),
+                ("FullCaseCitation", to("300 N.W. 1")),
+                ("ReferenceCitation", to("400 U.S. 1")),
+                ("IdCitation", to("400 U.S. 1")),
+            ]
+        );
     }
 
     // A reference in markup, an emphasized name after the decision's

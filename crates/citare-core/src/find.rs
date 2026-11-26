@@ -861,6 +861,10 @@ fn insert_reference_citations(
     if found.iter().all(Vec::is_empty) {
         return citations;
     }
+    let decisions = NameDecisions::new(&citations);
+    for references in &mut found {
+        references.retain(|r| !decisions.is_ambiguous(r));
+    }
     let mut out = Vec::with_capacity(citations.len() + found.iter().map(Vec::len).sum::<usize>());
     let mut next = sources.iter().zip(found.iter_mut()).peekable();
     for (i, citation) in citations.into_iter().enumerate() {
@@ -870,6 +874,128 @@ fn insert_reference_citations(
         out.push(citation);
     }
     out
+}
+
+/// The decisions cited in full in a document, by party name, to tell
+/// whether a reference citation's name is ambiguous (#27).
+///
+/// A full case citation is one decision with every citation of the same
+/// reporter, volume and page and with the citations it is cited in parallel
+/// with (one case name and full span, as `resolve` groups them).
+struct NameDecisions {
+    /// For each name, the start of each full case citation that has it as a
+    /// party or case name, with that citation's decision, in document order.
+    by_name: HashMap<String, Vec<(usize, usize)>>,
+}
+
+impl NameDecisions {
+    fn new(citations: &[Citation]) -> Self {
+        let full: Vec<(usize, &FullCaseCitationData)> = citations
+            .iter()
+            .filter_map(|c| match c {
+                Citation::FullCase(data) => Some((c.span().0, data)),
+                _ => None,
+            })
+            .collect();
+        let mut parent: Vec<usize> = (0..full.len()).collect();
+        fn root(parent: &mut [usize], mut i: usize) -> usize {
+            while parent[i] != i {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            i
+        }
+        let mut by_page: HashMap<(Option<String>, Option<String>, String), usize> = HashMap::new();
+        let mut previous: Option<&Citation> = None;
+        let mut index = 0;
+        for citation in citations {
+            let Citation::FullCase(data) = citation else {
+                previous = Some(citation);
+                continue;
+            };
+            let groups = &citation.common().groups;
+            if let Some(Some(page)) = groups.get("page") {
+                let volume = groups.get("volume").cloned().flatten();
+                let key = (citation.corrected_reporter(), volume, page.clone());
+                let first = *by_page.entry(key).or_insert(index);
+                let (a, b) = (root(&mut parent, first), root(&mut parent, index));
+                parent[b] = a;
+            }
+            if let Some(Citation::FullCase(prev)) = previous {
+                let start = data.resource.common.full_span_start;
+                if start.is_some()
+                    && start == prev.resource.common.full_span_start
+                    && data.metadata.plaintiff == prev.metadata.plaintiff
+                    && data.metadata.defendant == prev.metadata.defendant
+                {
+                    let (a, b) = (root(&mut parent, index - 1), root(&mut parent, index));
+                    parent[b] = a;
+                }
+            }
+            previous = Some(citation);
+            index += 1;
+        }
+        let mut by_name: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for (i, &(start, data)) in full.iter().enumerate() {
+            let decision = root(&mut parent, i);
+            let m = &data.metadata;
+            let mut names: Vec<&String> = [
+                &m.plaintiff,
+                &m.defendant,
+                &m.resolved_case_name_short,
+                &m.resolved_case_name,
+                &m.antecedent_guess,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|v| !v.is_empty())
+            .collect();
+            names.sort_unstable();
+            names.dedup();
+            for name in names {
+                by_name
+                    .entry(name.clone())
+                    .or_default()
+                    .push((start, decision));
+            }
+        }
+        for entries in by_name.values_mut() {
+            entries.sort_unstable();
+        }
+        Self { by_name }
+    }
+
+    /// Whether two or more decisions cited in full before `reference` have
+    /// its name.
+    fn is_ambiguous(&self, reference: &Citation) -> bool {
+        let Citation::Reference(data) = reference else {
+            return false;
+        };
+        let m = &data.metadata;
+        let Some(name) = [
+            &m.plaintiff,
+            &m.defendant,
+            &m.resolved_case_name_short,
+            &m.resolved_case_name,
+        ]
+        .into_iter()
+        .flatten()
+        .next() else {
+            return false;
+        };
+        let at = reference.span().0;
+        let mut decisions = self
+            .by_name
+            .get(name)
+            .into_iter()
+            .flatten()
+            .take_while(|&&(start, _)| start < at)
+            .map(|&(_, decision)| decision);
+        let Some(first) = decisions.next() else {
+            return false;
+        };
+        decisions.any(|d| d != first)
+    }
 }
 
 /// Finds the reference citations that follow full case citations.
@@ -1660,6 +1786,70 @@ mod tests {
         assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Amick"));
         assert_eq!(refs[0].metadata.defendant, None);
         assert_eq!(refs[0].metadata.pin_cite.as_deref(), Some("at 795"));
+    }
+
+    // #27: a surname is a reference name ("Under the Miller test" in
+    // CourtListener 2303811).
+    #[test]
+    fn test_reference_citation_by_surname() {
+        let text = "Rogers v. Missouri, 1 U.S. 12 (1999). something something, In Rogers at \
+                    15, we see that";
+        let refs = references_in(text);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Rogers"));
+
+        let markup = "<p><i>Miller v. California,</i> 413 U.S. 15 (1973). Under the \
+                      <i>Miller</i> test, the work is judged as a whole.</p>";
+        let cites = get_citations(
+            "",
+            false,
+            markup,
+            &[crate::CleanStep::Html, crate::CleanStep::InlineWhitespace],
+        );
+        let refs = references(&cites);
+        assert_eq!(refs.len(), 1, "{cites:?}");
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Miller"));
+    }
+
+    // #27: a name that two decisions cited in full before it share is no
+    // reference, whichever party it is in each.
+    #[test]
+    fn test_reference_name_of_two_decisions_is_no_reference() {
+        let text = "Smith v. Jones, 1 U.S. 12 (1999). Smith v. Brown, 2 U.S. 20 (2000). In \
+                    Smith at 15, we see that";
+        assert!(references_in(text).is_empty());
+        let text = "United States v. Rogers, 1 U.S. 12 (1999). Rogers v. Brown, 2 U.S. 20 \
+                    (2000). In Rogers at 15, we see that";
+        assert!(references_in(text).is_empty());
+        // Role words stay out whatever the count.
+        let text = "State v. Jones, 1 U.S. 12 (1999). In State at 15, we see that";
+        assert!(references_in(text).is_empty());
+    }
+
+    // Only the decisions before the reference count.
+    #[test]
+    fn test_reference_name_before_a_second_decision() {
+        let text = "Smith v. Jones, 1 U.S. 12 (1999). In Smith at 15, we see that. Smith v. \
+                    Brown, 2 U.S. 20 (2000).";
+        let refs = references_in(text);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].metadata.plaintiff.as_deref(), Some("Smith"));
+    }
+
+    // One decision cited twice, or in parallel, is one decision.
+    #[test]
+    fn test_reference_name_of_one_decision_cited_twice() {
+        let text = "Smith v. Jones, 1 U.S. 12 (1999). See Smith v. Jones, 1 U.S. 12, 14 \
+                    (1999). In Smith at 15, we see that";
+        assert_eq!(references_in(text).len(), 1);
+        let text = "Smith v. Jones, 275 Conn. 38, 881 A.2d 194 (2005). In Smith at 45, we \
+                    see that";
+        assert_eq!(references_in(text).len(), 1);
+    }
+
+    fn references_in(text: &str) -> Vec<crate::models::citation::ReferenceCitationData> {
+        let cites = get_citations(text, false, "", &[]);
+        references(&cites).into_iter().cloned().collect()
     }
 
     // Mirrors eyecite test_reference_extraction_using_resolved_names:
