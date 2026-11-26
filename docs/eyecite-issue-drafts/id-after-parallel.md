@@ -34,7 +34,12 @@ for text in [
 ten-percent sample) about 400 id. citations are left unresolved this way, counting the pinless
 `Id.`s chained after them.
 
+The same happens after short cites to a decision cited in parallel, where the last short cite
+is the last resolution: `Davis v. Bandemer, 478 U.S. 109, 106 S.Ct. 2797 (1986). … Davis, 478
+U.S. at 129-30, 106 S.Ct. at 2809. Id. at 130.` resolves both short cites and leaves `Id. at 130`,
+page 130 of 478 U.S., unresolved.
+
 **Suggested fix:** when the pin cite is out of range of the last resolution and that resolution
-is one of the parallel citations just before the id. citation, try the others in order and take
-the first the pin cite can be in. citare's write-up, with the measurement, is
+was cited in parallel with other printings, try those printings in order and take the first the
+pin cite can be in. citare's write-up, with the measurement, is
 <https://github.com/codexpublicus/citare/blob/main/docs/divergences.md#id-after-parallel>.

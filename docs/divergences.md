@@ -1312,9 +1312,14 @@ cite into the first is almost never in range of the second's pages. `Ray v. Bruc
 260 N.W. 287 and leaves the id. citation unresolved, and every pinless `Id.` chained after it.
 
 citare checks the last citation's resource first, as eyecite does. When the pin cite can't be in
-it and that resource is one of the last parallel run's printings, the id. citation resolves to
-the first of the run's printings the pin cite can be in. Only the last run counts: after a later
-full citation, an id. citation never reaches back to an earlier decision's printings.
+it and that resource was cited in parallel with other printings, the id. citation resolves to
+the first of those printings, in document order, the pin cite can be in. The last citation can be
+the full citations themselves, a short cite or a run of short cites in parallel (`Davis, 478 U.S.
+at 129-30, 106 S.Ct. at 2809. Id. at 130`, where the S.Ct. short cite is the last resolution and
+130 is a page of 478 U.S. 109), or a reference, which resolves to the decision's first printing
+([reference-after-parallel](#reference-after-parallel)). Only the last resolution's decision
+counts: after a later full citation, an id. citation never reaches back to an earlier decision's
+printings.
 
 | Input | eyecite 2.7.8 | citare |
 |---|---|---|
@@ -1322,6 +1327,9 @@ full citation, an id. citation never reaches back to an earlier decision's print
 | `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 290.` | `260 N.W. 287` | `260 N.W. 287` |
 | `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Id. at 5000.` | unresolved | unresolved |
 | `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 N.W. 1 (1940). Id. at 790.` | unresolved | unresolved |
+| `Davis v. Bandemer, 478 U.S. 109, 106 S.Ct. 2797 (1986). … Davis, 478 U.S. at 129-30, 106 S.Ct. at 2809. Id. at 130.` | **unresolved** | `478 U.S. 109` |
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 N.W. 1 (1940). Ray, 260 N.W. at 288. Id. at 790.` | **unresolved** | `128 Neb. 783` |
+| `Ray v. Bruce, 128 Neb. 783, 260 N.W. 287 (1935). Smith v. Jones, 300 N.W. 1 (1940). Ray at 785. Id. at 290.` | reference and `Id.` **unresolved** | reference `128 Neb. 783`, `Id.` `260 N.W. 287` |
 
 ### Evidence
 
@@ -1338,12 +1346,27 @@ second printing, and pinless `Id.`s after a newly resolved one. The twentieth fo
 citare resolves it to Barber, whose U.S. pages 704 happens to fall in. eyecite gives the same
 wrong answer whenever a case in a parenthetical is cited in one reporter.
 
+The check after short cites and references (#27) resolves 9,723 id. citations on the same
+sample, up from 9,418 on `main` (3605d09), and 792 on the one-percent sample, up from 732. No
+other citation's resolution changes, and no id. citation that resolved before resolves to
+something else. I read 20 of the 305 newly resolved, drawn at random (seed 27), in context, and
+all 20 resolve to the decision they cite. Most follow a parallel short cite or a repeated
+parallel full citation (`Strickland`'s `Id. at 687, 104 S.Ct. 2052. … Id. at 688`, `Simmons, 543
+U.S. at 559–60, 125 S. Ct. at 1989–90. … Id. at 568`, `Flaherty, 90 N.C.App. at 349, 368 S.E.2d at
+405. … Id. at 350`); one follows `30 CIT ___, 435 F.Supp.2d at 1303`, where the CIT citation has
+no page. The id. citation #143 stopped resolving, `Davis, 478 U.S. at 129-30, 106 S.Ct. at 2809. …
+Id. at 130` (CourtListener 1907902), resolves to 478 U.S. 109 again.
+
 ### Tests
 
 - `crates/citare-core/src/resolve.rs`: `test_id_after_parallel_run_pins_its_first_printing`
   (#103's example, and an id. citation after it),
   `test_id_after_parallel_run_in_its_last_printing_or_neither` and
-  `test_id_after_single_cite_does_not_reach_an_earlier_run` (the table's other rows).
+  `test_id_after_single_cite_does_not_reach_an_earlier_run` (the table's next rows);
+  `test_id_after_parallel_short_cites_pins_its_printing`,
+  `test_id_after_short_cite_pins_another_printing`, `test_id_after_reference_pins_another_printing`
+  and `test_id_after_short_cite_of_single_printing_stays_unresolved` (#27, after short cites and
+  references).
 - citation-bench: none yet; the table's rows can become `resolve` vectors in
   `vectors/divergences/`.
 
